@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { Truck, ArrowRight, Plus, ClipboardList, MapPin, CalendarClock, Play, CheckCircle2, LogOut } from "lucide-react";
@@ -21,6 +21,12 @@ export default function TasksPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [trackingTripId, setTrackingTripId] = useState(null);
+  const watchIdRef = useRef(null);
+
+  useEffect(() => () => {
+    if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
+  }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למסד הנתונים אינו מוגדר."); setLoading(false); return; }
@@ -106,6 +112,7 @@ export default function TasksPage() {
   }
 
   async function endTrip(trip) {
+    if (trackingTripId === trip.id) { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null; setTrackingTripId(null); }
     setBusy(true); setMessage("");
     const { error } = await supabase.from("trips").update({ status: "completed", ended_at: new Date().toISOString() }).eq("id", trip.id).eq("fleet_id", fleet.id);
     if (error) setMessage("לא הצלחנו לסיים נסיעה: " + error.message);
@@ -116,23 +123,33 @@ export default function TasksPage() {
     setBusy(false);
   }
 
-  async function recordLocation(trip) {
+  function stopTracking() {
+    if (watchIdRef.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
+    watchIdRef.current = null;
+    setTrackingTripId(null);
+    setMessage("מעקב המיקום הופסק.");
+  }
+
+  function startTracking(trip) {
     if (!navigator.geolocation) { setMessage("המכשיר או הדפדפן אינם תומכים בשיתוף מיקום."); return; }
-    setBusy(true); setMessage("מבקש אישור מיקום מהמכשיר...");
-    navigator.geolocation.getCurrentPosition(async position => {
+    if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
+    setMessage("מבקש הרשאת מיקום ומתחיל מעקב...");
+    watchIdRef.current = navigator.geolocation.watchPosition(async position => {
       const { latitude, longitude, speed, heading } = position.coords;
       const { error } = await supabase.from("trip_locations").insert({
         trip_id: trip.id, driver_id: trip.driver_id, latitude, longitude,
         speed_kmh: speed == null ? null : Math.round(speed * 3.6 * 10) / 10,
         heading_degrees: heading
       });
-      if (error) setMessage("לא הצלחנו לשמור מיקום: " + error.message);
-      else setMessage("המיקום הנוכחי נשמר לנסיעה.");
-      setBusy(false);
+      if (error) setMessage("המעקב פעיל אך שמירת נקודת מיקום נכשלה: " + error.message);
+      else setMessage("מעקב GPS פעיל — המיקום מתעדכן ונשמר אוטומטית.");
     }, error => {
-      setMessage(error.code === 1 ? "לא אושר שיתוף מיקום. אפשר לאשר הרשאת מיקום בדפדפן." : "לא הצלחנו לקבל מיקום מהמכשיר.");
-      setBusy(false);
-    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+      setMessage(error.code === 1 ? "לא אושרה הרשאת מיקום. יש לאשר מיקום בדפדפן כדי להתחיל מעקב." : "שגיאה בקבלת מיקום GPS. בדוק שהמיקום מופעל במכשיר.");
+      if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+      setTrackingTripId(null);
+    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 });
+    setTrackingTripId(trip.id);
   }
 
   async function signOut() { await supabase.auth.signOut(); router.replace("/"); }
@@ -154,7 +171,7 @@ export default function TasksPage() {
             <div className="task-card-top"><div><b>{tasks.find(t=>t.id===trip.task_id)?.title || "נסיעה ללא משימה"}</b><small>התחלה: {trip.started_at ? new Date(trip.started_at).toLocaleString("he-IL") : "לא צוין"}</small></div><span className="task-status task-in_progress">בנסיעה</span></div>
             <div className="task-assignees"><span>נהג: {drivers.find(d=>d.id===trip.driver_id)?.full_name || "לא ידוע"}</span><span>רכב: {vehicles.find(v=>v.id===trip.vehicle_id)?.registration_number || "לא ידוע"}</span></div>
             <div className="task-route"><span><MapPin size={14}/> {trip.origin_address || "מוצא לא צוין"}</span><span><MapPin size={14}/> {trip.destination_address || "יעד לא צוין"}</span></div>
-            <div className="task-actions"><button className="secondary-btn" disabled={busy} onClick={()=>recordLocation(trip)}>שמירת מיקום נוכחי</button><button className="primary-btn" disabled={busy} onClick={()=>endTrip(trip)}><CheckCircle2 size={14}/> סיום נסיעה</button></div>
+            <div className="task-actions">{trackingTripId===trip.id ? <button className="secondary-btn" disabled={busy} onClick={stopTracking}>עצירת מעקב GPS</button> : <button className="secondary-btn" disabled={busy || trackingTripId!==null} onClick={()=>startTracking(trip)}>התחלת מעקב GPS רציף</button>}<button className="primary-btn" disabled={busy} onClick={()=>endTrip(trip)}><CheckCircle2 size={14}/> סיום נסיעה</button></div>
           </article>)}</div>}
       </section>
       <section className="fleet-panel">
