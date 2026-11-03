@@ -98,7 +98,7 @@ export default function Home() {
   </section></main>;
 
   return <main className="fleet-home" dir="rtl">
-    <header className="fleet-header"><div className="auth-brand"><span><Truck size={24}/></span><div><h1>TruckSafe</h1><small>ניהול צי חכם</small></div></div><button className="logout-btn" onClick={signOut}><LogOut size={16}/> יציאה</button></header>
+    <header className="fleet-header"><div className="auth-brand"><span><Truck size={24}/></span><div><h1>TruckSafe</h1><small>ניהול צי חכם</small></div></div><div className="drivers-header-actions"><a className="nav-link" href="/drivers"><Users size={16}/> ניהול נהגים</a><button className="logout-btn" onClick={signOut}><LogOut size={16}/> יציאה</button></div></header>
     <section className="fleet-content"><div className="fleet-welcome"><div><small>סביבת ניהול פעילה</small><h2>{fleet.name}</h2><p>שלום {session.user.user_metadata?.full_name||session.user.email}</p></div><span className="role-pill">{fleet.role==="owner"?"בעלים":fleet.role}</span></div>
       {message&&<div className="auth-message">{message}</div>}
       <div className="fleet-stats"><article><Truck/><strong>{vehicles.length}</strong><span>כלי רכב בצי</span></article><article><Users/><strong>{drivers.length}</strong><span>נהגים רשומים</span></article><article><Navigation/><strong>0</strong><span>נסיעות פעילות</span></article><article><AlertTriangle/><strong>0</strong><span>אירועי בטיחות</span></article></div>
