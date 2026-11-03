@@ -104,32 +104,14 @@ export default function TasksPage() {
     if (!task || !fleet) return;
     if (!preTripItems.every((_, i) => preTripChecks[i])) { setMessage("יש לאשר את כל סעיפי בדיקת הרכב לפני פתיחת הנסיעה."); return; }
     setBusy(true); setMessage("");
-    const { data: existing, error: findError } = await supabase.from("trips").select("id").eq("task_id", task.id).in("status", ["planned", "active"]).limit(1);
-    if (findError) { setMessage("לא הצלחנו לבדוק נסיעה קיימת: " + findError.message); setBusy(false); return; }
-    if (existing?.length) { setMessage("כבר קיימת נסיעה פעילה או מתוכננת למשימה הזאת."); setBusy(false); return; }
-    const { error } = await supabase.from("trips").insert({
-      fleet_id: fleet.id, task_id: task.id, driver_id: task.assigned_driver_id,
-      vehicle_id: task.assigned_vehicle_id, status: "active",
-      origin_address: task.pickup_address, destination_address: task.delivery_address,
-      started_at: new Date().toISOString()
+    const checklist = Object.fromEntries(preTripItems.map((item, i) => [item, Boolean(preTripChecks[i])]));
+    const { data: tripId, error } = await supabase.rpc("start_trip_with_inspection", {
+      p_fleet_id: fleet.id, p_task_id: task.id, p_driver_id: task.assigned_driver_id,
+      p_vehicle_id: task.assigned_vehicle_id, p_origin_address: task.pickup_address,
+      p_destination_address: task.delivery_address, p_checklist: checklist
     });
-    if (error) setMessage("לא הצלחנו לפתוח נסיעה: " + error.message);
-    else {
-      const { data: createdTrip, error: tripReadError } = await supabase.from("trips").select("id").eq("task_id", task.id).eq("fleet_id", fleet.id).eq("status", "active").order("created_at", { ascending: false }).limit(1).maybeSingle();
-      if (tripReadError || !createdTrip) {
-        setMessage("הנסיעה נפתחה אך לא ניתן לאמת את מזהה הנסיעה לצורך בדיקת הרכב.");
-      } else {
-        const checklist = Object.fromEntries(preTripItems.map((item, i) => [item, Boolean(preTripChecks[i])]));
-        const { error: inspectionError } = await supabase.from("inspections").insert({ fleet_id: fleet.id, trip_id: createdTrip.id, vehicle_id: task.assigned_vehicle_id, driver_id: task.assigned_driver_id, inspection_type: "pre_trip", checklist, defects: null, passed: true, inspected_at: new Date().toISOString() });
-        if (inspectionError) {
-          await supabase.from("trips").update({ status: "cancelled", ended_at: new Date().toISOString() }).eq("id", createdTrip.id).eq("fleet_id", fleet.id);
-          setMessage("בדיקת הרכב לא נשמרה ולכן הנסיעה בוטלה. נסה שוב: " + inspectionError.message);
-        } else {
-          await supabase.from("tasks").update({ status: "in_progress" }).eq("id", task.id).eq("fleet_id", fleet.id);
-          setPreTripTask(null); await loadWorkspace(session.user); setMessage("בדיקת הרכב נשמרה והנסיעה נפתחה.");
-        }
-      }
-    }
+    if (error) setMessage("לא ניתן לפתוח נסיעה או לשמור בדיקת רכב: " + error.message);
+    else { setPreTripTask(null); await loadWorkspace(session.user); setMessage("בדיקת הרכב נשמרה והנסיעה נפתחה בהצלחה."); }
     setBusy(false);
   }
 
