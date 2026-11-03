@@ -21,6 +21,7 @@ export default function Home() {
   const [registration,setRegistration]=useState("");
   const [vehicleType,setVehicleType]=useState("משאית");
   const [vehicleMake,setVehicleMake]=useState("");
+  const [assignedDriverId,setAssignedDriverId]=useState("");
 
   async function loadFleet(user) {
     const {data:membership,error}=await supabase.from("fleet_members").select("fleet_id,role").eq("user_id",user.id).limit(1).maybeSingle();
@@ -30,7 +31,7 @@ export default function Home() {
     if(fleetError){setMessage("שגיאה בטעינת הצי: "+fleetError.message);return;}
     setFleet({...current,role:membership.role});
     const [v,d]=await Promise.all([
-      supabase.from("vehicles").select("id,registration_number,make,model,vehicle_type,status").eq("fleet_id",current.id).order("created_at",{ascending:false}),
+      supabase.from("vehicles").select("id,registration_number,make,model,vehicle_type,status,assigned_driver_id").eq("fleet_id",current.id).order("created_at",{ascending:false}),
       supabase.from("drivers").select("id,full_name,phone,status").eq("fleet_id",current.id).order("created_at",{ascending:false})
     ]);
     if(v.error)setMessage("שגיאה בטעינת כלי הרכב: "+v.error.message); else setVehicles(v.data||[]);
@@ -65,9 +66,9 @@ export default function Home() {
 
   async function addVehicle(e){
     e.preventDefault();setBusy(true);setMessage("");
-    const {error}=await supabase.from("vehicles").insert({fleet_id:fleet.id,registration_number:registration.trim(),vehicle_type:vehicleType,make:vehicleMake.trim()||null,status:"active"});
+    const {error}=await supabase.from("vehicles").insert({fleet_id:fleet.id,registration_number:registration.trim(),vehicle_type:vehicleType,make:vehicleMake.trim()||null,status:"available",assigned_driver_id:assignedDriverId||null});
     if(error)setMessage("לא הצלחנו להוסיף רכב: "+error.message);
-    else {setRegistration("");setVehicleMake("");setShowVehicle(false);await loadFleet(session.user);setMessage("הרכב נוסף לצי.");}
+    else {setRegistration("");setVehicleMake("");setAssignedDriverId("");setShowVehicle(false);await loadFleet(session.user);setMessage("הרכב נוסף לצי.");}
     setBusy(false);
   }
 
@@ -103,8 +104,8 @@ export default function Home() {
       {message&&<div className="auth-message">{message}</div>}
       <div className="fleet-stats"><article><Truck/><strong>{vehicles.length}</strong><span>כלי רכב בצי</span></article><article><Users/><strong>{drivers.length}</strong><span>נהגים רשומים</span></article><article><Navigation/><strong>0</strong><span>נסיעות פעילות</span></article><article><AlertTriangle/><strong>0</strong><span>אירועי בטיחות</span></article></div>
       <section className="fleet-panel"><div className="fleet-panel-head"><div><h3>כלי הרכב שלי</h3><p>נתונים שנשמרים במסד הנתונים של הצי</p></div><button className="primary-btn" onClick={()=>setShowVehicle(!showVehicle)}><Plus size={16}/> הוספת רכב</button></div>
-      {showVehicle&&<form className="vehicle-form" onSubmit={addVehicle}><label>מספר רישוי<input required value={registration} onChange={e=>setRegistration(e.target.value)} placeholder="12-345-67"/></label><label>סוג רכב<select value={vehicleType} onChange={e=>setVehicleType(e.target.value)}><option>משאית</option><option>גורר</option><option>נגרר</option><option>מסחרית</option><option>רכב אחר</option></select></label><label>יצרן / דגם<input value={vehicleMake} onChange={e=>setVehicleMake(e.target.value)} placeholder="לדוגמה: Volvo FH"/></label><button className="primary-btn" disabled={busy}>שמירת רכב</button></form>}
-      {vehicles.length===0?<div className="fleet-empty">עדיין לא הוספת כלי רכב. לחץ על "הוספת רכב" כדי להתחיל.</div>:<div className="vehicle-list">{vehicles.map(v=><div className="vehicle-row" key={v.id}><Truck size={20}/><div><b>{v.registration_number}</b><small>{[v.make,v.model,v.vehicle_type].filter(Boolean).join(" · ")}</small></div><span>{v.status==="active"?"פעיל":v.status}</span></div>)}</div>}
+      {showVehicle&&<form className="vehicle-form" onSubmit={addVehicle}><label>מספר רישוי<input required value={registration} onChange={e=>setRegistration(e.target.value)} placeholder="12-345-67"/></label><label>סוג רכב<select value={vehicleType} onChange={e=>setVehicleType(e.target.value)}><option>משאית</option><option>גורר</option><option>נגרר</option><option>מסחרית</option><option>רכב אחר</option></select></label><label>יצרן / דגם<input value={vehicleMake} onChange={e=>setVehicleMake(e.target.value)} placeholder="לדוגמה: Volvo FH"/></label><label>נהג משויך<select value={assignedDriverId} onChange={e=>setAssignedDriverId(e.target.value)}><option value="">ללא נהג משויך</option>{drivers.filter(d=>d.status==="active").map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label><button className="primary-btn" disabled={busy}>שמירת רכב</button></form>}
+      {vehicles.length===0?<div className="fleet-empty">עדיין לא הוספת כלי רכב. לחץ על "הוספת רכב" כדי להתחיל.</div>:<div className="vehicle-list">{vehicles.map(v=><div className="vehicle-row" key={v.id}><Truck size={20}/><div><b>{v.registration_number}</b><small>{[v.make,v.model,v.vehicle_type].filter(Boolean).join(" · ")}{v.assigned_driver_id ? " · נהג: "+(drivers.find(d=>d.id===v.assigned_driver_id)?.full_name||"לא נמצא") : " · ללא נהג משויך"}</small></div><span>{v.status==="available"?"זמין":v.status==="assigned"?"משויך":v.status==="on_trip"?"בנסיעה":v.status==="maintenance"?"בטיפול":v.status==="inactive"?"לא פעיל":v.status}</span></div>)}</div>}
       </section>
       <p className="fleet-foot">TruckSafe Fleet V1 · מחובר למסד הנתונים · נתוני הצי מוצגים מהמערכת</p>
     </section>
