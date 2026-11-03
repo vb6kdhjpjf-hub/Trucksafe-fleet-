@@ -135,14 +135,25 @@ export default function TasksPage() {
         }
       }
       if (trip.vehicle_id) {
-        const { error: vehicleError } = await supabase.from("vehicles")
-          .update({ status: "available" })
-          .eq("id", trip.vehicle_id).eq("fleet_id", fleet.id).eq("status", "on_trip");
-        if (vehicleError) {
-          setMessage("הנסיעה הסתיימה, אך עדכון סטטוס הרכב נכשל: " + vehicleError.message);
+        const { data: otherTrips, error: otherTripsError } = await supabase.from("trips")
+          .select("id").eq("vehicle_id", trip.vehicle_id).eq("fleet_id", fleet.id)
+          .eq("status", "active").neq("id", trip.id).limit(1);
+        if (otherTripsError) {
+          setMessage("הנסיעה הסתיימה, אך לא ניתן היה לוודא שאין נסיעה פעילה נוספת ולכן סטטוס הרכב לא שונה: " + otherTripsError.message);
           await loadWorkspace(session.user);
           setBusy(false);
           return;
+        }
+        if (!otherTrips?.length) {
+          const { error: vehicleError } = await supabase.from("vehicles")
+            .update({ status: "available" })
+            .eq("id", trip.vehicle_id).eq("fleet_id", fleet.id).eq("status", "on_trip");
+          if (vehicleError) {
+            setMessage("הנסיעה הסתיימה, אך עדכון סטטוס הרכב נכשל: " + vehicleError.message);
+            await loadWorkspace(session.user);
+            setBusy(false);
+            return;
+          }
         }
       }
       if (trackingTripId === trip.id) {
