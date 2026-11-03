@@ -12,6 +12,7 @@ export default function Home() {
   const [mode,setMode]=useState("login");
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
+  const [newPassword,setNewPassword]=useState("");
   const [name,setName]=useState("");
   const [fleetName,setFleetName]=useState("");
   const [message,setMessage]=useState("");
@@ -84,7 +85,7 @@ export default function Home() {
   useEffect(()=>{
     if(!isSupabaseConfigured){setLoading(false);return;}
     supabase.auth.getSession().then(async ({data})=>{setSession(data.session);if(data.session)await loadFleet(data.session.user);setLoading(false);});
-    const {data:{subscription}}=supabase.auth.onAuthStateChange(async (_event,next)=>{setSession(next);if(next)await loadFleet(next.user);else{setFleet(null);setVehicles([]);setDrivers([]);}setLoading(false);});
+    const {data:{subscription}}=supabase.auth.onAuthStateChange(async (event,next)=>{if(event==="PASSWORD_RECOVERY"){setMode("reset-password");setMessage("בחר סיסמה חדשה לחשבון שלך.");}setSession(next);if(next&&event!=="PASSWORD_RECOVERY")await loadFleet(next.user);else if(!next){setFleet(null);setVehicles([]);setDrivers([]);}setLoading(false);});
     return ()=>subscription.unsubscribe();
   },[]);
 
@@ -96,6 +97,21 @@ export default function Home() {
     if(result.error)setMessage(result.error.message);
     else if(mode==="signup"&&!result.data.session)setMessage("נשלח אליך מייל לאימות החשבון. אשר אותו ואז התחבר.");
     else setMessage(mode==="signup"?"החשבון נוצר בהצלחה.":"התחברת בהצלחה.");
+    setBusy(false);
+  }
+
+  async function sendPasswordReset(e){
+    e.preventDefault();setBusy(true);setMessage("");
+    const {error}=await supabase.auth.resetPasswordForEmail(email.trim(),{redirectTo:window.location.origin});
+    setMessage(error?"לא הצלחנו לשלוח קישור איפוס: "+error.message:"אם קיימת כתובת מתאימה, נשלח אליה קישור מאובטח לאיפוס הסיסמה. בדוק גם בתיקיית הספאם.");
+    setBusy(false);
+  }
+
+  async function saveNewPassword(e){
+    e.preventDefault();setBusy(true);setMessage("");
+    const {error}=await supabase.auth.updateUser({password:newPassword});
+    if(error)setMessage("לא הצלחנו לעדכן את הסיסמה: "+error.message);
+    else {setPassword("");setNewPassword("");setMode("login");setMessage("הסיסמה עודכנה בהצלחה. אפשר להתחבר עם הסיסמה החדשה.");await supabase.auth.signOut();}
     setBusy(false);
   }
 
@@ -120,16 +136,24 @@ export default function Home() {
   if(!isSupabaseConfigured)return <main className="auth-wrap"><section className="auth-card"><Truck size={36}/><h1>TruckSafe Fleet</h1><p>החיבור למסד הנתונים עדיין לא הוגדר. יש לבדוק את משתני הסביבה ב-Vercel.</p></section></main>;
   if(loading)return <main className="auth-wrap"><section className="auth-card">טוען את סביבת TruckSafe...</section></main>;
 
-  if(!session)return <main className="auth-wrap"><section className="auth-card">
+  if(!session || mode==="reset-password")return <main className="auth-wrap"><section className="auth-card">
     <div className="auth-brand"><span><Truck size={25}/></span><div><h1>TruckSafe</h1><small>ניהול צי חכם ובטוח</small></div></div>
-    <h2>{mode==="login"?"כניסה למערכת":"יצירת חשבון חדש"}</h2><p>התחבר כדי לנהל את כלי הרכב, הנהגים והמשימות שלך.</p>
-    <form onSubmit={authenticate} className="auth-form">
+    <h2>{mode==="reset-password"?"בחירת סיסמה חדשה":mode==="forgot"?"איפוס סיסמה":mode==="signup"?"יצירת חשבון חדש":"כניסה למערכת"}</h2>
+    <p>{mode==="forgot"?"הזן את כתובת האימייל של החשבון ונשלח קישור מאובטח לאיפוס הסיסמה.":mode==="reset-password"?"הזן סיסמה חדשה לחשבון שלך.": "התחבר כדי לנהל את כלי הרכב, הנהגים והמשימות שלך."}</p>
+    {mode==="reset-password"?<form onSubmit={saveNewPassword} className="auth-form">
+      <label>סיסמה חדשה<input type="password" minLength={8} required value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="לפחות 8 תווים"/></label>
+      <button className="primary-btn" disabled={busy}>{busy?"מעדכן...":"שמירת סיסמה חדשה"}</button>
+    </form>:mode==="forgot"?<form onSubmit={sendPasswordReset} className="auth-form">
+      <label>כתובת אימייל<input type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="name@example.com"/></label>
+      <button className="primary-btn" disabled={busy}>{busy?"שולח...":"שליחת קישור לאיפוס"}</button>
+    </form>:<form onSubmit={authenticate} className="auth-form">
       {mode==="signup"&&<label>שם מלא<input required value={name} onChange={e=>setName(e.target.value)} placeholder="השם שלך"/></label>}
       <label>כתובת אימייל<input type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="name@example.com"/></label>
       <label>סיסמה<input type="password" minLength={6} required value={password} onChange={e=>setPassword(e.target.value)} placeholder="לפחות 6 תווים"/></label>
-      <button className="primary-btn" disabled={busy}>{busy?"נא להמתין...":mode==="login"?"התחברות":"יצירת חשבון"}</button>
-    </form>
-    <button className="auth-switch" onClick={()=>{setMode(mode==="login"?"signup":"login");setMessage("");}}>{mode==="login"?"אין לך חשבון? יצירת חשבון":"כבר יש לך חשבון? התחברות"}</button>
+      <button className="primary-btn" disabled={busy}>{busy?"נא להמתין...":mode==="signup"?"יצירת חשבון":"התחברות"}</button>
+    </form>}
+    {mode==="login"&&<button className="auth-switch" onClick={()=>{setMode("forgot");setMessage("");}}>שכחתי סיסמה?</button>}
+    {mode!=="reset-password"&&<button className="auth-switch" onClick={()=>{setMode(mode==="signup"?"login":"login");setMessage("");}}>{mode==="signup"?"כבר יש לך חשבון? התחברות":mode==="forgot"?"חזרה להתחברות":"אין לך חשבון? יצירת חשבון"}</button>}
     {message&&<div className="auth-message">{message}</div>}
     <small className="secure-note"><ShieldCheck size={14}/> החיבור מאובטח באמצעות Supabase</small>
   </section></main>;
