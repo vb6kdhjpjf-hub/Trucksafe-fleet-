@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
-import { Truck, ShieldCheck, LogOut, Plus, Users, Navigation, AlertTriangle, ClipboardList } from "lucide-react";
+import { Truck, ShieldCheck, LogOut, Plus, Users, Navigation, AlertTriangle, ClipboardList, BarChart3 } from "lucide-react";
 
 export default function Home() {
   const [session,setSession]=useState(null);
@@ -136,7 +136,7 @@ export default function Home() {
   </section></main>;
 
   return <main className="fleet-home" dir="rtl">
-    <header className="fleet-header"><div className="auth-brand"><span><Truck size={24}/></span><div><h1>TruckSafe</h1><small>ניהול צי חכם</small></div></div><div className="drivers-header-actions"><a className="nav-link" href="/drivers"><Users size={16}/> ניהול נהגים</a><a className="nav-link" href="/tasks"><ClipboardList size={16}/> משימות ונסיעות</a><a className="nav-link" href="/map"><Navigation size={16}/> מפת נהגים</a><a className="nav-link" href="/history"><ClipboardList size={16}/> היסטוריית נסיעות</a><a className="nav-link" href="/incidents"><AlertTriangle size={16}/> אירועי בטיחות</a><button className="logout-btn" onClick={signOut}><LogOut size={16}/> יציאה</button></div></header>
+    <header className="fleet-header"><div className="auth-brand"><span><Truck size={24}/></span><div><h1>TruckSafe</h1><small>ניהול צי חכם</small></div></div><div className="drivers-header-actions"><a className="nav-link" href="/drivers"><Users size={16}/> ניהול נהגים</a><a className="nav-link" href="/tasks"><ClipboardList size={16}/> משימות ונסיעות</a><a className="nav-link" href="/map"><Navigation size={16}/> מפת נהגים</a><a className="nav-link" href="/history"><ClipboardList size={16}/> היסטוריית נסיעות</a><a className="nav-link" href="/reports"><BarChart3 size={16}/> דוחות נסיעות</a><a className="nav-link" href="/incidents"><AlertTriangle size={16}/> אירועי בטיחות</a><button className="logout-btn" onClick={signOut}><LogOut size={16}/> יציאה</button></div></header>
     <section className="fleet-content"><div className="fleet-welcome"><div><small>סביבת ניהול פעילה</small><h2>{fleet.name}</h2><p>שלום {session.user.user_metadata?.full_name||session.user.email}</p></div><span className="role-pill">{fleet.role==="owner"?"בעלים":fleet.role}</span></div>
       {message&&<div className="auth-message">{message}</div>}
       <div className="fleet-stats"><article><Truck/><strong>{vehicles.length}</strong><span>כלי רכב בצי</span></article><article><Users/><strong>{drivers.length}</strong><span>נהגים רשומים</span></article><article><ClipboardList/><strong>{activeTasks}</strong><span>משימות פתוחות</span></article><article><Navigation/><strong>{activeTrips}</strong><span>נסיעות פעילות</span></article><article><AlertTriangle/><strong>{openIncidents}</strong><span>אירועי בטיחות פתוחים</span></article></div>
