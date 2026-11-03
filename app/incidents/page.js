@@ -103,8 +103,12 @@ export default function IncidentsPage() {
       status:"reported", reported_at:new Date().toISOString(), created_by:session.user.id
     };
     const {error} = await supabase.from("incidents").insert(payload);
-    if (error) setMessage("לא הצלחנו לדווח על האירוע: "+error.message);
-    else { setForm(emptyForm); setGps({latitude:null,longitude:null}); setPhotoFile(null); setShowForm(false); await loadIncidents(fleet.id); setMessage("האירוע דווח ונשמר במערכת."); }
+    if (error) {
+      if (photoPath) {
+        const { error: cleanupError } = await supabase.storage.from("incident-photos").remove([photoPath]);
+        setMessage("לא הצלחנו לדווח על האירוע: "+error.message+(cleanupError ? " בנוסף, לא הצלחנו למחוק את התמונה שהועלתה: "+cleanupError.message : ""));
+      } else setMessage("לא הצלחנו לדווח על האירוע: "+error.message);
+    } else { setForm(emptyForm); setGps({latitude:null,longitude:null}); setPhotoFile(null); setShowForm(false); await loadIncidents(fleet.id); setMessage("האירוע דווח ונשמר במערכת."); }
     setBusy(false);
   }
 
