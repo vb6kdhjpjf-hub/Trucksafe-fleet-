@@ -94,6 +94,10 @@ export default function DriversPage() {
     setBusy(false);
   }
 
+  const today = new Date(); today.setHours(0,0,0,0);
+  const licenseAlerts = drivers.filter(d=>d.license_expires_at).map(driver=>({...driver,days:Math.ceil((new Date(driver.license_expires_at+"T00:00:00")-today)/86400000)})).filter(driver=>driver.days<=30).sort((a,b)=>a.days-b.days);
+  const expiredLicenses=licenseAlerts.filter(driver=>driver.days<0);
+  const soonLicenses=licenseAlerts.filter(driver=>driver.days>=0);
   async function signOut() { await supabase.auth.signOut(); router.replace("/"); }
 
   if (loading) return <main className="auth-wrap"><section className="auth-card">טוען את רשימת הנהגים...</section></main>;
@@ -110,7 +114,13 @@ export default function DriversPage() {
       <div className="fleet-welcome"><div><small>ניהול כוח אדם</small><h2>הנהגים שלי</h2><p>{fleet?.name || "הצי שלך"} · {drivers.length} נהגים רשומים</p></div><span className="role-pill"><Users size={14}/> ניהול נהגים</span></div>
       {message && <div className="auth-message">{message}</div>}
       <section className="fleet-panel">
-        <div className="fleet-panel-head"><div><h3>רשימת נהגים</h3><p>פרטי קשר, רישיון וסטטוס העסקה</p></div><button className="primary-btn" onClick={startAdd}><Plus size={16}/> הוספת נהג</button></div>
+        <div className="fleet-panel-head"><div>{licenseAlerts.length>0&&<section className="fleet-panel" style={{borderRight:"4px solid #d97706"}}>
+        <div className="fleet-panel-head"><div><h3>התראות תוקף רישיונות נהיגה</h3><p>רישיונות שפג תוקפם או יפוגו בתוך 30 יום</p></div><span className="role-pill">{licenseAlerts.length} התראות</span></div>
+        {expiredLicenses.length>0&&<div className="auth-message" style={{background:"#fff0f0",color:"#9b1c1c"}}><b>{expiredLicenses.length} רישיונות שפג תוקפם</b></div>}
+        {soonLicenses.length>0&&<div className="auth-message" style={{background:"#fff7e6",color:"#8a5700"}}><b>{soonLicenses.length} רישיונות שעומדים לפוג</b></div>}
+        <div className="driver-list">{licenseAlerts.map(driver=><article className="driver-row" key={driver.id+"-expiry"}><div className="driver-avatar">{(driver.full_name||"?").trim().charAt(0)}</div><div className="driver-main"><b>{driver.full_name}</b><div className="driver-details"><span><CalendarDays size={13}/>תוקף עד {new Date(driver.license_expires_at+"T00:00:00").toLocaleDateString("he-IL")}</span></div></div><span className={driver.days<0?"status-late":"status-pending"}>{driver.days<0?"פג לפני "+Math.abs(driver.days)+" ימים":driver.days===0?"פג היום":"נותרו "+driver.days+" ימים"}</span><button className="secondary-btn" onClick={()=>startEdit(driver)}>עדכון פרטים</button></article>)}</div>
+      </section>}
+      <h3>רשימת נהגים</h3><p>פרטי קשר, רישיון וסטטוס העסקה</p></div><button className="primary-btn" onClick={startAdd}><Plus size={16}/> הוספת נהג</button></div>
         {showForm && <form className="driver-form" onSubmit={saveDriver}>
           <div className="driver-form-title">{editing ? "עריכת פרטי נהג" : "הוספת נהג חדש"}</div>
           <div className="driver-form-grid">
