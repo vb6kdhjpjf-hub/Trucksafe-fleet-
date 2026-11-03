@@ -88,6 +88,14 @@ export default function ReportsPage() {
   const highIncidents = filteredIncidents.filter(r => ["high","critical","חמור","גבוה","קריטי"].includes(String(r.severity||"").toLowerCase()));
   const maintenanceSpend = filteredMaintenance.reduce((sum,r)=>sum+Number(r.cost||0),0);
   const maintenanceByVehicle = vehicles.map(v=>({ ...v, spend: filteredMaintenance.filter(r=>r.vehicle_id===v.id).reduce((sum,r)=>sum+Number(r.cost||0),0), jobs: filteredMaintenance.filter(r=>r.vehicle_id===v.id).length })).filter(v=>v.jobs).sort((a,b)=>b.spend-a.spend);
+  const monthlySnapshot = Array.from({length:6},(_,i)=>{
+    const d=new Date(); d.setDate(1); d.setHours(0,0,0,0); d.setMonth(d.getMonth()-(5-i));
+    const key=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+    const monthTrips=trips.filter(t=>t.started_at && t.started_at.slice(0,7)===key && (driverFilter==="all"||t.driver_id===driverFilter) && (vehicleFilter==="all"||t.vehicle_id===vehicleFilter));
+    const monthMaintenance=maintenance.filter(r=>(r.completed_at||r.scheduled_at||"").slice(0,7)===key && (vehicleFilter==="all"||r.vehicle_id===vehicleFilter));
+    const monthIncidents=incidents.filter(r=>(r.reported_at||"").slice(0,7)===key && (vehicleFilter==="all"||r.vehicle_id===vehicleFilter));
+    return {key,label:d.toLocaleDateString("he-IL",{month:"short",year:"2-digit"}),trips:monthTrips.length,km:monthTrips.reduce((sum,t)=>sum+(t.km||0),0),spend:monthMaintenance.reduce((sum,r)=>sum+Number(r.cost||0),0),incidents:monthIncidents.length};
+  });
   const totalKm = filtered.reduce((s, t) => s + (t.km || 0), 0);
   const totalMinutes = filtered.reduce((s, t) => s + (t.minutes || 0), 0);
   const withDistance = filtered.filter(t => t.km != null).length;
@@ -149,6 +157,16 @@ export default function ReportsPage() {
         <Stat icon={<BarChart3/>} title="הוצאות תחזוקה בתקופה" value={maintenanceSpend.toLocaleString("he-IL")+" ₪"}/>
         <Stat icon={<Truck/>} title="אירועים פתוחים" value={openIncidents.length}/>
         <Stat icon={<Users/>} title="אירועים בחומרה גבוהה" value={highIncidents.length}/>
+      </section>
+      <section style={panel}>
+        <h3 style={{marginTop:0}}>תמונת מצב חודשית – 6 חודשים אחרונים</h3>
+        <p style={{fontSize:13,color:"#718096"}}>נסיעות מתחשבות בסינון הנהג והרכב; תחזוקה ואירועים מתחשבים בסינון הרכב.</p>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",textAlign:"right",fontSize:14}}>
+            <thead><tr>{["חודש","נסיעות","מרחק משוער","הוצאות תחזוקה","אירועים"].map(h=><th key={h} style={{padding:"10px 6px",borderBottom:"1px solid #edf0f5"}}>{h}</th>)}</tr></thead>
+            <tbody>{monthlySnapshot.map(m=><tr key={m.key}>{[m.label,m.trips,fmt(m.km)+" ק״מ",m.spend.toLocaleString("he-IL")+" ₪",m.incidents].map((v,i)=><td key={i} style={{padding:"11px 6px",borderBottom:"1px solid #edf0f5"}}>{v}</td>)}</tr>)}</tbody>
+          </table>
+        </div>
       </section>
       <section style={panel}>
         <h3 style={{marginTop:0}}>ביצועים לפי נהג</h3>
