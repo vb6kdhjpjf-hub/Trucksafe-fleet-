@@ -76,7 +76,7 @@ export default function TripHistoryPage() {
           {trip.points.length === 0 ? <p>לא נשמרו נקודות GPS בנסיעה זו.</p> : trip.points.map((point, index) =>
             <div key={index} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "7px 0", fontSize: 13, borderBottom: "1px solid #f0f2f6" }}>
               <span>{date(point.recorded_at)}</span>
-              {Number.isFinite(Number(point.latitude)) && Number.isFinite(Number(point.longitude)) && Number(point.latitude) >= -90 && Number(point.latitude) <= 90 && Number(point.longitude) >= -180 && Number(point.longitude) <= 180 ? <a target="_blank" rel="noreferrer" href={"https://www.google.com/maps?q=" + Number(point.latitude) + "," + Number(point.longitude} style={{ color: "#3867e8" }}><MapPin size={14} style={{ verticalAlign: "middle" }}/> {Number(point.latitude).toFixed(5)}, {Number(point.longitude).toFixed(5)}</a> : <span>נקודת GPS לא תקינה</span>}
+              {Number.isFinite(Number(point.latitude)) && Number.isFinite(Number(point.longitude)) && Number(point.latitude) >= -90 && Number(point.latitude) <= 90 && Number(point.longitude) >= -180 && Number(point.longitude) <= 180 ? <a target="_blank" rel="noreferrer" href={"https://www.google.com/maps?q=" + Number(point.latitude) + "," + Number(point.longitude)} style={{ color: "#3867e8" }}><MapPin size={14} style={{ verticalAlign: "middle" }}/> {Number(point.latitude).toFixed(5)}, {Number(point.longitude).toFixed(5)}</a> : <span>נקודת GPS לא תקינה</span>}
             </div>)}
         </div>}
       </article>)}
