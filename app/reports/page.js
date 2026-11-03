@@ -95,24 +95,38 @@ export default function ReportsPage() {
   const byVehicle = vehicles.map(v => ({ ...v, count: filtered.filter(t => t.vehicle_id === v.id).length, km: filtered.filter(t => t.vehicle_id === v.id).reduce((s,t)=>s+(t.km||0),0) })).filter(v => v.count).sort((a,b)=>b.km-a.km);
   const date = v => v ? new Date(v).toLocaleDateString("he-IL") : "—";
   function exportCsv() {
-    const headers = ["תאריך התחלה", "תאריך סיום", "נהג", "מספר רכב", "סטטוס", "מרחק משוער בק״מ", "משך בדקות", "נקודות GPS", "מוצא", "יעד"];
-    const rows = filtered.map(t => [
-      t.started_at || "", t.ended_at || "",
+    const headers = ["סוג רשומה", "תאריך", "תאריך סיום", "נהג", "מספר רכב", "סטטוס", "חומרה", "סוג טיפול או אירוע", "תיאור", "עלות בש״ח", "מרחק משוער בק״מ", "משך בדקות", "נקודות GPS", "מוצא", "יעד"];
+    const tripRows = filtered.map(t => [
+      "נסיעה", t.started_at || "", t.ended_at || "",
       drivers.find(d => d.id === t.driver_id)?.full_name || "לא צוין",
       vehicles.find(v => v.id === t.vehicle_id)?.registration_number || "לא צוין",
-      t.status, t.km == null ? "" : t.km.toFixed(2), t.minutes == null ? "" : Math.round(t.minutes),
-      t.points.length, t.origin_address || "", t.destination_address || ""
+      t.status || "", "", "", "", "", t.km == null ? "" : t.km.toFixed(2),
+      t.minutes == null ? "" : Math.round(t.minutes), t.points.length,
+      t.origin_address || "", t.destination_address || ""
     ]);
+    const maintenanceRows = filteredMaintenance.map(r => [
+      "תחזוקה", r.completed_at || r.scheduled_at || "", "",
+      "", vehicles.find(v => v.id === r.vehicle_id)?.registration_number || "לא צוין",
+      r.status || "", "", r.maintenance_type || "", r.description || "",
+      r.cost == null ? "" : Number(r.cost), "", "", "", "", ""
+    ]);
+    const incidentRows = filteredIncidents.map(r => [
+      "אירוע", r.reported_at || "", "",
+      "", vehicles.find(v => v.id === r.vehicle_id)?.registration_number || "לא צוין",
+      r.status || "", r.severity || "", r.incident_type || "",
+      r.description || "", "", "", "", "", "", ""
+    ]);
+    const rows = [...tripRows, ...maintenanceRows, ...incidentRows];
     const csv = [headers, ...rows].map(row => row.map(value => '"' + String(value ?? "").replace(/"/g, '""') + '"').join(",")).join("\\r\\n");
     const blob = new Blob(["\\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "trucksafe-trip-report-" + new Date().toISOString().slice(0, 10) + ".csv";
+    link.download = "trucksafe-fleet-report-" + new Date().toISOString().slice(0, 10) + ".csv";
     document.body.appendChild(link);
     link.click();
     link.remove();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   return <main dir="rtl" style={{ minHeight: "100vh", padding: 24, background: "#f5f7fb", color: "#172338" }}>
