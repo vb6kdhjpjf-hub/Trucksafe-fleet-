@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
-import { ArrowRight, BarChart3, RefreshCw, Route, Truck, Users } from "lucide-react";
+import { ArrowRight, BarChart3, Download, RefreshCw, Route, Truck, Users } from "lucide-react";
 
 const kmBetween = (a, b) => {
   const rad = n => n * Math.PI / 180;
@@ -79,11 +79,31 @@ export default function ReportsPage() {
   const byDriver = drivers.map(d => ({ ...d, count: filtered.filter(t => t.driver_id === d.id).length, km: filtered.filter(t => t.driver_id === d.id).reduce((s,t)=>s+(t.km||0),0) })).filter(d => d.count).sort((a,b)=>b.km-a.km);
   const byVehicle = vehicles.map(v => ({ ...v, count: filtered.filter(t => t.vehicle_id === v.id).length, km: filtered.filter(t => t.vehicle_id === v.id).reduce((s,t)=>s+(t.km||0),0) })).filter(v => v.count).sort((a,b)=>b.km-a.km);
   const date = v => v ? new Date(v).toLocaleDateString("he-IL") : "—";
+  function exportCsv() {
+    const headers = ["תאריך התחלה", "תאריך סיום", "נהג", "מספר רכב", "סטטוס", "מרחק משוער בק״מ", "משך בדקות", "נקודות GPS", "מוצא", "יעד"];
+    const rows = filtered.map(t => [
+      t.started_at || "", t.ended_at || "",
+      drivers.find(d => d.id === t.driver_id)?.full_name || "לא צוין",
+      vehicles.find(v => v.id === t.vehicle_id)?.registration_number || "לא צוין",
+      t.status, t.km == null ? "" : t.km.toFixed(2), t.minutes == null ? "" : Math.round(t.minutes),
+      t.points.length, t.origin_address || "", t.destination_address || ""
+    ]);
+    const csv = [headers, ...rows].map(row => row.map(value => '"' + String(value ?? "").replace(/"/g, '""') + '"').join(",")).join("\\r\\n");
+    const blob = new Blob(["\\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "trucksafe-trip-report-" + new Date().toISOString().slice(0, 10) + ".csv";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
 
   return <main dir="rtl" style={{ minHeight: "100vh", padding: 24, background: "#f5f7fb", color: "#172338" }}>
     <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
       <div><h1 style={{ margin: 0 }}>דוחות נסיעות</h1><p style={{ color: "#718096" }}>סיכום מרחקים וזמני נסיעה לפי נהג וכלי רכב</p></div>
-      <div style={{ display: "flex", gap: 8 }}><button onClick={() => loadReport(fleetId)} style={btn}><RefreshCw size={16}/> רענון</button><button onClick={() => router.push("/")} style={btn}><ArrowRight size={16}/> לוח הבקרה</button></div>
+      <div style={{ display: "flex", gap: 8 }}><button onClick={exportCsv} style={btn}><Download size={16}/> ייצוא לאקסל</button><button onClick={() => loadReport(fleetId)} style={btn}><RefreshCw size={16}/> רענון</button><button onClick={() => router.push("/")} style={btn}><ArrowRight size={16}/> לוח הבקרה</button></div>
     </header>
     {error && <p style={{ background: "#fff0f0", padding: 12, borderRadius: 10 }}>{error}</p>}
     {loading ? <p>טוען דוחות...</p> : <>
