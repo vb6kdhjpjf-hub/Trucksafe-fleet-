@@ -86,12 +86,27 @@ export default function DriversPage() {
   }
 
   async function toggleStatus(driver) {
+    if (!fleet || !driver?.id) return;
     const nextStatus = driver.status === "active" ? "off_duty" : "active";
     setBusy(true); setMessage("");
-    const { error } = await supabase.from("drivers").update({ status: nextStatus }).eq("id", driver.id).eq("fleet_id", fleet.id);
-    if (error) setMessage("לא הצלחנו לעדכן את סטטוס הנהג: " + error.message);
-    else { await loadDrivers(fleet.id); setMessage(nextStatus === "active" ? "הנהג סומן כפעיל." : "הנהג סומן כלא פעיל."); }
-    setBusy(false);
+    try {
+      if (nextStatus === "off_duty") {
+        const { data: activeTrips, error: tripError } = await supabase.from("trips")
+          .select("id").eq("fleet_id", fleet.id).eq("driver_id", driver.id).eq("status", "active").limit(1);
+        if (tripError) { setMessage("לא ניתן לבדוק נסיעות פעילות: " + tripError.message); return; }
+        if (activeTrips?.length) {
+          setMessage("לא ניתן להשבית נהג במהלך נסיעה פעילה. יש לסיים את הנסיעה תחילה.");
+          return;
+        }
+      }
+      const { error } = await supabase.from("drivers").update({ status: nextStatus })
+        .eq("id", driver.id).eq("fleet_id", fleet.id);
+      if (error) { setMessage("לא הצלחנו לעדכן את סטטוס הנהג: " + error.message); return; }
+      await loadDrivers(fleet.id);
+      setMessage(nextStatus === "active" ? "הנהג סומן כפעיל." : "הנהג סומן כלא פעיל.");
+    } catch (error) {
+      setMessage("עדכון סטטוס הנהג נכשל: " + (error?.message || "שגיאה לא ידועה"));
+    } finally { setBusy(false); }
   }
 
   const today = new Date(); today.setHours(0,0,0,0);
