@@ -100,7 +100,11 @@ export default function FleetMapPage() {
     if (!mapReady || !map || !L) return;
     markers.current.forEach(marker => marker.remove());
     routeLines.current.forEach(line => line.remove());
-    markers.current = locations.map(loc => {
+    const validLocations = locations.filter(loc => {
+      const lat = Number(loc.latitude), lng = Number(loc.longitude);
+      return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+    });
+    markers.current = validLocations.map(loc => {
       const marker = L.marker([Number(loc.latitude), Number(loc.longitude)]).addTo(map);
       const updatedAt = new Date(loc.recorded_at);
       const validTimestamp = Number.isFinite(updatedAt.getTime());
@@ -110,8 +114,10 @@ export default function FleetMapPage() {
       return marker;
     });
     const colors = ["#2563eb", "#16a34a", "#d97706", "#9333ea", "#dc2626"];
-    routeLines.current = locations.map((loc, i) => {
-      const path = (loc.history || []).map(p => [Number(p.latitude), Number(p.longitude)]);
+    routeLines.current = validLocations.map((loc, i) => {
+      const path = (loc.history || [])
+        .map(p => [Number(p.latitude), Number(p.longitude)])
+        .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180);
       return path.length > 1 ? L.polyline(path, { color: colors[i % colors.length], weight: 5, opacity: 0.8 }).addTo(map) : null;
     }).filter(Boolean);
     const layers = [...markers.current, ...routeLines.current];
