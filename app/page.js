@@ -51,7 +51,8 @@ export default function Home() {
     if(tr.error)setMessage("שגיאה בטעינת הנסיעות: "+tr.error.message); else setActiveTrips(tr.count||0);
     if(inc.error)setMessage("שגיאה בטעינת אירועי בטיחות: "+inc.error.message); else setOpenIncidents(inc.count||0);
     if(incRows.error)setMessage("שגיאה בטעינת פירוט אירועי בטיחות: "+incRows.error.message); else setIncidentAlerts(incRows.data||[]);
-    if(ta.error)setMessage("שגיאה בטעינת המשימות: "+ta.error.message); else setActiveTasks(ta.count||0);\n    if(maint.error)setMessage("שגיאה בטעינת תזכורות תחזוקה: "+maint.error.message); else setMaintenanceAlerts(maint.data||[]);
+    if(ta.error)setMessage("שגיאה בטעינת המשימות: "+ta.error.message); else setActiveTasks(ta.count||0);
+    if(maint.error)setMessage("שגיאה בטעינת תזכורות תחזוקה: "+maint.error.message); else setMaintenanceAlerts(maint.data||[]);
     if(active.error){setMessage("שגיאה בטעינת מיקומי נסיעות: "+active.error.message);setLiveLocations([]);} else if(active.data?.length){
       const points=await Promise.all(active.data.map(async trip=>{
         const {data:loc,error:locError}=await supabase.from("trip_locations").select("latitude,longitude,speed_kmh,heading_degrees,recorded_at").eq("trip_id",trip.id).order("recorded_at",{ascending:false}).limit(1).maybeSingle();
