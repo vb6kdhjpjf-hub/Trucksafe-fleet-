@@ -184,10 +184,14 @@ export default function TasksPage() {
       if (now - lastLocationWriteRef.current < 10000) return;
       lastLocationWriteRef.current = now;
       const { latitude, longitude, speed, heading, accuracy } = position.coords;
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180 || !Number.isFinite(accuracy) || accuracy > 500) {
+        setMessage("נקודת GPS לא נשמרה: הנתונים אינם תקינים או שדיוק המיקום נמוך מדי.");
+        return;
+      }
       const { error } = await supabase.from("trip_locations").insert({
         trip_id: trip.id, driver_id: trip.driver_id, latitude, longitude,
-        speed_kmh: speed == null ? null : Math.round(speed * 3.6 * 10) / 10,
-        heading_degrees: heading
+        speed_kmh: speed == null || !Number.isFinite(speed) || speed < 0 ? null : Math.round(speed * 3.6 * 10) / 10,
+        heading_degrees: heading == null || !Number.isFinite(heading) || heading < 0 || heading > 360 ? null : heading
       });
       if (error) {
         lastLocationWriteRef.current = 0;
