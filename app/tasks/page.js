@@ -26,7 +26,7 @@ export default function TasksPage() {
   const [preTripTask, setPreTripTask] = useState(null);
   const [preTripChecks, setPreTripChecks] = useState({});
   const preTripItems = ["צמיגים ולחץ אוויר תקינים","בלמים ובלם חניה תקינים","אורות, איתותים וצופר תקינים","מראות, שמשות ומגבים תקינים","אין נזילות או נזק גלוי","המטען מאובטח והמשקל מתאים","מסמכי רכב ורישיון נהיגה בתוקף"];
-  const watchIdRef = useRef(null);
+  const watchIdRef = useRef(null);\n  const lastLocationWriteRef = useRef(0);
 
   useEffect(() => () => {
     if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
@@ -141,21 +141,29 @@ export default function TasksPage() {
     if (!navigator.geolocation) { setMessage("המכשיר או הדפדפן אינם תומכים בשיתוף מיקום."); return; }
     if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
     setMessage("מבקש הרשאת מיקום ומתחיל מעקב...");
+    lastLocationWriteRef.current = 0;
     watchIdRef.current = navigator.geolocation.watchPosition(async position => {
-      const { latitude, longitude, speed, heading } = position.coords;
+      const now = Date.now();
+      if (now - lastLocationWriteRef.current < 10000) return;
+      lastLocationWriteRef.current = now;
+      const { latitude, longitude, speed, heading, accuracy } = position.coords;
       const { error } = await supabase.from("trip_locations").insert({
         trip_id: trip.id, driver_id: trip.driver_id, latitude, longitude,
         speed_kmh: speed == null ? null : Math.round(speed * 3.6 * 10) / 10,
         heading_degrees: heading
       });
-      if (error) setMessage("המעקב פעיל אך שמירת נקודת מיקום נכשלה: " + error.message);
-      else setMessage("מעקב GPS פעיל — המיקום מתעדכן ונשמר אוטומטית.");
+      if (error) {
+        lastLocationWriteRef.current = 0;
+        setMessage("המעקב פעיל אך שמירת נקודת מיקום נכשלה: " + error.message);
+      } else {
+        setMessage("מעקב GPS פעיל — נקודת מיקום נשמרה. דיוק משוער: " + Math.round(accuracy) + " מטר.");
+      }
     }, error => {
       setMessage(error.code === 1 ? "לא אושרה הרשאת מיקום. יש לאשר מיקום בדפדפן כדי להתחיל מעקב." : "שגיאה בקבלת מיקום GPS. בדוק שהמיקום מופעל במכשיר.");
       if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
       setTrackingTripId(null);
-    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 });
+    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
     setTrackingTripId(trip.id);
   }
 
