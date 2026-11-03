@@ -18,24 +18,36 @@ export default function FleetMapPage() {
   const [mapReady, setMapReady] = useState(false);
   const [error, setError] = useState("");
 
+  const loadingLocations = useRef(false);
+
   async function loadLocations(id) {
-    if (!id) return;
-    const { data: trips, error: tripError } = await supabase.from("trips")
-      .select("id,driver_id,vehicle_id,origin_address,destination_address,started_at")
-      .eq("fleet_id", id).eq("status", "active");
-    if (tripError) { setError("לא ניתן לטעון נסיעות: " + tripError.message); return; }
-    const points = await Promise.all((trips || []).map(async trip => {
-      const [{ data: loc }, { data: history }, { data: driver }, { data: vehicle }] = await Promise.all([
-        supabase.from("trip_locations").select("id,latitude,longitude,speed_kmh,recorded_at")
-          .eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(1).maybeSingle(),
-        supabase.from("trip_locations").select("latitude,longitude,recorded_at").eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(3000),
-        supabase.from("drivers").select("full_name").eq("id", trip.driver_id).maybeSingle(),
-        supabase.from("vehicles").select("registration_number").eq("id", trip.vehicle_id).maybeSingle()
-      ]);
-      return loc ? { ...trip, ...loc, history: (history || []).reverse(), driver: driver?.full_name || "נהג", vehicle: vehicle?.registration_number || "רכב" } : null;
-    }));
-    setLocations(points.filter(Boolean));
-    setError("");
+    if (!id || loadingLocations.current) return;
+    loadingLocations.current = true;
+    try {
+      const { data: trips, error: tripError } = await supabase.from("trips")
+        .select("id,driver_id,vehicle_id,origin_address,destination_address,started_at")
+        .eq("fleet_id", id).eq("status", "active");
+      if (tripError) throw tripError;
+      const points = await Promise.all((trips || []).map(async trip => {
+        const [latest, historyResult, driverResult, vehicleResult] = await Promise.all([
+          supabase.from("trip_locations").select("id,latitude,longitude,speed_kmh,recorded_at")
+            .eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(1).maybeSingle(),
+          supabase.from("trip_locations").select("latitude,longitude,recorded_at").eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(3000),
+          supabase.from("drivers").select("full_name").eq("id", trip.driver_id).maybeSingle(),
+          supabase.from("vehicles").select("registration_number").eq("id", trip.vehicle_id).maybeSingle()
+        ]);
+        const childError = latest.error || historyResult.error || driverResult.error || vehicleResult.error;
+        if (childError) throw childError;
+        const loc = latest.data;
+        return loc ? { ...trip, ...loc, history: (historyResult.data || []).reverse(), driver: driverResult.data?.full_name || "נהג", vehicle: vehicleResult.data?.registration_number || "רכב" } : null;
+      }));
+      setLocations(points.filter(Boolean));
+      setError("");
+    } catch (error) {
+      setError("לא ניתן לרענן את מיקומי הנהגים: " + (error?.message || "שגיאה לא ידועה"));
+    } finally {
+      loadingLocations.current = false;
+    }
   }
 
   useEffect(() => {
