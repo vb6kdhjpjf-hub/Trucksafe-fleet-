@@ -14,6 +14,7 @@ export default function TasksPage() {
   const [fleet, setFleet] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [trips, setTrips] = useState([]);
+  const [inspections, setInspections] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [form, setForm] = useState(emptyForm);
@@ -62,6 +63,8 @@ export default function TasksPage() {
     if (d.error) setMessage("שגיאה בטעינת הנהגים: " + d.error.message); else setDrivers(d.data || []);
     if (v.error) setMessage("שגיאה בטעינת כלי הרכב: " + v.error.message); else setVehicles(v.data || []);
     if (tr.error) setMessage("שגיאה בטעינת הנסיעות: " + tr.error.message); else setTrips(tr.data || []);
+    const { data: inspectionRows, error: inspectionError } = await supabase.from("inspections").select("id,trip_id,vehicle_id,driver_id,inspection_type,checklist,defects,passed,inspected_at").eq("fleet_id", current.id).order("inspected_at", { ascending: false }).limit(30);
+    if (inspectionError) setMessage("שגיאה בטעינת היסטוריית בדיקות הרכב: " + inspectionError.message); else setInspections(inspectionRows || []);
   }
 
   async function saveTask(e) {
@@ -178,6 +181,15 @@ export default function TasksPage() {
             <div className="task-route"><span><MapPin size={14}/> {trip.origin_address || "מוצא לא צוין"}</span><span><MapPin size={14}/> {trip.destination_address || "יעד לא צוין"}</span></div>
             <div className="task-actions">{trackingTripId===trip.id ? <button className="secondary-btn" disabled={busy} onClick={stopTracking}>עצירת מעקב GPS</button> : <button className="secondary-btn" disabled={busy || trackingTripId!==null} onClick={()=>startTracking(trip)}>התחלת מעקב GPS רציף</button>}<button className="primary-btn" disabled={busy} onClick={()=>endTrip(trip)}><CheckCircle2 size={14}/> סיום נסיעה</button></div>
           </article>)}</div>}
+      </section>
+      <section className="fleet-panel">
+        <div className="fleet-panel-head"><div><h3>היסטוריית בדיקות רכב</h3><p>בדיקות לפני נסיעה שנשמרו במערכת</p></div><span className="role-pill">{inspections.length} בדיקות</span></div>
+        {inspections.length === 0 ? <div className="fleet-empty">עדיין לא נשמרו בדיקות רכב.</div> : <div className="task-list">{inspections.map(item => <article className="task-card" key={item.id}>
+          <div className="task-card-top"><div><b>{item.inspection_type === "pre_trip" ? "בדיקה לפני נסיעה" : item.inspection_type}</b><small>{item.inspected_at ? new Date(item.inspected_at).toLocaleString("he-IL") : "מועד לא צוין"}</small></div><span className={"task-status " + (item.passed ? "task-completed" : "task-in_progress")}>{item.passed ? "עבר" : "נמצאו ליקויים"}</span></div>
+          <div className="task-assignees"><span>נהג: {drivers.find(d => d.id === item.driver_id)?.full_name || "לא ידוע"}</span><span>רכב: {vehicles.find(v => v.id === item.vehicle_id)?.registration_number || "לא ידוע"}</span></div>
+          <div className="task-route">{Object.entries(item.checklist || {}).map(([label, checked]) => <span key={label}>{checked ? "✓" : "✕"} {label}</span>)}</div>
+          {item.defects && <p className="task-description">ליקויים: {item.defects}</p>}
+        </article>)}</div>}
       </section>
       <section className="fleet-panel">
         <div className="fleet-panel-head"><div><h3>משימות הצי</h3><p>יצירת משימות, שיוך נהגים וכלי רכב ומעקב סטטוס</p></div><button className="primary-btn" onClick={() => { setShowForm(!showForm); setMessage(""); }}><Plus size={16}/> משימה חדשה</button></div>
