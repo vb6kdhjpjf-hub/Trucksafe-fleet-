@@ -15,6 +15,7 @@ export default function FleetMapPage() {
   const [fleetId, setFleetId] = useState(null);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [mapReady, setMapReady] = useState(false);
   const [error, setError] = useState("");
 
   async function loadLocations(id) {
@@ -78,6 +79,7 @@ export default function FleetMapPage() {
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
       }).addTo(mapInstance.current);
+      setMapReady(true);
     }).catch(() => setError("המפה לא נטענה. בדוק חיבור לאינטרנט ונסה שוב."));
     return () => { cancelled = true; };
   }, []);
@@ -85,7 +87,7 @@ export default function FleetMapPage() {
   useEffect(() => {
     const map = mapInstance.current;
     const L = typeof window !== "undefined" ? window.L : null;
-    if (!map || !L) return;
+    if (!mapReady || !map || !L) return;
     markers.current.forEach(marker => marker.remove());
     routeLines.current.forEach(line => line.remove());
     markers.current = locations.map(loc => {
@@ -102,7 +104,7 @@ export default function FleetMapPage() {
     }).filter(Boolean);
     const layers = [...markers.current, ...routeLines.current];
     if (layers.length) map.fitBounds(L.featureGroup(layers).getBounds().pad(0.2));
-  }, [locations]);
+  }, [locations, mapReady]);
 
   return <main dir="rtl" style={{ minHeight: "100vh", padding: 24, background: "#f5f7fb", color: "#172338" }}>
     <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
