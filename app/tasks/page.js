@@ -26,7 +26,8 @@ export default function TasksPage() {
   const [preTripTask, setPreTripTask] = useState(null);
   const [preTripChecks, setPreTripChecks] = useState({});
   const preTripItems = ["צמיגים ולחץ אוויר תקינים","בלמים ובלם חניה תקינים","אורות, איתותים וצופר תקינים","מראות, שמשות ומגבים תקינים","אין נזילות או נזק גלוי","המטען מאובטח והמשקל מתאים","מסמכי רכב ורישיון נהיגה בתוקף"];
-  const watchIdRef = useRef(null);\n  const lastLocationWriteRef = useRef(0);
+  const watchIdRef = useRef(null);
+  const lastLocationWriteRef = useRef(0);
 
   useEffect(() => () => {
     if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
