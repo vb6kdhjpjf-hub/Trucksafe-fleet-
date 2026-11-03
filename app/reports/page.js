@@ -174,7 +174,6 @@ export default function ReportsPage() {
         </div>
       </section>
       <section style={panel}>
-        <section style={panel}>
         <h3 style={{marginTop:0}}>התראות מגמה חודשית</h3>
         {monthlyAlerts.length ? monthlyAlerts.map((message,i)=><div key={i} style={{padding:12,marginTop:8,borderRadius:10,background:"#fff7e6",color:"#8a5700"}}>{message}</div>) : <p style={{marginBottom:0,color:"#718096"}}>לא זוהתה עלייה לפי ספי ההתראה הנוכחיים. ההשוואה היא לחודש הקודם ואינה מחליפה בדיקה של הנתונים.</p>}
       </section>
