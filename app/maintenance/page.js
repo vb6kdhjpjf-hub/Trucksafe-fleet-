@@ -41,20 +41,29 @@ export default function MaintenancePage() {
   }
   async function save(e){
     e.preventDefault(); if(!fleet)return;
+    if(!form.vehicle_id || !form.maintenance_type){setMessage("יש לבחור רכב וסוג טיפול.");return;}
+    if(form.cost!==""&&(!Number.isFinite(Number(form.cost))||Number(form.cost)<0)){setMessage("יש להזין עלות תקינה שאינה שלילית.");return;}
+    if(form.odometer_km!==""&&(!Number.isFinite(Number(form.odometer_km))||Number(form.odometer_km)<0)){setMessage("יש להזין קילומטראז׳ תקין שאינו שלילי.");return;}
+    if(form.scheduled_at&&form.completed_at&&form.completed_at<form.scheduled_at){setMessage("תאריך הביצוע אינו יכול להיות לפני מועד הטיפול המתוכנן.");return;}
     setBusy(true);setMessage("");
-    const payload={fleet_id:fleet.id,vehicle_id:form.vehicle_id,incident_id:form.incident_id||null,maintenance_type:form.maintenance_type,description:form.description.trim()||null,scheduled_at:form.scheduled_at||null,completed_at:form.completed_at||null,cost:form.cost===""?null:Number(form.cost),odometer_km:form.odometer_km===""?null:Number(form.odometer_km),status:form.status};
-    const {error}=await supabase.from("maintenance_records").insert(payload);
-    if(error)setMessage("לא הצלחנו לשמור: "+error.message);
-    else{setForm(blank);setShowForm(false);await load(fleet.id);setMessage("רישום התחזוקה נשמר בהצלחה.");}
-    setBusy(false);
+    try{
+      const payload={fleet_id:fleet.id,vehicle_id:form.vehicle_id,incident_id:form.incident_id||null,maintenance_type:form.maintenance_type,description:form.description.trim()||null,scheduled_at:form.scheduled_at||null,completed_at:form.completed_at||null,cost:form.cost===""?null:Number(form.cost),odometer_km:form.odometer_km===""?null:Number(form.odometer_km),status:form.status};
+      const {error}=await supabase.from("maintenance_records").insert(payload);
+      if(error){setMessage("לא הצלחנו לשמור: "+error.message);return;}
+      setForm(blank);setShowForm(false);await load(fleet.id);setMessage("רישום התחזוקה נשמר בהצלחה.");
+    }catch(error){setMessage("שמירת רישום התחזוקה נכשלה: "+(error?.message||"שגיאה לא ידועה"));}
+    finally{setBusy(false);}
   }
   async function saveCompliance(vehicle){
+    if(!fleet||!vehicle?.id)return;
     setBusy(true);setMessage("");
-    const values=compliance[vehicle.id]||{};
-    const {error}=await supabase.from("vehicles").update({test_due_at:values.test_due_at||null,insurance_due_at:values.insurance_due_at||null,registration_due_at:values.registration_due_at||null}).eq("id",vehicle.id).eq("fleet_id",fleet.id);
-    if(error)setMessage("לא הצלחנו לשמור את תאריכי הרכב: "+error.message);
-    else{await load(fleet.id);setMessage("תאריכי הרכב נשמרו.");}
-    setBusy(false);
+    try{
+      const values=compliance[vehicle.id]||{};
+      const {error}=await supabase.from("vehicles").update({test_due_at:values.test_due_at||null,insurance_due_at:values.insurance_due_at||null,registration_due_at:values.registration_due_at||null}).eq("id",vehicle.id).eq("fleet_id",fleet.id);
+      if(error){setMessage("לא הצלחנו לשמור את תאריכי הרכב: "+error.message);return;}
+      await load(fleet.id);setMessage("תאריכי הרכב נשמרו.");
+    }catch(error){setMessage("שמירת תאריכי הרכב נכשלה: "+(error?.message||"שגיאה לא ידועה"));}
+    finally{setBusy(false);}
   }
   function exportMaintenanceCosts(){
     const rows=[["רכב","סוג טיפול","תאריך ביצוע","עלות בשח","קילומטראז","סטטוס"]];
