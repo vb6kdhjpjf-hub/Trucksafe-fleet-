@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { Truck, ArrowRight, Plus, AlertTriangle, MapPin, LogOut, CheckCircle2 } from "lucide-react";
 
-const emptyForm = { incident_type: "תקלה ברכב", severity: "medium", description: "", location_text: "" };
+const emptyForm = { incident_type: "תקלה ברכב", severity: "medium", description: "", location_text: "", driver_id: "", vehicle_id: "" };
 const severityLabels = { low: "נמוכה", medium: "בינונית", high: "גבוהה", critical: "קריטית" };
 const statusLabels = { open: "פתוח", reported: "דווח", investigating: "בטיפול", resolved: "טופל" };
 
@@ -21,6 +21,8 @@ export default function IncidentsPage() {
   const [loading,setLoading] = useState(true);
   const [busy,setBusy] = useState(false);
   const [message,setMessage] = useState("");
+  const [gps,setGps] = useState({latitude:null,longitude:null});
+  const [gpsBusy,setGpsBusy] = useState(false);
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למסד הנתונים אינו מוגדר."); setLoading(false); return; }
@@ -54,10 +56,24 @@ export default function IncidentsPage() {
 
   async function loadIncidents(fleetId) {
     const {data,error} = await supabase.from("incidents")
-      .select("id,incident_type,severity,description,location_text,status,reported_at,resolved_at,driver_id,vehicle_id")
+      .select("id,incident_type,severity,description,location_text,latitude,longitude,status,reported_at,resolved_at,driver_id,vehicle_id")
       .eq("fleet_id",fleetId).order("reported_at",{ascending:false});
     if (error) setMessage("שגיאה בטעינת אירועי הבטיחות: "+error.message);
     else setIncidents(data||[]);
+  }
+
+  function captureIncidentLocation() {
+    if (!navigator.geolocation) { setMessage("המכשיר אינו תומך בקבלת מיקום GPS."); return; }
+    setGpsBusy(true); setMessage("מקבל מיקום GPS...");
+    navigator.geolocation.getCurrentPosition(position => {
+      const latitude=position.coords.latitude, longitude=position.coords.longitude;
+      setGps({latitude,longitude});
+      setForm(old=>({...old,location_text:old.location_text||"מיקום GPS"}));
+      setGpsBusy(false); setMessage("מיקום האירוע נקלט בהצלחה.");
+    }, error => {
+      setGpsBusy(false);
+      setMessage(error.code===1?"לא אושרה הרשאת מיקום. אפשר להזין מיקום ידנית.":"לא ניתן לקבל מיקום כרגע. אפשר להזין מיקום ידנית.");
+    }, {enableHighAccuracy:true,timeout:20000,maximumAge:10000});
   }
 
   async function submitIncident(e) {
@@ -67,11 +83,13 @@ export default function IncidentsPage() {
     const payload = {
       fleet_id:fleet.id, incident_type:form.incident_type, severity:form.severity,
       description:form.description.trim(), location_text:form.location_text.trim()||null,
+      driver_id:form.driver_id||null, vehicle_id:form.vehicle_id||null,
+      latitude:gps.latitude, longitude:gps.longitude,
       status:"reported", reported_at:new Date().toISOString(), created_by:session.user.id
     };
     const {error} = await supabase.from("incidents").insert(payload);
     if (error) setMessage("לא הצלחנו לדווח על האירוע: "+error.message);
-    else { setForm(emptyForm); setShowForm(false); await loadIncidents(fleet.id); setMessage("האירוע דווח ונשמר במערכת."); }
+    else { setForm(emptyForm); setGps({latitude:null,longitude:null}); setShowForm(false); await loadIncidents(fleet.id); setMessage("האירוע דווח ונשמר במערכת."); }
     setBusy(false);
   }
 
@@ -105,7 +123,10 @@ export default function IncidentsPage() {
           <div className="driver-form-grid">
             <label>סוג האירוע<select value={form.incident_type} onChange={e=>setForm({...form,incident_type:e.target.value})}><option>תקלה ברכב</option><option>תאונת דרכים</option><option>כמעט תאונה</option><option>מפגע בדרך</option><option>פגיעה במטען</option><option>אחר</option></select></label>
             <label>חומרה<select value={form.severity} onChange={e=>setForm({...form,severity:e.target.value})}><option value="low">נמוכה</option><option value="medium">בינונית</option><option value="high">גבוהה</option><option value="critical">קריטית</option></select></label>
+            <label>נהג מעורב<select value={form.driver_id} onChange={e=>setForm({...form,driver_id:e.target.value})}><option value="">לא נבחר נהג</option>{drivers.map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label>
+            <label>רכב מעורב<select value={form.vehicle_id} onChange={e=>setForm({...form,vehicle_id:e.target.value})}><option value="">לא נבחר רכב</option>{vehicles.map(v=><option key={v.id} value={v.id}>{v.registration_number}</option>)}</select></label>
             <label className="task-wide">מיקום האירוע<input value={form.location_text} onChange={e=>setForm({...form,location_text:e.target.value})} placeholder="כתובת, כביש או נקודת ציון"/></label>
+            <div className="task-wide"><button type="button" className="secondary-btn" disabled={gpsBusy} onClick={captureIncidentLocation}><MapPin size={14}/>{gpsBusy?"מקבל מיקום...":"צרף מיקום GPS נוכחי"}</button>{gps.latitude!==null&&<small>נקלט: {gps.latitude.toFixed(6)}, {gps.longitude.toFixed(6)}</small>}</div>
             <label className="task-wide">תיאור האירוע *<textarea required rows="4" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="מה קרה? האם יש נפגעים או נזק?"/></label>
           </div>
           <div className="driver-form-actions"><button className="primary-btn" disabled={busy}>{busy?"שומר...":"שליחת דיווח"}</button><button type="button" className="secondary-btn" onClick={()=>setShowForm(false)}>ביטול</button></div>
@@ -117,6 +138,7 @@ export default function IncidentsPage() {
           <div className="task-list">{incidents.map(item=><article className="task-card" key={item.id}>
             <div className="task-card-top"><div><b>{item.incident_type}</b><small>{item.reported_at?new Date(item.reported_at).toLocaleString("he-IL"):"מועד לא צוין"}</small></div><span className={"task-status "+(item.status==="resolved"?"task-completed":"task-in_progress")}>{statusLabels[item.status]||item.status}</span></div>
             <div className="task-assignees"><span>חומרה: {severityLabels[item.severity]||item.severity}</span>{item.location_text&&<span><MapPin size={13}/>{item.location_text}</span>}</div>
+            {item.latitude!=null&&item.longitude!=null&&<div className="task-assignees"><a className="nav-link" target="_blank" rel="noreferrer" href={"https://www.google.com/maps?q="+item.latitude+","+item.longitude}>פתיחת מיקום האירוע במפה</a></div>}
             <p className="task-description">{item.description}</p>
             {item.driver_id&&<div className="task-assignees"><span>נהג: {drivers.find(d=>d.id===item.driver_id)?.full_name||"לא ידוע"}</span></div>}
             {item.vehicle_id&&<div className="task-assignees"><span>רכב: {vehicles.find(v=>v.id===item.vehicle_id)?.registration_number||"לא ידוע"}</span></div>}
