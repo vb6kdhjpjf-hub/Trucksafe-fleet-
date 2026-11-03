@@ -10,6 +10,7 @@ export default function FleetMapPage() {
   const mapElement = useRef(null);
   const mapInstance = useRef(null);
   const markers = useRef([]);
+  const routeLines = useRef([]);
   const [session, setSession] = useState(null);
   const [fleetId, setFleetId] = useState(null);
   const [locations, setLocations] = useState([]);
@@ -23,13 +24,14 @@ export default function FleetMapPage() {
       .eq("fleet_id", id).eq("status", "active");
     if (tripError) { setError("לא ניתן לטעון נסיעות: " + tripError.message); return; }
     const points = await Promise.all((trips || []).map(async trip => {
-      const [{ data: loc }, { data: driver }, { data: vehicle }] = await Promise.all([
+      const [{ data: loc }, { data: history }, { data: driver }, { data: vehicle }] = await Promise.all([
         supabase.from("trip_locations").select("latitude,longitude,speed_kmh,recorded_at")
           .eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("trip_locations").select("latitude,longitude,recorded_at").eq("trip_id", trip.id).order("recorded_at", { ascending: true }).limit(3000),
         supabase.from("drivers").select("full_name").eq("id", trip.driver_id).maybeSingle(),
         supabase.from("vehicles").select("registration_number").eq("id", trip.vehicle_id).maybeSingle()
       ]);
-      return loc ? { ...trip, ...loc, driver: driver?.full_name || "נהג", vehicle: vehicle?.registration_number || "רכב" } : null;
+      return loc ? { ...trip, ...loc, history: history || [], driver: driver?.full_name || "נהג", vehicle: vehicle?.registration_number || "רכב" } : null;
     }));
     setLocations(points.filter(Boolean));
     setError("");
@@ -85,6 +87,7 @@ export default function FleetMapPage() {
     const L = typeof window !== "undefined" ? window.L : null;
     if (!map || !L) return;
     markers.current.forEach(marker => marker.remove());
+    routeLines.current.forEach(line => line.remove());
     markers.current = locations.map(loc => {
       const marker = L.marker([Number(loc.latitude), Number(loc.longitude)]).addTo(map);
       marker.bindPopup("<b>" + loc.driver + "</b><br/>רכב: " + loc.vehicle +
@@ -92,13 +95,18 @@ export default function FleetMapPage() {
         "<br/>עודכן: " + new Date(loc.recorded_at).toLocaleString("he-IL"));
       return marker;
     });
-    if (locations.length === 1) map.setView([Number(locations[0].latitude), Number(locations[0].longitude)], 13);
-    if (locations.length > 1) map.fitBounds(L.featureGroup(markers.current).getBounds().pad(0.2));
+    const colors = ["#2563eb", "#16a34a", "#d97706", "#9333ea", "#dc2626"];
+    routeLines.current = locations.map((loc, i) => {
+      const path = (loc.history || []).map(p => [Number(p.latitude), Number(p.longitude)]);
+      return path.length > 1 ? L.polyline(path, { color: colors[i % colors.length], weight: 5, opacity: 0.8 }).addTo(map) : null;
+    }).filter(Boolean);
+    const layers = [...markers.current, ...routeLines.current];
+    if (layers.length) map.fitBounds(L.featureGroup(layers).getBounds().pad(0.2));
   }, [locations]);
 
   return <main dir="rtl" style={{ minHeight: "100vh", padding: 24, background: "#f5f7fb", color: "#172338" }}>
     <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
-      <div><h1 style={{ margin: 0 }}>מפת הנהגים</h1><p style={{ margin: "5px 0", color: "#718096" }}>מיקום אחרון של כל נסיעה פעילה · רענון אוטומטי כל 15 שניות</p></div>
+      <div><h1 style={{ margin: 0 }}>מפת הנהגים</h1><p style={{ margin: "5px 0", color: "#718096" }}>מיקום הנהגים ומסלול הנסיעה שנשמר עד כה · רענון אוטומטי כל 15 שניות</p></div>
       <div style={{ display: "flex", gap: 8 }}>
         <button onClick={() => loadLocations(fleetId)} style={buttonStyle}><RefreshCw size={16}/> רענון</button>
         <button onClick={() => router.push("/")} style={buttonStyle}><ArrowRight size={16}/> חזרה ללוח הבקרה</button>
@@ -110,7 +118,7 @@ export default function FleetMapPage() {
         <div ref={mapElement} style={{ height: "min(65vh, 620px)", minHeight: 340, borderRadius: 12, zIndex: 0 }} />
       </section>
       <section style={{ background: "white", borderRadius: 16, padding: 18 }}>
-        <h3 style={{ marginTop: 0 }}><Truck size={18} style={{ verticalAlign: "middle" }}/> נסיעות עם מיקום GPS ({locations.length})</h3>
+        <h3 style={{ marginTop: 0 }}><Truck size={18} style={{ verticalAlign: "middle" }}/> נסיעות ומסלולים עם GPS ({locations.length})</h3>
         {locations.length === 0 ? <p style={{ color: "#718096" }}>אין כרגע נקודות GPS בנסיעות הפעילות. הנהג צריך להתחיל מעקב GPS במסך משימות ונסיעות.</p> :
           locations.map(loc => <div key={loc.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "12px 0", borderTop: "1px solid #edf0f5", flexWrap: "wrap" }}>
             <div><b>{loc.driver} · {loc.vehicle}</b><div style={{ color: "#718096", fontSize: 13 }}>עודכן {new Date(loc.recorded_at).toLocaleString("he-IL")} · {loc.speed_kmh == null ? "מהירות לא זמינה" : Math.round(Number(loc.speed_kmh)) + " קמ״ש"}</div></div>
