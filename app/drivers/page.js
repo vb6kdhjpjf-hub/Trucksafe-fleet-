@@ -67,22 +67,24 @@ export default function DriversPage() {
   async function saveDriver(e) {
     e.preventDefault();
     if (!fleet) return;
+    if (!form.full_name.trim()) { setMessage("יש להזין שם מלא לנהג."); return; }
     setBusy(true); setMessage("");
-    const payload = {
-      full_name: form.full_name.trim(), phone: form.phone.trim() || null,
-      license_number: form.license_number.trim() || null,
-      license_class: form.license_class.trim() || null,
-      license_expires_at: form.license_expires_at || null
-    };
-    const result = editing
-      ? await supabase.from("drivers").update(payload).eq("id", editing.id).eq("fleet_id", fleet.id)
-      : await supabase.from("drivers").insert({ ...payload, fleet_id: fleet.id, status: "active" });
-    if (result.error) setMessage("לא הצלחנו לשמור את הנהג: " + result.error.message);
-    else {
+    try {
+      const payload = {
+        full_name: form.full_name.trim(), phone: form.phone.trim() || null,
+        license_number: form.license_number.trim() || null,
+        license_class: form.license_class.trim() || null,
+        license_expires_at: form.license_expires_at || null
+      };
+      const result = editing
+        ? await supabase.from("drivers").update(payload).eq("id", editing.id).eq("fleet_id", fleet.id)
+        : await supabase.from("drivers").insert({ ...payload, fleet_id: fleet.id, status: "active" });
+      if (result.error) { setMessage("לא הצלחנו לשמור את הנהג: " + result.error.message); return; }
       setShowForm(false); setEditing(null); setForm(emptyForm);
       await loadDrivers(fleet.id); setMessage(editing ? "פרטי הנהג עודכנו." : "הנהג נוסף לצי בהצלחה.");
-    }
-    setBusy(false);
+    } catch (error) {
+      setMessage("שמירת הנהג נכשלה: " + (error?.message || "שגיאה לא ידועה"));
+    } finally { setBusy(false); }
   }
 
   async function toggleStatus(driver) {
