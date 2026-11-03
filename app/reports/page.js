@@ -96,6 +96,11 @@ export default function ReportsPage() {
     const monthIncidents=incidents.filter(r=>(r.reported_at||"").slice(0,7)===key && (vehicleFilter==="all"||r.vehicle_id===vehicleFilter));
     return {key,label:d.toLocaleDateString("he-IL",{month:"short",year:"2-digit"}),trips:monthTrips.length,km:monthTrips.reduce((sum,t)=>sum+(t.km||0),0),spend:monthMaintenance.reduce((sum,r)=>sum+Number(r.cost||0),0),incidents:monthIncidents.length};
   });
+  const currentMonth = monthlySnapshot[5];
+  const previousMonth = monthlySnapshot[4];
+  const monthlyAlerts = [];
+  if (previousMonth && currentMonth && previousMonth.spend > 0 && currentMonth.spend >= previousMonth.spend * 1.3) monthlyAlerts.push("הוצאות התחזוקה עלו בלפחות 30% לעומת החודש הקודם.");
+  if (previousMonth && currentMonth && previousMonth.incidents > 0 && currentMonth.incidents >= previousMonth.incidents + 2) monthlyAlerts.push("נרשמו לפחות שני אירועים נוספים לעומת החודש הקודם.");
   const totalKm = filtered.reduce((s, t) => s + (t.km || 0), 0);
   const totalMinutes = filtered.reduce((s, t) => s + (t.minutes || 0), 0);
   const withDistance = filtered.filter(t => t.km != null).length;
@@ -167,6 +172,11 @@ export default function ReportsPage() {
             <tbody>{monthlySnapshot.map(m=><tr key={m.key}>{[m.label,m.trips,fmt(m.km)+" ק״מ",m.spend.toLocaleString("he-IL")+" ₪",m.incidents].map((v,i)=><td key={i} style={{padding:"11px 6px",borderBottom:"1px solid #edf0f5"}}>{v}</td>)}</tr>)}</tbody>
           </table>
         </div>
+      </section>
+      <section style={panel}>
+        <section style={panel}>
+        <h3 style={{marginTop:0}}>התראות מגמה חודשית</h3>
+        {monthlyAlerts.length ? monthlyAlerts.map((message,i)=><div key={i} style={{padding:12,marginTop:8,borderRadius:10,background:"#fff7e6",color:"#8a5700"}}>{message}</div>) : <p style={{marginBottom:0,color:"#718096"}}>לא זוהתה עלייה לפי ספי ההתראה הנוכחיים. ההשוואה היא לחודש הקודם ואינה מחליפה בדיקה של הנתונים.</p>}
       </section>
       <section style={panel}>
         <h3 style={{marginTop:0}}>ביצועים לפי נהג</h3>
