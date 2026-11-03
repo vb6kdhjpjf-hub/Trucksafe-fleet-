@@ -59,7 +59,7 @@ export default function MaintenancePage() {
   const date=v=>v?new Date(v+"T00:00:00").toLocaleDateString("he-IL"):"לא נקבע";
   const money=v=>v==null?"—":Number(v).toLocaleString("he-IL")+" ₪";
   if(loading)return <main className="auth-wrap"><section className="auth-card">טוען נתוני תחזוקה...</section></main>;
-  return <main className="fleet-home" dir="rtl">
+  return <main className="fleet-home maintenance-page" dir="rtl">
     <header className="fleet-header"><div className="auth-brand"><span><Truck size={24}/></span><div><h1>TruckSafe</h1><small>תחזוקת כלי רכב</small></div></div><a className="nav-link" href="/"><ArrowRight size={16}/> חזרה ללוח הבקרה</a></header>
     <section className="fleet-content">
       <div className="section-heading"><div><h2>טיפולים ותחזוקה</h2><p>מעקב אחר טיפולים מתוכננים, טיפולים שהושלמו ועלויות</p></div><button className="primary-button" onClick={()=>{setForm({...blank,vehicle_id:vehicles[0]?.id||""});setShowForm(true);}} disabled={!vehicles.length}><Plus size={17}/> הוספת טיפול</button></div>
