@@ -28,11 +28,11 @@ export default function FleetMapPage() {
       const [{ data: loc }, { data: history }, { data: driver }, { data: vehicle }] = await Promise.all([
         supabase.from("trip_locations").select("latitude,longitude,speed_kmh,recorded_at")
           .eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(1).maybeSingle(),
-        supabase.from("trip_locations").select("latitude,longitude,recorded_at").eq("trip_id", trip.id).order("recorded_at", { ascending: true }).limit(3000),
+        supabase.from("trip_locations").select("latitude,longitude,recorded_at").eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(3000),
         supabase.from("drivers").select("full_name").eq("id", trip.driver_id).maybeSingle(),
         supabase.from("vehicles").select("registration_number").eq("id", trip.vehicle_id).maybeSingle()
       ]);
-      return loc ? { ...trip, ...loc, history: history || [], driver: driver?.full_name || "נהג", vehicle: vehicle?.registration_number || "רכב" } : null;
+      return loc ? { ...trip, ...loc, history: (history || []).reverse(), driver: driver?.full_name || "נהג", vehicle: vehicle?.registration_number || "רכב" } : null;
     }));
     setLocations(points.filter(Boolean));
     setError("");
