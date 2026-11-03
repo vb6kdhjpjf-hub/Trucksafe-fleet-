@@ -133,6 +133,17 @@ export default function TasksPage() {
           return;
         }
       }
+      if (trip.vehicle_id) {
+        const { error: vehicleError } = await supabase.from("vehicles")
+          .update({ status: "available" })
+          .eq("id", trip.vehicle_id).eq("fleet_id", fleet.id).eq("status", "on_trip");
+        if (vehicleError) {
+          setMessage("הנסיעה הסתיימה, אך עדכון סטטוס הרכב נכשל: " + vehicleError.message);
+          await loadWorkspace(session.user);
+          setBusy(false);
+          return;
+        }
+      }
       if (trackingTripId === trip.id) {
         if (watchIdRef.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
