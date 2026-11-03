@@ -120,41 +120,16 @@ export default function TasksPage() {
   }
 
   async function endTrip(trip) {
+    if (!fleet || !session?.user || !trip?.id) return;
     setBusy(true); setMessage("");
-    const { error } = await supabase.from("trips").update({ status: "completed", ended_at: new Date().toISOString() }).eq("id", trip.id).eq("fleet_id", fleet.id);
-    if (error) {
-      setMessage("לא הצלחנו לסיים נסיעה: " + error.message);
-    } else {
-      if (trip.task_id) {
-        const { error: taskError } = await supabase.from("tasks").update({ status: "completed" }).eq("id", trip.task_id).eq("fleet_id", fleet.id);
-        if (taskError) {
-          setMessage("הנסיעה הסתיימה, אך עדכון המשימה נכשל. יש לרענן ולבדוק: " + taskError.message);
-          await loadWorkspace(session.user);
-          setBusy(false);
-          return;
-        }
-      }
-      if (trip.vehicle_id) {
-        const { data: otherTrips, error: otherTripsError } = await supabase.from("trips")
-          .select("id").eq("vehicle_id", trip.vehicle_id).eq("fleet_id", fleet.id)
-          .eq("status", "active").neq("id", trip.id).limit(1);
-        if (otherTripsError) {
-          setMessage("הנסיעה הסתיימה, אך לא ניתן היה לוודא שאין נסיעה פעילה נוספת ולכן סטטוס הרכב לא שונה: " + otherTripsError.message);
-          await loadWorkspace(session.user);
-          setBusy(false);
-          return;
-        }
-        if (!otherTrips?.length) {
-          const { error: vehicleError } = await supabase.from("vehicles")
-            .update({ status: "available" })
-            .eq("id", trip.vehicle_id).eq("fleet_id", fleet.id).eq("status", "on_trip");
-          if (vehicleError) {
-            setMessage("הנסיעה הסתיימה, אך עדכון סטטוס הרכב נכשל: " + vehicleError.message);
-            await loadWorkspace(session.user);
-            setBusy(false);
-            return;
-          }
-        }
+    try {
+      const { error } = await supabase.rpc("finish_trip", {
+        p_fleet_id: fleet.id,
+        p_trip_id: trip.id
+      });
+      if (error) {
+        setMessage("לא הצלחנו לסיים נסיעה: " + error.message);
+        return;
       }
       if (trackingTripId === trip.id) {
         if (watchIdRef.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
@@ -162,9 +137,12 @@ export default function TasksPage() {
         setTrackingTripId(null);
       }
       await loadWorkspace(session.user);
-      setMessage("הנסיעה והמשימה הסתיימו ונשמרו.");
+      setMessage("הנסיעה והמשימה הסתיימו וסטטוס הרכב עודכן.");
+    } catch (error) {
+      setMessage("אירעה שגיאה בסיום הנסיעה: " + (error?.message || "שגיאה לא ידועה"));
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   function stopTracking() {
