@@ -1,0 +1,144 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+import { Truck, ArrowRight, Plus, ClipboardList, MapPin, CalendarClock, Play, CheckCircle2, LogOut } from "lucide-react";
+
+const emptyForm = { title: "", description: "", pickup_address: "", delivery_address: "", scheduled_at: "", assigned_driver_id: "", assigned_vehicle_id: "" };
+const labels = { pending: "ממתינה לשיבוץ", assigned: "שובצה", in_progress: "בתהליך", completed: "הושלמה", cancelled: "בוטלה" };
+
+export default function TasksPage() {
+  const router = useRouter();
+  const [session, setSession] = useState(null);
+  const [fleet, setFleet] = useState(null);
+  const [tasks, setTasks] = useState([]);
+  const [drivers, setDrivers] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
+  const [form, setForm] = useState(emptyForm);
+  const [showForm, setShowForm] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) { setMessage("החיבור למסד הנתונים אינו מוגדר."); setLoading(false); return; }
+    let alive = true;
+    supabase.auth.getSession().then(async ({ data, error }) => {
+      if (!alive) return;
+      if (error || !data.session) { router.replace("/"); return; }
+      setSession(data.session);
+      await loadWorkspace(data.session.user);
+      if (alive) setLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => { if (!next) router.replace("/"); });
+    return () => { alive = false; subscription.unsubscribe(); };
+  }, [router]);
+
+  async function loadWorkspace(user) {
+    const { data: membership, error } = await supabase.from("fleet_members").select("fleet_id,role").eq("user_id", user.id).limit(1).maybeSingle();
+    if (error) { setMessage("לא הצלחנו לטעון את פרטי הצי: " + error.message); return; }
+    if (!membership) { router.replace("/"); return; }
+    const { data: current, error: fleetError } = await supabase.from("fleets").select("id,name").eq("id", membership.fleet_id).single();
+    if (fleetError) { setMessage("שגיאה בטעינת הצי: " + fleetError.message); return; }
+    setFleet({ ...current, role: membership.role });
+    const [t, d, v] = await Promise.all([
+      supabase.from("tasks").select("id,reference_code,title,description,pickup_address,delivery_address,scheduled_at,assigned_driver_id,assigned_vehicle_id,status,created_at").eq("fleet_id", current.id).order("created_at", { ascending: false }),
+      supabase.from("drivers").select("id,full_name,status").eq("fleet_id", current.id).order("created_at", { ascending: false }),
+      supabase.from("vehicles").select("id,registration_number,make,vehicle_type,status").eq("fleet_id", current.id).order("created_at", { ascending: false })
+    ]);
+    if (t.error) setMessage("שגיאה בטעינת המשימות: " + t.error.message); else setTasks(t.data || []);
+    if (d.error) setMessage("שגיאה בטעינת הנהגים: " + d.error.message); else setDrivers(d.data || []);
+    if (v.error) setMessage("שגיאה בטעינת כלי הרכב: " + v.error.message); else setVehicles(v.data || []);
+  }
+
+  async function saveTask(e) {
+    e.preventDefault();
+    if (!fleet || !form.title.trim()) return;
+    setBusy(true); setMessage("");
+    const payload = {
+      fleet_id: fleet.id,
+      title: form.title.trim(),
+      description: form.description.trim() || null,
+      pickup_address: form.pickup_address.trim() || null,
+      delivery_address: form.delivery_address.trim() || null,
+      scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
+      assigned_driver_id: form.assigned_driver_id || null,
+      assigned_vehicle_id: form.assigned_vehicle_id || null,
+      status: form.assigned_driver_id && form.assigned_vehicle_id ? "assigned" : "pending",
+      created_by: session.user.id
+    };
+    const { error } = await supabase.from("tasks").insert(payload);
+    if (error) setMessage("לא הצלחנו לשמור את המשימה: " + error.message);
+    else { setForm(emptyForm); setShowForm(false); await loadWorkspace(session.user); setMessage("המשימה נשמרה בהצלחה."); }
+    setBusy(false);
+  }
+
+  async function updateStatus(task, status) {
+    setBusy(true); setMessage("");
+    const { error } = await supabase.from("tasks").update({ status }).eq("id", task.id).eq("fleet_id", fleet.id);
+    if (error) setMessage("לא הצלחנו לעדכן סטטוס: " + error.message);
+    else { await loadWorkspace(session.user); setMessage("סטטוס המשימה עודכן."); }
+    setBusy(false);
+  }
+
+  async function startTrip(task) {
+    if (!task.assigned_driver_id || !task.assigned_vehicle_id) { setMessage("כדי להתחיל נסיעה יש לשייך למשימה גם נהג וגם רכב."); return; }
+    setBusy(true); setMessage("");
+    const { data: existing, error: findError } = await supabase.from("trips").select("id").eq("task_id", task.id).in("status", ["planned", "active"]).limit(1);
+    if (findError) { setMessage("לא הצלחנו לבדוק נסיעה קיימת: " + findError.message); setBusy(false); return; }
+    if (existing?.length) { setMessage("כבר קיימת נסיעה פעילה או מתוכננת למשימה הזאת."); setBusy(false); return; }
+    const { error } = await supabase.from("trips").insert({
+      fleet_id: fleet.id, task_id: task.id, driver_id: task.assigned_driver_id,
+      vehicle_id: task.assigned_vehicle_id, status: "active",
+      origin_address: task.pickup_address, destination_address: task.delivery_address,
+      started_at: new Date().toISOString()
+    });
+    if (error) setMessage("לא הצלחנו לפתוח נסיעה: " + error.message);
+    else {
+      await supabase.from("tasks").update({ status: "in_progress" }).eq("id", task.id).eq("fleet_id", fleet.id);
+      await loadWorkspace(session.user); setMessage("הנסיעה נפתחה ונרשמה במערכת.");
+    }
+    setBusy(false);
+  }
+
+  async function signOut() { await supabase.auth.signOut(); router.replace("/"); }
+
+  if (loading) return <main className="auth-wrap"><section className="auth-card">טוען משימות...</section></main>;
+
+  return <main className="fleet-home" dir="rtl">
+    <header className="fleet-header">
+      <div className="auth-brand"><span><Truck size={24}/></span><div><h1>TruckSafe</h1><small>ניהול צי חכם</small></div></div>
+      <div className="drivers-header-actions"><a className="nav-link" href="/"><ArrowRight size={16}/> לוח הבקרה</a><a className="nav-link" href="/drivers">ניהול נהגים</a><button className="logout-btn" onClick={signOut}><LogOut size={16}/> יציאה</button></div>
+    </header>
+    <section className="fleet-content">
+      <div className="fleet-welcome"><div><small>תכנון ותפעול</small><h2>משימות ונסיעות</h2><p>{fleet?.name || "הצי שלך"} · {tasks.length} משימות</p></div><span className="role-pill"><ClipboardList size={14}/> ניהול משימות</span></div>
+      {message && <div className="auth-message">{message}</div>}
+      <section className="fleet-panel">
+        <div className="fleet-panel-head"><div><h3>משימות הצי</h3><p>יצירת משימות, שיוך נהגים וכלי רכב ומעקב סטטוס</p></div><button className="primary-btn" onClick={() => { setShowForm(!showForm); setMessage(""); }}><Plus size={16}/> משימה חדשה</button></div>
+        {showForm && <form className="task-form" onSubmit={saveTask}>
+          <div className="driver-form-title">פרטי המשימה</div>
+          <div className="task-form-grid">
+            <label>כותרת המשימה *<input required value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="לדוגמה: הובלת מטען ללקוח"/></label>
+            <label>כתובת איסוף<input value={form.pickup_address} onChange={e=>setForm({...form,pickup_address:e.target.value})} placeholder="כתובת או נקודת איסוף"/></label>
+            <label>כתובת יעד<input value={form.delivery_address} onChange={e=>setForm({...form,delivery_address:e.target.value})} placeholder="כתובת היעד"/></label>
+            <label>מועד מתוכנן<input type="datetime-local" value={form.scheduled_at} onChange={e=>setForm({...form,scheduled_at:e.target.value})}/></label>
+            <label>שיוך נהג<select value={form.assigned_driver_id} onChange={e=>setForm({...form,assigned_driver_id:e.target.value})}><option value="">ללא נהג</option>{drivers.filter(d=>d.status==="active").map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label>
+            <label>שיוך רכב<select value={form.assigned_vehicle_id} onChange={e=>setForm({...form,assigned_vehicle_id:e.target.value})}><option value="">ללא רכב</option>{vehicles.filter(v=>v.status==="available" || v.status==="assigned").map(v=><option key={v.id} value={v.id}>{v.registration_number} · {v.make || v.vehicle_type}</option>)}</select></label>
+            <label className="task-wide">הערות / תיאור<textarea rows="3" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="פרטים נוספים לנהג או למנהל הצי"/></label>
+          </div>
+          <div className="driver-form-actions"><button className="primary-btn" disabled={busy}>{busy ? "שומר..." : "שמירת משימה"}</button><button type="button" className="secondary-btn" onClick={()=>{setShowForm(false);setForm(emptyForm);}}>ביטול</button></div>
+        </form>}
+        {tasks.length === 0 ? <div className="fleet-empty"><ClipboardList size={30}/><p>עדיין אין משימות בצי.</p><span>לחץ על "משימה חדשה" כדי ליצור את המשימה הראשונה.</span></div> :
+          <div className="task-list">{tasks.map(task => <article className="task-card" key={task.id}>
+            <div className="task-card-top"><div><b>{task.title}</b><small>{task.reference_code || "משימה"} · {new Date(task.created_at).toLocaleDateString("he-IL")}</small></div><span className={"task-status task-"+task.status}>{labels[task.status] || task.status}</span></div>
+            {(task.pickup_address || task.delivery_address) && <div className="task-route"><span><MapPin size={14}/> איסוף: {task.pickup_address || "לא צוין"}</span><span><MapPin size={14}/> יעד: {task.delivery_address || "לא צוין"}</span></div>}
+            <div className="task-assignees"><span>נהג: {drivers.find(d=>d.id===task.assigned_driver_id)?.full_name || "לא שובץ"}</span><span>רכב: {vehicles.find(v=>v.id===task.assigned_vehicle_id)?.registration_number || "לא שובץ"}</span>{task.scheduled_at && <span><CalendarClock size={13}/> {new Date(task.scheduled_at).toLocaleString("he-IL")}</span>}</div>
+            {task.description && <p className="task-description">{task.description}</p>}
+            <div className="task-actions"><label>סטטוס<select disabled={busy} value={task.status} onChange={e=>updateStatus(task,e.target.value)}>{Object.entries(labels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>{!["completed","cancelled"].includes(task.status) && <button className="primary-btn" disabled={busy} onClick={()=>startTrip(task)}><Play size={14}/> פתיחת נסיעה</button>}</div>
+          </article>)}</div>}
+      </section>
+      <p className="fleet-foot">TruckSafe Fleet V1 · המשימות והנסיעות נשמרות במסד הנתונים</p>
+    </section>
+  </main>;
+}
