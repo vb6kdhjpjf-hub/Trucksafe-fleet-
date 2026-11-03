@@ -56,6 +56,25 @@ export default function Home() {
     } else setLiveLocations([]);
   }
 
+  async function refreshLiveLocations() {
+    if(!fleet?.id) return;
+    const {data:trips,error}=await supabase.from("trips").select("id,driver_id,vehicle_id").eq("fleet_id",fleet.id).eq("status","active");
+    if(error) return;
+    const points=await Promise.all((trips||[]).map(async trip=>{
+      const {data:loc,error:locError}=await supabase.from("trip_locations").select("id,latitude,longitude,speed_kmh,recorded_at").eq("trip_id",trip.id).order("recorded_at",{ascending:false}).limit(1).maybeSingle();
+      if(locError||!loc) return null;
+      return {...trip,...loc,driver:drivers.find(d=>d.id===trip.driver_id)?.full_name||"נהג לא ידוע",vehicle:vehicles.find(v=>v.id===trip.vehicle_id)?.registration_number||"רכב לא ידוע"};
+    }));
+    setLiveLocations(points.filter(Boolean));
+  }
+
+  useEffect(()=>{
+    if(!session||!fleet?.id) return;
+    refreshLiveLocations();
+    const refreshTimer=setInterval(refreshLiveLocations,15000);
+    return ()=>clearInterval(refreshTimer);
+  },[session?.user?.id,fleet?.id,drivers,vehicles]);
+
   useEffect(()=>{
     if(!isSupabaseConfigured){setLoading(false);return;}
     supabase.auth.getSession().then(async ({data})=>{setSession(data.session);if(data.session)await loadFleet(data.session.user);setLoading(false);});
