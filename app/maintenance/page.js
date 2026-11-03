@@ -81,6 +81,13 @@ export default function MaintenancePage() {
   const upcoming=pending.filter(r=>r.scheduled_at && r.scheduled_at>=today && r.scheduled_at<=new Date(Date.now()+30*86400000).toISOString().slice(0,10));
   const date=v=>v?new Date(v+"T00:00:00").toLocaleDateString("he-IL"):"לא נקבע";
   const vehicleDue=vehicles.filter(v=>v.next_service_at && v.next_service_at<=new Date(Date.now()+30*86400000).toISOString().slice(0,10)).sort((a,b)=>a.next_service_at.localeCompare(b.next_service_at));
+  const complianceItems=vehicles.flatMap(v=>[
+    {vehicle:v,label:"טסט",date:v.test_due_at},
+    {vehicle:v,label:"ביטוח",date:v.insurance_due_at},
+    {vehicle:v,label:"רישיון רכב",date:v.registration_due_at}
+  ]).filter(x=>x.date).map(x=>({...x,days:Math.ceil((new Date(x.date+"T00:00:00")-new Date(today+"T00:00:00"))/86400000)}));
+  const expiredCompliance=complianceItems.filter(x=>x.days<0);
+  const soonCompliance=complianceItems.filter(x=>x.days>=0&&x.days<=30);
   const money=v=>v==null?"—":Number(v).toLocaleString("he-IL")+" ₪";
   const completedRecords=records.filter(r=>r.status==="completed" && r.cost!=null);
   const totalMaintenanceCost=completedRecords.reduce((sum,r)=>sum+Number(r.cost||0),0);
@@ -98,6 +105,11 @@ export default function MaintenancePage() {
         <article className="stat-card"><CalendarDays/><small>טיפולים באיחור</small><strong>{overdue.length}</strong></article>
         <article className="stat-card"><CalendarDays/><small>טיפולים ב־30 הימים הקרובים</small><strong>{upcoming.length}</strong></article>
       </div>
+      {(expiredCompliance.length>0||soonCompliance.length>0)&&<section className="data-card" style={{borderRight:"4px solid #d97706"}}>
+        <h3>התראות תוקף מסמכים</h3>
+        {expiredCompliance.length>0&&<div className="notice" style={{background:"#fff0f0",color:"#9b1c1c"}}><strong>{expiredCompliance.length} מסמכים שפג תוקפם:</strong> {expiredCompliance.map(x=>x.vehicle.registration_number+" – "+x.label).join(" · ")}</div>}
+        {soonCompliance.length>0&&<div className="notice" style={{background:"#fff7e6",color:"#8a5700"}}><strong>{soonCompliance.length} מסמכים שתוקפם מסתיים בתוך 30 יום:</strong> {soonCompliance.map(x=>x.vehicle.registration_number+" – "+x.label+" ("+x.days+" ימים)").join(" · ")}</div>}
+      </section>}
       {showForm&&<form className="form-card" onSubmit={save}><h3>רישום טיפול חדש</h3>
         <label>רכב<select required value={form.vehicle_id} onChange={e=>setForm({...form,vehicle_id:e.target.value})}><option value="">בחירת רכב</option>{vehicles.map(v=><option key={v.id} value={v.id}>{v.registration_number} · {[v.make,v.model].filter(Boolean).join(" ")}</option>)}</select></label>
         <label>תקלה קשורה (לא חובה)<select value={form.incident_id} onChange={e=>{const selected=incidents.find(x=>x.id===e.target.value);setForm(old=>({...old,incident_id:e.target.value,description:old.description||selected?.description||"",maintenance_type:selected?.incident_type||old.maintenance_type}));}}><option value="">ללא קישור לתקלה</option>{incidents.filter(x=>x.vehicle_id===form.vehicle_id).map(x=><option key={x.id} value={x.id}>{x.incident_type} · {x.description?.slice(0,70)||"ללא תיאור"}</option>)}</select><small>בחירת תקלה תמלא אוטומטית את סוג הטיפול והתיאור, אם השדות עדיין ריקים.</small></label>
