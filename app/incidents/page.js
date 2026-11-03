@@ -57,7 +57,7 @@ export default function IncidentsPage() {
 
   async function loadIncidents(fleetId) {
     const {data,error} = await supabase.from("incidents")
-      .select("id,incident_type,severity,description,location_text,latitude,longitude,status,reported_at,resolved_at,driver_id,vehicle_id")
+      .select("id,incident_type,severity,description,location_text,latitude,longitude,status,reported_at,resolved_at,driver_id,vehicle_id,photo_path")
       .eq("fleet_id",fleetId).order("reported_at",{ascending:false});
     if (error) setMessage("שגיאה בטעינת אירועי הבטיחות: "+error.message);
     else {
