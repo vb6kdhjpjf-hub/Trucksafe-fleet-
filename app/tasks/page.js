@@ -119,13 +119,27 @@ export default function TasksPage() {
   }
 
   async function endTrip(trip) {
-    if (trackingTripId === trip.id) { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null; setTrackingTripId(null); }
     setBusy(true); setMessage("");
     const { error } = await supabase.from("trips").update({ status: "completed", ended_at: new Date().toISOString() }).eq("id", trip.id).eq("fleet_id", fleet.id);
-    if (error) setMessage("לא הצלחנו לסיים נסיעה: " + error.message);
-    else {
-      if (trip.task_id) await supabase.from("tasks").update({ status: "completed" }).eq("id", trip.task_id).eq("fleet_id", fleet.id);
-      await loadWorkspace(session.user); setMessage("הנסיעה הסתיימה ונשמרה.");
+    if (error) {
+      setMessage("לא הצלחנו לסיים נסיעה: " + error.message);
+    } else {
+      if (trip.task_id) {
+        const { error: taskError } = await supabase.from("tasks").update({ status: "completed" }).eq("id", trip.task_id).eq("fleet_id", fleet.id);
+        if (taskError) {
+          setMessage("הנסיעה הסתיימה, אך עדכון המשימה נכשל. יש לרענן ולבדוק: " + taskError.message);
+          await loadWorkspace(session.user);
+          setBusy(false);
+          return;
+        }
+      }
+      if (trackingTripId === trip.id) {
+        if (watchIdRef.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+        setTrackingTripId(null);
+      }
+      await loadWorkspace(session.user);
+      setMessage("הנסיעה והמשימה הסתיימו ונשמרו.");
     }
     setBusy(false);
   }
