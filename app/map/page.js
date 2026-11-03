@@ -81,7 +81,17 @@ export default function FleetMapPage() {
       }).addTo(mapInstance.current);
       setMapReady(true);
     }).catch(() => setError("המפה לא נטענה. בדוק חיבור לאינטרנט ונסה שוב."));
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      markers.current.forEach(marker => marker.remove());
+      routeLines.current.forEach(line => line.remove());
+      markers.current = [];
+      routeLines.current = [];
+      if (mapInstance.current) {
+        mapInstance.current.remove();
+        mapInstance.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
