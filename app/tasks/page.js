@@ -13,6 +13,7 @@ export default function TasksPage() {
   const [session, setSession] = useState(null);
   const [fleet, setFleet] = useState(null);
   const [tasks, setTasks] = useState([]);
+  const [trips, setTrips] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [form, setForm] = useState(emptyForm);
@@ -42,14 +43,16 @@ export default function TasksPage() {
     const { data: current, error: fleetError } = await supabase.from("fleets").select("id,name").eq("id", membership.fleet_id).single();
     if (fleetError) { setMessage("שגיאה בטעינת הצי: " + fleetError.message); return; }
     setFleet({ ...current, role: membership.role });
-    const [t, d, v] = await Promise.all([
+    const [t, d, v, tr] = await Promise.all([
       supabase.from("tasks").select("id,reference_code,title,description,pickup_address,delivery_address,scheduled_at,assigned_driver_id,assigned_vehicle_id,status,created_at").eq("fleet_id", current.id).order("created_at", { ascending: false }),
       supabase.from("drivers").select("id,full_name,status").eq("fleet_id", current.id).order("created_at", { ascending: false }),
-      supabase.from("vehicles").select("id,registration_number,make,vehicle_type,status").eq("fleet_id", current.id).order("created_at", { ascending: false })
+      supabase.from("vehicles").select("id,registration_number,make,vehicle_type,status").eq("fleet_id", current.id).order("created_at", { ascending: false }),
+      supabase.from("trips").select("id,task_id,driver_id,vehicle_id,status,origin_address,destination_address,started_at,ended_at").eq("fleet_id", current.id).order("created_at", { ascending: false }).limit(50)
     ]);
     if (t.error) setMessage("שגיאה בטעינת המשימות: " + t.error.message); else setTasks(t.data || []);
     if (d.error) setMessage("שגיאה בטעינת הנהגים: " + d.error.message); else setDrivers(d.data || []);
     if (v.error) setMessage("שגיאה בטעינת כלי הרכב: " + v.error.message); else setVehicles(v.data || []);
+    if (tr.error) setMessage("שגיאה בטעינת הנסיעות: " + tr.error.message); else setTrips(tr.data || []);
   }
 
   async function saveTask(e) {
@@ -102,6 +105,36 @@ export default function TasksPage() {
     setBusy(false);
   }
 
+  async function endTrip(trip) {
+    setBusy(true); setMessage("");
+    const { error } = await supabase.from("trips").update({ status: "completed", ended_at: new Date().toISOString() }).eq("id", trip.id).eq("fleet_id", fleet.id);
+    if (error) setMessage("לא הצלחנו לסיים נסיעה: " + error.message);
+    else {
+      if (trip.task_id) await supabase.from("tasks").update({ status: "completed" }).eq("id", trip.task_id).eq("fleet_id", fleet.id);
+      await loadWorkspace(session.user); setMessage("הנסיעה הסתיימה ונשמרה.");
+    }
+    setBusy(false);
+  }
+
+  async function recordLocation(trip) {
+    if (!navigator.geolocation) { setMessage("המכשיר או הדפדפן אינם תומכים בשיתוף מיקום."); return; }
+    setBusy(true); setMessage("מבקש אישור מיקום מהמכשיר...");
+    navigator.geolocation.getCurrentPosition(async position => {
+      const { latitude, longitude, speed, heading } = position.coords;
+      const { error } = await supabase.from("trip_locations").insert({
+        trip_id: trip.id, driver_id: trip.driver_id, latitude, longitude,
+        speed_kmh: speed == null ? null : Math.round(speed * 3.6 * 10) / 10,
+        heading_degrees: heading
+      });
+      if (error) setMessage("לא הצלחנו לשמור מיקום: " + error.message);
+      else setMessage("המיקום הנוכחי נשמר לנסיעה.");
+      setBusy(false);
+    }, error => {
+      setMessage(error.code === 1 ? "לא אושר שיתוף מיקום. אפשר לאשר הרשאת מיקום בדפדפן." : "לא הצלחנו לקבל מיקום מהמכשיר.");
+      setBusy(false);
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  }
+
   async function signOut() { await supabase.auth.signOut(); router.replace("/"); }
 
   if (loading) return <main className="auth-wrap"><section className="auth-card">טוען משימות...</section></main>;
@@ -114,6 +147,16 @@ export default function TasksPage() {
     <section className="fleet-content">
       <div className="fleet-welcome"><div><small>תכנון ותפעול</small><h2>משימות ונסיעות</h2><p>{fleet?.name || "הצי שלך"} · {tasks.length} משימות</p></div><span className="role-pill"><ClipboardList size={14}/> ניהול משימות</span></div>
       {message && <div className="auth-message">{message}</div>}
+      <section className="fleet-panel">
+        <div className="fleet-panel-head"><div><h3>נסיעות פעילות</h3><p>מעקב ועדכון נסיעות שהתחילו</p></div><span className="role-pill">{trips.filter(t=>t.status==="active").length} פעילות</span></div>
+        {trips.filter(t=>t.status==="active").length === 0 ? <div className="fleet-empty">אין כרגע נסיעות פעילות.</div> :
+          <div className="task-list">{trips.filter(t=>t.status==="active").map(trip => <article className="task-card" key={trip.id}>
+            <div className="task-card-top"><div><b>{tasks.find(t=>t.id===trip.task_id)?.title || "נסיעה ללא משימה"}</b><small>התחלה: {trip.started_at ? new Date(trip.started_at).toLocaleString("he-IL") : "לא צוין"}</small></div><span className="task-status task-in_progress">בנסיעה</span></div>
+            <div className="task-assignees"><span>נהג: {drivers.find(d=>d.id===trip.driver_id)?.full_name || "לא ידוע"}</span><span>רכב: {vehicles.find(v=>v.id===trip.vehicle_id)?.registration_number || "לא ידוע"}</span></div>
+            <div className="task-route"><span><MapPin size={14}/> {trip.origin_address || "מוצא לא צוין"}</span><span><MapPin size={14}/> {trip.destination_address || "יעד לא צוין"}</span></div>
+            <div className="task-actions"><button className="secondary-btn" disabled={busy} onClick={()=>recordLocation(trip)}>שמירת מיקום נוכחי</button><button className="primary-btn" disabled={busy} onClick={()=>endTrip(trip)}><CheckCircle2 size={14}/> סיום נסיעה</button></div>
+          </article>)}</div>}
+      </section>
       <section className="fleet-panel">
         <div className="fleet-panel-head"><div><h3>משימות הצי</h3><p>יצירת משימות, שיוך נהגים וכלי רכב ומעקב סטטוס</p></div><button className="primary-btn" onClick={() => { setShowForm(!showForm); setMessage(""); }}><Plus size={16}/> משימה חדשה</button></div>
         {showForm && <form className="task-form" onSubmit={saveTask}>
