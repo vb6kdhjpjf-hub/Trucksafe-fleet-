@@ -21,6 +21,7 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [fleetId, setFleetId] = useState(null);
   const [trips, setTrips] = useState([]);
+  const [maintenance, setMaintenance] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [driverFilter, setDriverFilter] = useState("all");
@@ -36,6 +37,9 @@ export default function ReportsPage() {
       .select("id,status,started_at,ended_at,driver_id,vehicle_id,origin_address,destination_address")
       .eq("fleet_id", id).gte("started_at", since.toISOString()).order("started_at", { ascending: false }).limit(500);
     if (tripError) { setError("לא ניתן לטעון דוחות: " + tripError.message); return; }
+    const { data: maintenanceRows, error: maintenanceError } = await supabase.from("maintenance_records").select("id,vehicle_id,maintenance_type,completed_at,scheduled_at,cost,status").eq("fleet_id",id).eq("status","completed").not("cost","is",null).gte("completed_at",since.toISOString().slice(0,10)).order("completed_at",{ascending:false}).limit(500);
+    if (maintenanceError) { setError("לא ניתן לטעון עלויות תחזוקה: " + maintenanceError.message); return; }
+    setMaintenance(maintenanceRows || []);
     const ids = [...new Set((data || []).map(t => t.driver_id).filter(Boolean))];
     const vehicleIds = [...new Set((data || []).map(t => t.vehicle_id).filter(Boolean))];
     const [driverRows, vehicleRows] = await Promise.all([
@@ -73,6 +77,10 @@ export default function ReportsPage() {
       (driverFilter === "all" || t.driver_id === driverFilter) &&
       (vehicleFilter === "all" || t.vehicle_id === vehicleFilter));
   }, [trips, period, driverFilter, vehicleFilter]);
+  const cutoffDate = new Date(); cutoffDate.setDate(cutoffDate.getDate() - Number(period));
+  const filteredMaintenance = maintenance.filter(r => (!r.completed_at || new Date(r.completed_at+"T00:00:00") >= cutoffDate) && (vehicleFilter === "all" || r.vehicle_id === vehicleFilter));
+  const maintenanceSpend = filteredMaintenance.reduce((sum,r)=>sum+Number(r.cost||0),0);
+  const maintenanceByVehicle = vehicles.map(v=>({ ...v, spend: filteredMaintenance.filter(r=>r.vehicle_id===v.id).reduce((sum,r)=>sum+Number(r.cost||0),0), jobs: filteredMaintenance.filter(r=>r.vehicle_id===v.id).length })).filter(v=>v.jobs).sort((a,b)=>b.spend-a.spend);
   const totalKm = filtered.reduce((s, t) => s + (t.km || 0), 0);
   const totalMinutes = filtered.reduce((s, t) => s + (t.minutes || 0), 0);
   const withDistance = filtered.filter(t => t.km != null).length;
@@ -117,6 +125,7 @@ export default function ReportsPage() {
         <Stat icon={<BarChart3/>} title="מרחק מצטבר משוער" value={fmt(totalKm) + " ק״מ"}/>
         <Stat icon={<Truck/>} title="זמן נסיעה מצטבר" value={Math.floor(totalMinutes/60) + " ש׳ " + Math.round(totalMinutes%60) + " ד׳"}/>
         <Stat icon={<Users/>} title="נסיעות עם GPS מספיק" value={withDistance}/>
+        <Stat icon={<BarChart3/>} title="הוצאות תחזוקה בתקופה" value={maintenanceSpend.toLocaleString("he-IL")+" ₪"}/>
       </section>
       <section style={panel}>
         <h3 style={{marginTop:0}}>ביצועים לפי נהג</h3>
@@ -125,6 +134,10 @@ export default function ReportsPage() {
       <section style={panel}>
         <h3 style={{marginTop:0}}>ביצועים לפי רכב</h3>
         {byVehicle.length ? byVehicle.map(v=><div key={v.id} style={line}><b>{v.registration_number}</b><span>{v.count} נסיעות · {fmt(v.km)} ק״מ</span></div>) : <p>אין נתונים לתקופה שנבחרה.</p>}
+      </section>
+      <section style={panel}>
+        <h3 style={{marginTop:0}}>הוצאות תחזוקה לפי רכב</h3>
+        {maintenanceByVehicle.length ? maintenanceByVehicle.map(v=><div key={v.id} style={line}><b>{v.registration_number}</b><span>{v.jobs} טיפולים · {v.spend.toLocaleString("he-IL")} ₪</span></div>) : <p>אין הוצאות תחזוקה שהושלמו בתקופה ובסינון שנבחרו.</p>}
       </section>
       <section style={panel}>
         <h3 style={{marginTop:0}}>פירוט נסיעות</h3>
