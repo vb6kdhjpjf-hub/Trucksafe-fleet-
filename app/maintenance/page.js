@@ -73,16 +73,24 @@ export default function MaintenancePage() {
     const link=document.createElement("a");link.href=url;link.download="trucksafe-maintenance-costs.csv";document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
   async function markDone(record){
-    setBusy(true);
-    const {error}=await supabase.from("maintenance_records").update({status:"completed",completed_at:new Date().toISOString().slice(0,10)}).eq("id",record.id).eq("fleet_id",fleet.id);
-    if(error)setMessage("לא הצלחנו לעדכן: "+error.message);else{await load(fleet.id);setMessage("הטיפול סומן כהושלם.");}
-    setBusy(false);
+    if(!fleet||!record?.id)return;
+    setBusy(true);setMessage("");
+    try{
+      const {error}=await supabase.from("maintenance_records").update({status:"completed",completed_at:new Date().toISOString().slice(0,10)}).eq("id",record.id).eq("fleet_id",fleet.id);
+      if(error){setMessage("לא הצלחנו לעדכן: "+error.message);return;}
+      await load(fleet.id);setMessage("הטיפול סומן כהושלם.");
+    }catch(error){setMessage("עדכון הטיפול נכשל: "+(error?.message||"שגיאה לא ידועה"));}
+    finally{setBusy(false);}
   }
   async function markInProgress(record){
+    if(!fleet||!record?.id)return;
     setBusy(true);setMessage("");
-    const {error}=await supabase.from("maintenance_records").update({status:"in_progress"}).eq("id",record.id).eq("fleet_id",fleet.id);
-    if(error)setMessage("לא הצלחנו לעדכן: "+error.message);else{await load(fleet.id);setMessage("הטיפול סומן כבתהליך.");}
-    setBusy(false);
+    try{
+      const {error}=await supabase.from("maintenance_records").update({status:"in_progress"}).eq("id",record.id).eq("fleet_id",fleet.id);
+      if(error){setMessage("לא הצלחנו לעדכן: "+error.message);return;}
+      await load(fleet.id);setMessage("הטיפול סומן כבתהליך.");
+    }catch(error){setMessage("עדכון הטיפול נכשל: "+(error?.message||"שגיאה לא ידועה"));}
+    finally{setBusy(false);}
   }
   const today=new Date().toISOString().slice(0,10);
   const pending=records.filter(r=>r.status!=="completed");
