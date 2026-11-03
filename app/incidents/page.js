@@ -87,29 +87,44 @@ export default function IncidentsPage() {
   async function submitIncident(e) {
     e.preventDefault();
     if (!fleet || !session) return;
+    if (!form.description.trim()) { setMessage("יש לתאר את האירוע לפני השליחה."); return; }
+    if ((gps.latitude == null) !== (gps.longitude == null)) { setMessage("נתוני המיקום אינם מלאים. נסה לקלוט GPS מחדש או נקה את המיקום."); return; }
     setBusy(true); setMessage("");
     let photoPath = null;
-    if (photoFile) {
-      const extension = photoFile.type === "image/png" ? "png" : photoFile.type === "image/webp" ? "webp" : "jpg";
-      photoPath = fleet.id+"/incidents/"+crypto.randomUUID()+"."+extension;
-      const {error:uploadError} = await supabase.storage.from("incident-photos").upload(photoPath,photoFile,{contentType:photoFile.type,upsert:false});
-      if (uploadError) { setMessage("העלאת התמונה נכשלה: "+uploadError.message); setBusy(false); return; }
-    }
-    const payload = {
-      fleet_id:fleet.id, incident_type:form.incident_type, severity:form.severity,
-      description:form.description.trim(), location_text:form.location_text.trim()||null,
-      driver_id:form.driver_id||null, vehicle_id:form.vehicle_id||null,
-      latitude:gps.latitude, longitude:gps.longitude, photo_path:photoPath,
-      status:"reported", reported_at:new Date().toISOString(), created_by:session.user.id
-    };
-    const {error} = await supabase.from("incidents").insert(payload);
-    if (error) {
+    try {
+      if (photoFile) {
+        if (!["image/jpeg","image/png","image/webp"].includes(photoFile.type)) { setMessage("אפשר להעלות תמונה מסוג JPG, PNG או WEBP בלבד."); return; }
+        if (photoFile.size > 8 * 1024 * 1024) { setMessage("גודל התמונה המרבי הוא 8MB."); return; }
+        const extension = photoFile.type === "image/png" ? "png" : photoFile.type === "image/webp" ? "webp" : "jpg";
+        photoPath = fleet.id+"/incidents/"+crypto.randomUUID()+"."+extension;
+        const {error:uploadError} = await supabase.storage.from("incident-photos").upload(photoPath,photoFile,{contentType:photoFile.type,upsert:false});
+        if (uploadError) { setMessage("העלאת התמונה נכשלה: "+uploadError.message); return; }
+      }
+      const payload = {
+        fleet_id:fleet.id, incident_type:form.incident_type, severity:form.severity,
+        description:form.description.trim(), location_text:form.location_text.trim()||null,
+        driver_id:form.driver_id||null, vehicle_id:form.vehicle_id||null,
+        latitude:gps.latitude, longitude:gps.longitude, photo_path:photoPath,
+        status:"reported", reported_at:new Date().toISOString(), created_by:session.user.id
+      };
+      const {error} = await supabase.from("incidents").insert(payload);
+      if (error) {
+        if (photoPath) {
+          const {error:cleanupError} = await supabase.storage.from("incident-photos").remove([photoPath]);
+          setMessage("לא הצלחנו לדווח על האירוע: "+error.message+(cleanupError ? " בנוסף, מחיקת התמונה נכשלה: "+cleanupError.message : ""));
+          photoPath = null;
+        } else setMessage("לא הצלחנו לדווח על האירוע: "+error.message);
+        return;
+      }
+      photoPath = null;
+      setForm(emptyForm); setGps({latitude:null,longitude:null}); setPhotoFile(null); setShowForm(false);
+      await loadIncidents(fleet.id); setMessage("האירוע דווח ונשמר במערכת.");
+    } catch (error) {
       if (photoPath) {
-        const { error: cleanupError } = await supabase.storage.from("incident-photos").remove([photoPath]);
-        setMessage("לא הצלחנו לדווח על האירוע: "+error.message+(cleanupError ? " בנוסף, לא הצלחנו למחוק את התמונה שהועלתה: "+cleanupError.message : ""));
-      } else setMessage("לא הצלחנו לדווח על האירוע: "+error.message);
-    } else { setForm(emptyForm); setGps({latitude:null,longitude:null}); setPhotoFile(null); setShowForm(false); await loadIncidents(fleet.id); setMessage("האירוע דווח ונשמר במערכת."); }
-    setBusy(false);
+        const {error:cleanupError} = await supabase.storage.from("incident-photos").remove([photoPath]);
+        setMessage("דיווח האירוע נכשל: "+(error?.message||"שגיאה לא ידועה")+(cleanupError ? " בנוסף, מחיקת התמונה נכשלה: "+cleanupError.message : ""));
+      } else setMessage("דיווח האירוע נכשל: "+(error?.message||"שגיאה לא ידועה"));
+    } finally { setBusy(false); }
   }
 
   async function resolveIncident(incident) {
