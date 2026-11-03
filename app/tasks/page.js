@@ -105,18 +105,31 @@ export default function TasksPage() {
 
   async function confirmPreTrip() {
     const task = preTripTask;
-    if (!task || !fleet) return;
-    if (!preTripItems.every((_, i) => preTripChecks[i])) { setMessage("יש לאשר את כל סעיפי בדיקת הרכב לפני פתיחת הנסיעה."); return; }
+    if (!task || !fleet || !session?.user) return;
+    if (!preTripItems.every((_, i) => preTripChecks[i])) {
+      setMessage("יש לאשר את כל סעיפי בדיקת הרכב לפני פתיחת הנסיעה.");
+      return;
+    }
     setBusy(true); setMessage("");
     const checklist = Object.fromEntries(preTripItems.map((item, i) => [item, Boolean(preTripChecks[i])]));
-    const { data: tripId, error } = await supabase.rpc("start_trip_with_inspection", {
-      p_fleet_id: fleet.id, p_task_id: task.id, p_driver_id: task.assigned_driver_id,
-      p_vehicle_id: task.assigned_vehicle_id, p_origin_address: task.pickup_address,
-      p_destination_address: task.delivery_address, p_checklist: checklist
-    });
-    if (error) setMessage("לא ניתן לפתוח נסיעה או לשמור בדיקת רכב: " + error.message);
-    else { setPreTripTask(null); await loadWorkspace(session.user); setMessage("בדיקת הרכב נשמרה והנסיעה נפתחה בהצלחה."); }
-    setBusy(false);
+    try {
+      const { error } = await supabase.rpc("start_trip_with_inspection", {
+        p_fleet_id: fleet.id, p_task_id: task.id, p_driver_id: task.assigned_driver_id,
+        p_vehicle_id: task.assigned_vehicle_id, p_origin_address: task.pickup_address,
+        p_destination_address: task.delivery_address, p_checklist: checklist
+      });
+      if (error) {
+        setMessage("לא ניתן לפתוח נסיעה או לשמור בדיקת רכב: " + error.message);
+        return;
+      }
+      setPreTripTask(null);
+      await loadWorkspace(session.user);
+      setMessage("בדיקת הרכב נשמרה והנסיעה נפתחה בהצלחה.");
+    } catch (error) {
+      setMessage("אירעה שגיאה בפתיחת הנסיעה: " + (error?.message || "שגיאה לא ידועה"));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function endTrip(trip) {
