@@ -22,6 +22,7 @@ export default function ReportsPage() {
   const [fleetId, setFleetId] = useState(null);
   const [trips, setTrips] = useState([]);
   const [maintenance, setMaintenance] = useState([]);
+  const [incidents, setIncidents] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [driverFilter, setDriverFilter] = useState("all");
@@ -40,6 +41,9 @@ export default function ReportsPage() {
     const { data: maintenanceRows, error: maintenanceError } = await supabase.from("maintenance_records").select("id,vehicle_id,maintenance_type,completed_at,scheduled_at,cost,status").eq("fleet_id",id).eq("status","completed").not("cost","is",null).gte("completed_at",since.toISOString().slice(0,10)).order("completed_at",{ascending:false}).limit(500);
     if (maintenanceError) { setError("לא ניתן לטעון עלויות תחזוקה: " + maintenanceError.message); return; }
     setMaintenance(maintenanceRows || []);
+    const { data: incidentRows, error: incidentError } = await supabase.from("incidents").select("id,vehicle_id,severity,incident_type,description,status,reported_at").eq("fleet_id",id).gte("reported_at",since.toISOString()).order("reported_at",{ascending:false}).limit(500);
+    if (incidentError) { setError("לא ניתן לטעון אירועים: " + incidentError.message); return; }
+    setIncidents(incidentRows || []);
     const ids = [...new Set((data || []).map(t => t.driver_id).filter(Boolean))];
     const vehicleIds = [...new Set((data || []).map(t => t.vehicle_id).filter(Boolean))];
     const [driverRows, vehicleRows] = await Promise.all([
@@ -79,6 +83,9 @@ export default function ReportsPage() {
   }, [trips, period, driverFilter, vehicleFilter]);
   const cutoffDate = new Date(); cutoffDate.setDate(cutoffDate.getDate() - Number(period));
   const filteredMaintenance = maintenance.filter(r => (!r.completed_at || new Date(r.completed_at+"T00:00:00") >= cutoffDate) && (vehicleFilter === "all" || r.vehicle_id === vehicleFilter));
+  const filteredIncidents = incidents.filter(r => (!r.reported_at || new Date(r.reported_at) >= cutoffDate) && (vehicleFilter === "all" || r.vehicle_id === vehicleFilter));
+  const openIncidents = filteredIncidents.filter(r => !["resolved","closed"].includes(String(r.status||"").toLowerCase()));
+  const highIncidents = filteredIncidents.filter(r => ["high","critical","חמור","גבוה","קריטי"].includes(String(r.severity||"").toLowerCase()));
   const maintenanceSpend = filteredMaintenance.reduce((sum,r)=>sum+Number(r.cost||0),0);
   const maintenanceByVehicle = vehicles.map(v=>({ ...v, spend: filteredMaintenance.filter(r=>r.vehicle_id===v.id).reduce((sum,r)=>sum+Number(r.cost||0),0), jobs: filteredMaintenance.filter(r=>r.vehicle_id===v.id).length })).filter(v=>v.jobs).sort((a,b)=>b.spend-a.spend);
   const totalKm = filtered.reduce((s, t) => s + (t.km || 0), 0);
@@ -126,6 +133,8 @@ export default function ReportsPage() {
         <Stat icon={<Truck/>} title="זמן נסיעה מצטבר" value={Math.floor(totalMinutes/60) + " ש׳ " + Math.round(totalMinutes%60) + " ד׳"}/>
         <Stat icon={<Users/>} title="נסיעות עם GPS מספיק" value={withDistance}/>
         <Stat icon={<BarChart3/>} title="הוצאות תחזוקה בתקופה" value={maintenanceSpend.toLocaleString("he-IL")+" ₪"}/>
+        <Stat icon={<Truck/>} title="אירועים פתוחים" value={openIncidents.length}/>
+        <Stat icon={<Users/>} title="אירועים בחומרה גבוהה" value={highIncidents.length}/>
       </section>
       <section style={panel}>
         <h3 style={{marginTop:0}}>ביצועים לפי נהג</h3>
@@ -138,6 +147,10 @@ export default function ReportsPage() {
       <section style={panel}>
         <h3 style={{marginTop:0}}>הוצאות תחזוקה לפי רכב</h3>
         {maintenanceByVehicle.length ? maintenanceByVehicle.map(v=><div key={v.id} style={line}><b>{v.registration_number}</b><span>{v.jobs} טיפולים · {v.spend.toLocaleString("he-IL")} ₪</span></div>) : <p>אין הוצאות תחזוקה שהושלמו בתקופה ובסינון שנבחרו.</p>}
+      </section>
+      <section style={panel}>
+        <h3 style={{marginTop:0}}>אירועים ודיווחים</h3>
+        {filteredIncidents.length ? filteredIncidents.map(r=><div key={r.id} style={line}><div><b>{r.incident_type || "אירוע"} · {vehicles.find(v=>v.id===r.vehicle_id)?.registration_number || "רכב לא ידוע"}</b><div style={{fontSize:13,color:"#718096"}}>{date(r.reported_at)} · {r.severity || "חומרה לא צוינה"} · {r.status || "סטטוס לא צוין"}</div>{r.description ? <div style={{fontSize:13,marginTop:4}}>{r.description}</div> : null}</div><span>{["resolved","closed"].includes(String(r.status||"").toLowerCase()) ? "טופל" : "דורש מעקב"}</span></div>) : <p>אין אירועים בתקופה ובסינון שנבחרו.</p>}
       </section>
       <section style={panel}>
         <h3 style={{marginTop:0}}>פירוט נסיעות</h3>
