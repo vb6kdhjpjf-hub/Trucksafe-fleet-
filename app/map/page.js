@@ -26,7 +26,7 @@ export default function FleetMapPage() {
     if (tripError) { setError("לא ניתן לטעון נסיעות: " + tripError.message); return; }
     const points = await Promise.all((trips || []).map(async trip => {
       const [{ data: loc }, { data: history }, { data: driver }, { data: vehicle }] = await Promise.all([
-        supabase.from("trip_locations").select("latitude,longitude,speed_kmh,recorded_at")
+        supabase.from("trip_locations").select("id,latitude,longitude,speed_kmh,recorded_at")
           .eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("trip_locations").select("latitude,longitude,recorded_at").eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(3000),
         supabase.from("drivers").select("full_name").eq("id", trip.driver_id).maybeSingle(),
@@ -94,7 +94,7 @@ export default function FleetMapPage() {
       const marker = L.marker([Number(loc.latitude), Number(loc.longitude)]).addTo(map);
       marker.bindPopup("<b>" + loc.driver + "</b><br/>רכב: " + loc.vehicle +
         "<br/>מהירות: " + (loc.speed_kmh == null ? "לא זמינה" : Math.round(Number(loc.speed_kmh)) + " קמ״ש") +
-        "<br/>עודכן: " + new Date(loc.recorded_at).toLocaleString("he-IL"));
+        "<br/>עודכן: " + new Date(loc.recorded_at).toLocaleString("he-IL") + "<br/>" + (Date.now() - new Date(loc.recorded_at).getTime() > 120000 ? "אזהרה: המיקום מתעכב" : "המיקום מעודכן"));
       return marker;
     });
     const colors = ["#2563eb", "#16a34a", "#d97706", "#9333ea", "#dc2626"];
@@ -123,7 +123,7 @@ export default function FleetMapPage() {
         <h3 style={{ marginTop: 0 }}><Truck size={18} style={{ verticalAlign: "middle" }}/> נסיעות ומסלולים עם GPS ({locations.length})</h3>
         {locations.length === 0 ? <p style={{ color: "#718096" }}>אין כרגע נקודות GPS בנסיעות הפעילות. הנהג צריך להתחיל מעקב GPS במסך משימות ונסיעות.</p> :
           locations.map(loc => <div key={loc.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "12px 0", borderTop: "1px solid #edf0f5", flexWrap: "wrap" }}>
-            <div><b>{loc.driver} · {loc.vehicle}</b><div style={{ color: "#718096", fontSize: 13 }}>עודכן {new Date(loc.recorded_at).toLocaleString("he-IL")} · {loc.speed_kmh == null ? "מהירות לא זמינה" : Math.round(Number(loc.speed_kmh)) + " קמ״ש"}</div></div>
+            <div><b>{loc.driver} · {loc.vehicle}</b><div style={{ color: "#718096", fontSize: 13 }}>עודכן {new Date(loc.recorded_at).toLocaleString("he-IL")} · {loc.speed_kmh == null ? "מהירות לא זמינה" : Math.round(Number(loc.speed_kmh)) + " קמ״ש"}</div><div style={{ fontSize: 13, color: Date.now() - new Date(loc.recorded_at).getTime() > 120000 ? "#b45309" : "#15803d", fontWeight: 600 }}>{Date.now() - new Date(loc.recorded_at).getTime() > 600000 ? "המיקום לא עודכן מעל 10 דקות" : Date.now() - new Date(loc.recorded_at).getTime() > 120000 ? "המיקום מתעכב — מעל 2 דקות" : "המיקום מעודכן"}</div></div>
             <a target="_blank" rel="noreferrer" href={"https://www.google.com/maps?q=" + loc.latitude + "," + loc.longitude} style={{ color: "#3867e8" }}><MapPin size={15} style={{ verticalAlign: "middle" }}/> ניווט לנקודה</a>
           </div>)}
       </section>
