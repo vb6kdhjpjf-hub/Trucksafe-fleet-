@@ -20,6 +20,7 @@ export default function Home() {
   const [activeTrips,setActiveTrips]=useState(0);
   const [openIncidents,setOpenIncidents]=useState(0);
   const [activeTasks,setActiveTasks]=useState(0);
+  const [maintenanceAlerts,setMaintenanceAlerts]=useState([]);
   const [liveLocations,setLiveLocations]=useState([]);
   const [showVehicle,setShowVehicle]=useState(false);
   const [registration,setRegistration]=useState("");
@@ -34,8 +35,8 @@ export default function Home() {
     const {data:current,error:fleetError}=await supabase.from("fleets").select("id,name").eq("id",membership.fleet_id).single();
     if(fleetError){setMessage("שגיאה בטעינת הצי: "+fleetError.message);return;}
     setFleet({...current,role:membership.role});
-    const [v,d,tr,inc,ta,active]=await Promise.all([
-      supabase.from("vehicles").select("id,registration_number,make,model,vehicle_type,status,assigned_driver_id").eq("fleet_id",current.id).order("created_at",{ascending:false}),
+    const [v,d,tr,inc,ta,active,maint]=await Promise.all([
+      supabase.from("vehicles").select("id,registration_number,make,model,vehicle_type,status,assigned_driver_id,test_due_at,insurance_due_at,registration_due_at,next_service_at").eq("fleet_id",current.id).order("created_at",{ascending:false}),
       supabase.from("drivers").select("id,full_name,phone,status").eq("fleet_id",current.id).order("created_at",{ascending:false}),
       supabase.from("trips").select("id",{count:"exact",head:true}).eq("fleet_id",current.id).eq("status","active"),
       supabase.from("incidents").select("id",{count:"exact",head:true}).eq("fleet_id",current.id).neq("status","resolved"),
@@ -46,7 +47,7 @@ export default function Home() {
     if(d.error)setMessage("שגיאה בטעינת הנהגים: "+d.error.message); else setDrivers(d.data||[]);
     if(tr.error)setMessage("שגיאה בטעינת הנסיעות: "+tr.error.message); else setActiveTrips(tr.count||0);
     if(inc.error)setMessage("שגיאה בטעינת אירועי בטיחות: "+inc.error.message); else setOpenIncidents(inc.count||0);
-    if(ta.error)setMessage("שגיאה בטעינת המשימות: "+ta.error.message); else setActiveTasks(ta.count||0);
+    if(ta.error)setMessage("שגיאה בטעינת המשימות: "+ta.error.message); else setActiveTasks(ta.count||0);\n    if(maint.error)setMessage("שגיאה בטעינת תזכורות תחזוקה: "+maint.error.message); else setMaintenanceAlerts(maint.data||[]);
     if(active.error){setMessage("שגיאה בטעינת מיקומי נסיעות: "+active.error.message);setLiveLocations([]);} else if(active.data?.length){
       const points=await Promise.all(active.data.map(async trip=>{
         const {data:loc,error:locError}=await supabase.from("trip_locations").select("latitude,longitude,speed_kmh,heading_degrees,recorded_at").eq("trip_id",trip.id).order("recorded_at",{ascending:false}).limit(1).maybeSingle();
@@ -140,6 +141,7 @@ export default function Home() {
     <section className="fleet-content"><div className="fleet-welcome"><div><small>סביבת ניהול פעילה</small><h2>{fleet.name}</h2><p>שלום {session.user.user_metadata?.full_name||session.user.email}</p></div><span className="role-pill">{fleet.role==="owner"?"בעלים":fleet.role}</span></div>
       {message&&<div className="auth-message">{message}</div>}
       <div className="fleet-stats"><article><Truck/><strong>{vehicles.length}</strong><span>כלי רכב בצי</span></article><article><Users/><strong>{drivers.length}</strong><span>נהגים רשומים</span></article><article><ClipboardList/><strong>{activeTasks}</strong><span>משימות פתוחות</span></article><article><Navigation/><strong>{activeTrips}</strong><span>נסיעות פעילות</span></article><article><AlertTriangle/><strong>{openIncidents}</strong><span>אירועי בטיחות פתוחים</span></article></div>
+      {(() => { const today=new Date(); today.setHours(0,0,0,0); const due=[]; vehicles.forEach(v=>{[["test_due_at","טסט"],["insurance_due_at","ביטוח"],["registration_due_at","רישיון רכב"],["next_service_at","טיפול תקופתי"]].forEach(([key,label])=>{if(!v[key])return;const date=new Date(v[key]+"T00:00:00");const days=Math.ceil((date-today)/86400000);if(days<=30)due.push({id:v.id+key,vehicle:v.registration_number,label,date:v[key],days});});});const all=[...due.map(x=>({...x,type:"vehicle"})),...maintenanceAlerts.map(x=>({id:x.id,vehicle:vehicles.find(v=>v.id===x.vehicle_id)?.registration_number||"רכב לא ידוע",label:x.maintenance_type||"תחזוקה",date:x.scheduled_at,days:x.scheduled_at?Math.ceil((new Date(x.scheduled_at+"T00:00:00")-today)/86400000):null,type:"maintenance"}))].sort((a,b)=>(a.days??9999)-(b.days??9999));return <section className="fleet-panel"><div className="fleet-panel-head"><div><h3>התראות בטיחות ותחזוקה</h3><p>מסמכים שפג תוקפם או עומדים לפוג, וטיפולים שטרם הושלמו</p></div><a className="nav-link" href="/maintenance">ניהול תחזוקה</a></div>{all.length===0?<div className="fleet-empty"><ShieldCheck size={24}/><p>אין כרגע התראות פתוחות.</p></div>:<div className="vehicle-list">{all.map(x=><div className="vehicle-row" key={x.id}><AlertTriangle size={19}/><div><b>{x.vehicle} · {x.label}</b><small>{x.type==="maintenance"?"טיפול מתוכנן":"תוקף מסמך"} · {x.date||"ללא תאריך"}</small></div><span className={x.days!==null&&x.days<0?"status-late":"status-pending"}>{x.days===null?"ממתין":x.days<0?"באיחור "+Math.abs(x.days)+" ימים":x.days===0?"היום":"בעוד "+x.days+" ימים"}</span></div>)}</div>}</section>; })()}
       <section className="fleet-panel"><div className="fleet-panel-head"><div><h3>מיקומי נהגים בזמן אמת</h3><p>המיקום האחרון שנשמר בכל נסיעה פעילה</p></div><span className="role-pill">{liveLocations.length} מיקומים</span></div>
       {liveLocations.length===0?<div className="fleet-empty"><Navigation size={26}/><p>עדיין אין נקודות GPS בנסיעות הפעילות.</p><span>כדי לראות נהג כאן, יש להתחיל מעקב GPS במסך משימות ונסיעות.</span></div>:<div className="vehicle-list">{liveLocations.map(loc=><div className="vehicle-row" key={loc.id}><Navigation size={20}/><div><b>{loc.driver} · {loc.vehicle}</b><small>עודכן: {new Date(loc.recorded_at).toLocaleString("he-IL")} · {loc.speed_kmh==null?"מהירות לא זמינה":Math.round(Number(loc.speed_kmh))+" קמ״ש"}</small><small>{Number(loc.latitude).toFixed(5)}, {Number(loc.longitude).toFixed(5)}</small></div><a className="nav-link" target="_blank" rel="noreferrer" href={"https://www.google.com/maps?q="+loc.latitude+","+loc.longitude}>פתיחה במפה</a></div>)}</div>}
       </section>
