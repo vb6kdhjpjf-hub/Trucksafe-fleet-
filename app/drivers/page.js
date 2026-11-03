@@ -86,7 +86,7 @@ export default function DriversPage() {
   }
 
   async function toggleStatus(driver) {
-    const nextStatus = driver.status === "active" ? "inactive" : "active";
+    const nextStatus = driver.status === "active" ? "off_duty" : "active";
     setBusy(true); setMessage("");
     const { error } = await supabase.from("drivers").update({ status: nextStatus }).eq("id", driver.id).eq("fleet_id", fleet.id);
     if (error) setMessage("לא הצלחנו לעדכן את סטטוס הנהג: " + error.message);
