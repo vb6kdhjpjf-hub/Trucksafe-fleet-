@@ -92,9 +92,11 @@ export default function FleetMapPage() {
     routeLines.current.forEach(line => line.remove());
     markers.current = locations.map(loc => {
       const marker = L.marker([Number(loc.latitude), Number(loc.longitude)]).addTo(map);
-      marker.bindPopup("<b>" + loc.driver + "</b><br/>רכב: " + loc.vehicle +
-        "<br/>מהירות: " + (loc.speed_kmh == null ? "לא זמינה" : Math.round(Number(loc.speed_kmh)) + " קמ״ש") +
-        "<br/>עודכן: " + new Date(loc.recorded_at).toLocaleString("he-IL") + "<br/>" + (Date.now() - new Date(loc.recorded_at).getTime() > 120000 ? "אזהרה: המיקום מתעכב" : "המיקום מעודכן"));
+      const updatedAt = new Date(loc.recorded_at);
+      const validTimestamp = Number.isFinite(updatedAt.getTime());
+      marker.bindPopup("<b>" + escapeHtml(loc.driver) + "</b><br/>רכב: " + escapeHtml(loc.vehicle) +
+        "<br/>מהירות: " + (loc.speed_kmh == null ? "לא זמינה" : escapeHtml(Math.round(Number(loc.speed_kmh)) + " קמ״ש")) +
+        "<br/>עודכן: " + (validTimestamp ? escapeHtml(updatedAt.toLocaleString("he-IL")) : "לא ידוע") + "<br/>" + (validTimestamp && Date.now() - updatedAt.getTime() > 120000 ? "אזהרה: המיקום מתעכב" : "המיקום מעודכן"));
       return marker;
     });
     const colors = ["#2563eb", "#16a34a", "#d97706", "#9333ea", "#dc2626"];
@@ -130,5 +132,10 @@ export default function FleetMapPage() {
     </>}
   </main>;
 }
+
+const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, char => {
+  const entities = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+  return entities[char];
+});
 
 const buttonStyle = { display: "inline-flex", alignItems: "center", gap: 7, border: "1px solid #e1e7f0", background: "white", padding: "10px 13px", borderRadius: 10, cursor: "pointer", color: "#172338" };
