@@ -31,7 +31,7 @@ export default function MaintenancePage() {
 
   async function load(id){
     const [v,r]=await Promise.all([
-      supabase.from("vehicles").select("id,registration_number,make,model,odometer_km").eq("fleet_id",id).order("registration_number"),
+      supabase.from("vehicles").select("id,registration_number,make,model,odometer_km,next_service_at").eq("fleet_id",id).order("registration_number"),
       supabase.from("maintenance_records").select("id,vehicle_id,maintenance_type,description,scheduled_at,completed_at,cost,odometer_km,status,created_at").eq("fleet_id",id).order("scheduled_at",{ascending:true})
     ]);
     if(v.error || r.error){setMessage("שגיאה בטעינת הנתונים: "+(v.error?.message||r.error?.message));return;}
@@ -57,6 +57,7 @@ export default function MaintenancePage() {
   const overdue=pending.filter(r=>r.scheduled_at && r.scheduled_at<today);
   const upcoming=pending.filter(r=>r.scheduled_at && r.scheduled_at>=today && r.scheduled_at<=new Date(Date.now()+30*86400000).toISOString().slice(0,10));
   const date=v=>v?new Date(v+"T00:00:00").toLocaleDateString("he-IL"):"לא נקבע";
+  const vehicleDue=vehicles.filter(v=>v.next_service_at && v.next_service_at<=new Date(Date.now()+30*86400000).toISOString().slice(0,10)).sort((a,b)=>a.next_service_at.localeCompare(b.next_service_at));
   const money=v=>v==null?"—":Number(v).toLocaleString("he-IL")+" ₪";
   if(loading)return <main className="auth-wrap"><section className="auth-card">טוען נתוני תחזוקה...</section></main>;
   return <main className="fleet-home maintenance-page" dir="rtl">
@@ -78,7 +79,7 @@ export default function MaintenancePage() {
         <label>סטטוס<select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option value="scheduled">מתוכנן</option><option value="completed">הושלם</option><option value="in_progress">בתהליך</option></select></label>
         <div className="form-actions"><button className="primary-button" disabled={busy||!form.vehicle_id}>{busy?"שומר...":"שמירת טיפול"}</button><button type="button" className="secondary-button" onClick={()=>setShowForm(false)}>ביטול</button></div>
       </form>}
-      <section className="data-card"><div className="section-heading"><h3>רשימת טיפולים</h3><button className="secondary-button" onClick={()=>load(fleet.id)}><RefreshCw size={15}/> רענון</button></div>
+      {vehicleDue.length>0&&<section className="data-card"><h3>תזכורות לפי מועד הטיפול הבא ברכב</h3>{vehicleDue.map(v=><div className="data-row" key={v.id}><div><strong>{v.registration_number} · {[v.make,v.model].filter(Boolean).join(" ")}</strong><p>מועד טיפול הבא שהוגדר ברכב: {date(v.next_service_at)}</p></div><span className={v.next_service_at<today?"status-late":"status-pending"}>{v.next_service_at<today?"עבר מועד הטיפול":"מתקרב"}</span></div>)}</section>}<section className="data-card"><div className="section-heading"><h3>רשימת טיפולים</h3><button className="secondary-button" onClick={()=>load(fleet.id)}><RefreshCw size={15}/> רענון</button></div>
         {!records.length?<p>אין עדיין רישומי תחזוקה.</p>:records.map(r=>{const vehicle=vehicles.find(v=>v.id===r.vehicle_id);const late=r.status!=="completed"&&r.scheduled_at&&r.scheduled_at<today;return <article className="data-row" key={r.id}><div><strong>{vehicle?.registration_number||"רכב לא ידוע"} · {r.maintenance_type}</strong><p>{r.description||"ללא תיאור"} · מועד: {date(r.scheduled_at)} · עלות: {money(r.cost)} · ק״מ: {r.odometer_km??"—"}</p></div><div className="row-actions"><span className={r.status==="completed"?"status-done":late?"status-late":"status-pending"}>{r.status==="completed"?"הושלם":late?"באיחור":r.status==="in_progress"?"בתהליך":"מתוכנן"}</span>{r.status!=="completed"&&<button className="secondary-button" disabled={busy} onClick={()=>markDone(r)}>סמן כהושלם</button>}</div></article>;})}
       </section>
     </section>
