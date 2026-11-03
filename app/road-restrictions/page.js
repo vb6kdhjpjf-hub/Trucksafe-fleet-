@@ -44,19 +44,33 @@ export default function RoadRestrictionsPage() {
   async function save(e) {
     e.preventDefault();
     if (!fleet || !["owner", "fleet_manager", "dispatcher"].includes(fleet.role)) { setMessage("אין הרשאה להוסיף מגבלת דרך."); return; }
+    if (!form.road_name.trim()) { setMessage("יש להזין שם כביש."); return; }
+    const keys = ["max_height_m", "max_weight_t", "max_width_m", "max_length_m"];
+    if (keys.some(key => form[key] !== "" && (!Number.isFinite(Number(form[key])) || Number(form[key]) <= 0))) {
+      setMessage("יש להזין מידות ומשקלים כמספרים חיוביים."); return;
+    }
+    if ((form.valid_from && form.valid_until && form.valid_until < form.valid_from) ||
+        (form.active_from && form.active_until && form.active_until < form.active_from)) {
+      setMessage("תאריך או שעת הסיום אינם יכולים להיות לפני ההתחלה."); return;
+    }
     setBusy(true); setMessage("");
-    const payload = {
-      fleet_id: fleet.id, road_name: form.road_name.trim(), restriction_type: form.restriction_type,
-      direction: form.direction.trim() || null, max_height_m: form.max_height_m || null,
-      max_weight_t: form.max_weight_t || null, max_width_m: form.max_width_m || null,
-      max_length_m: form.max_length_m || null, valid_from: form.valid_from || null,
-      valid_until: form.valid_until || null, active_from: form.active_from || null,
-      active_until: form.active_until || null, notes: form.notes.trim() || null
-    };
-    const { error } = await supabase.from("road_restrictions").insert(payload);
-    if (error) setMessage("שמירת המגבלה נכשלה: " + error.message);
-    else { setForm(blank); setShowForm(false); await load(fleet.id); setMessage("מגבלת הדרך נשמרה."); }
-    setBusy(false);
+    try {
+      const numeric = value => value === "" ? null : Number(value);
+      const payload = {
+        fleet_id: fleet.id, created_by: session?.user?.id, road_name: form.road_name.trim(),
+        restriction_type: form.restriction_type, direction: form.direction.trim() || null,
+        max_height_m: numeric(form.max_height_m), max_weight_t: numeric(form.max_weight_t),
+        max_width_m: numeric(form.max_width_m), max_length_m: numeric(form.max_length_m),
+        valid_from: form.valid_from || null, valid_until: form.valid_until || null,
+        active_from: form.active_from || null, active_until: form.active_until || null,
+        notes: form.notes.trim() || null
+      };
+      const { error } = await supabase.from("road_restrictions").insert(payload);
+      if (error) { setMessage("שמירת המגבלה נכשלה: " + error.message); return; }
+      setForm(blank); setShowForm(false); await load(fleet.id); setMessage("מגבלת הדרך נשמרה.");
+    } catch (error) {
+      setMessage("שמירת המגבלה נכשלה: " + (error?.message || "שגיאה לא ידועה"));
+    } finally { setBusy(false); }
   }
 
   async function toggle(row) {
