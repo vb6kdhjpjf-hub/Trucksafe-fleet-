@@ -12,8 +12,8 @@ CREATE TABLE public.drivers (
   id uuid PRIMARY KEY, fleet_id uuid NOT NULL, status text NOT NULL, user_id uuid
 );
 CREATE TABLE public.vehicles (
-  id uuid PRIMARY KEY, fleet_id uuid NOT NULL, status text NOT NULL,
-  assigned_driver_id uuid, updated_at timestamptz DEFAULT now()
+  id uuid PRIMARY KEY, fleet_id uuid NOT NULL, registration_number text,
+  status text NOT NULL, assigned_driver_id uuid, updated_at timestamptz DEFAULT now()
 );
 CREATE TABLE public.tasks (
   id uuid PRIMARY KEY, fleet_id uuid NOT NULL, assigned_driver_id uuid NOT NULL,
