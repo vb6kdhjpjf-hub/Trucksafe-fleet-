@@ -35,7 +35,7 @@ export default function MaintenancePage() {
     const [v,r,i]=await Promise.all([
       supabase.from("vehicles").select("id,registration_number,make,model,odometer_km,next_service_at,test_due_at,insurance_due_at,registration_due_at").eq("fleet_id",id).order("registration_number"),
       supabase.from("maintenance_records").select("id,vehicle_id,incident_id,maintenance_type,description,scheduled_at,completed_at,cost,odometer_km,status,created_at").eq("fleet_id",id).order("scheduled_at",{ascending:true}),
-      supabase.from("incidents").select("id,vehicle_id,incident_type,description,status,reported_at").eq("fleet_id",id).neq("status","resolved").order("reported_at",{ascending:false})
+      supabase.from("incidents").select("id,vehicle_id,incident_type,description,status,reported_at").eq("fleet_id",id).in("status",["open","investigating"]).order("reported_at",{ascending:false})
     ]);
     if(v.error || r.error || i.error){setMessage("שגיאה בטעינת הנתונים: "+(v.error?.message||r.error?.message||i.error?.message));return;}
     setVehicles(v.data||[]);setIncidents(i.data||[]);setCompliance(Object.fromEntries((v.data||[]).map(x=>[x.id,{test_due_at:x.test_due_at||"",insurance_due_at:x.insurance_due_at||"",registration_due_at:x.registration_due_at||""}])));setRecords(r.data||[]);
