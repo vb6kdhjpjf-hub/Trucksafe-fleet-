@@ -33,8 +33,12 @@ async function geocode(address, apiKey) {
 }
 
 export async function GET() {
+  const explicitlyEnabled = process.env.TRUCK_ROUTING_ENABLED === "true";
   const providerEnabled = process.env.TRUCK_ROUTING_PROVIDER === "here";
-  return response({ configured: providerEnabled && Boolean(process.env.HERE_API_KEY) });
+  return response({
+    configured: explicitlyEnabled && providerEnabled && Boolean(process.env.HERE_API_KEY),
+    reason: !explicitlyEnabled ? "disabled" : !providerEnabled ? "provider_not_approved" : !process.env.HERE_API_KEY ? "missing_provider_key" : "ready"
+  });
 }
 
 export async function POST(request) {
@@ -65,8 +69,10 @@ export async function POST(request) {
       .maybeSingle();
     if (membershipError || !membership) return response({ error: "אין לחשבון הרשאה לתכנון מסלולים בצי." }, 403);
 
-    const apiKey = process.env.TRUCK_ROUTING_PROVIDER === "here" ? process.env.HERE_API_KEY : null;
-    if (!apiKey) return response({ error: "מנוע ניתוב המשאיות עדיין לא הופעל. יש להשלים חיבור לספק מאושר ולבדוק אותו לפני שימוש." }, 503);
+    const explicitlyEnabled = process.env.TRUCK_ROUTING_ENABLED === "true";
+    const providerApproved = process.env.TRUCK_ROUTING_PROVIDER === "here";
+    const apiKey = explicitlyEnabled && providerApproved ? process.env.HERE_API_KEY : null;
+    if (!apiKey) return response({ error: "מנוע ניתוב המשאיות מושבת או לא הוגדר במלואו. אין להשתמש במסלול עד להשלמת אישור הספק, הגדרה ובדיקות בטיחות." }, 503);
 
     const rawBody = await request.text();
     if (new TextEncoder().encode(rawBody).byteLength > 16000) {
