@@ -150,7 +150,7 @@ export default function IncidentsPage() {
       <div className="drivers-header-actions"><a className="nav-link" href="/"><ArrowRight size={16}/> לוח הבקרה</a><a className="nav-link" href="/tasks">משימות ונסיעות</a><button className="logout-btn" onClick={signOut}><LogOut size={16}/> יציאה</button></div>
     </header>
     <section className="fleet-content">
-      <div className="fleet-welcome"><div><small>בטיחות ותחקור</small><h2>אירועי בטיחות</h2><p>{fleet?.name||"הצי שלך"} · {incidents.filter(i=>i.status!=="resolved").length} אירועים פתוחים</p></div><span className="role-pill"><AlertTriangle size={14}/> דיווח ומעקב</span></div>
+      <div className="fleet-welcome"><div><small>בטיחות ותחקור</small><h2>אירועי בטיחות</h2><p>{fleet?.name||"הצי שלך"} · {incidents.filter(i=>["open","investigating"].includes(i.status)).length} אירועים פתוחים</p></div><span className="role-pill"><AlertTriangle size={14}/> דיווח ומעקב</span></div>
       {message && <div className="auth-message">{message}</div>}
       <section className="fleet-panel">
         <div className="fleet-panel-head"><div><h3>דיווח אירוע חדש</h3><p>תעד תאונה, תקלה או מפגע בטיחותי</p></div><button className="primary-btn" onClick={()=>{setShowForm(!showForm);setMessage("");}}><Plus size={16}/> דיווח אירוע</button></div>
@@ -180,7 +180,7 @@ export default function IncidentsPage() {
             {item.photo_url&&<div className="task-assignees"><a className="nav-link" href={item.photo_url} target="_blank" rel="noreferrer">צפייה בתמונת האירוע</a></div>}
             {item.driver_id&&<div className="task-assignees"><span>נהג: {drivers.find(d=>d.id===item.driver_id)?.full_name||"לא ידוע"}</span></div>}
             {item.vehicle_id&&<div className="task-assignees"><span>רכב: {vehicles.find(v=>v.id===item.vehicle_id)?.registration_number||"לא ידוע"}</span></div>}
-            {item.status!=="resolved"&&canResolveIncidents&&<div className="task-actions"><button className="primary-btn" disabled={busy} onClick={()=>resolveIncident(item)}><CheckCircle2 size={14}/> סימון כטופל</button></div>}
+            {["open","investigating"].includes(item.status)&&canResolveIncidents&&<div className="task-actions"><button className="primary-btn" disabled={busy} onClick={()=>resolveIncident(item)}><CheckCircle2 size={14}/> סימון כטופל</button></div>}
           </article>)}</div>}
       </section>
       <p className="fleet-foot">TruckSafe Fleet V1 · דיווחי הבטיחות נשמרים במסד הנתונים של הצי</p>
