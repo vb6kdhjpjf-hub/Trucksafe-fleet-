@@ -75,7 +75,8 @@ export default function TruckRoutingPage() {
   const [result, setResult] = useState(null);
   const [message, setMessage] = useState("");
   const [mapMessage, setMapMessage] = useState("");
-  const [providerReady, setProviderReady] = useState(false);\n  const [locating, setLocating] = useState(false);
+  const [providerReady, setProviderReady] = useState(false);
+  const [locating, setLocating] = useState(false);
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למערכת אינו מוגדר."); setLoading(false); return; }
@@ -167,7 +168,11 @@ export default function TruckRoutingPage() {
           lengthCm: Number(form.lengthCm),
           grossWeightKg: Number(form.grossWeightKg),
           currentWeightKg: Number(form.currentWeightKg),
-          weightPerAxleKg: form.weightPerAxleKg ? Number(form.weightPerAxleKg) : null,\n          vehicleType: form.vehicleType,\n          axleCount: Number(form.axleCount),\n          trailerCount: Number(form.trailerCount),\n          originCoordinates: form.originCoordinates
+          weightPerAxleKg: form.weightPerAxleKg ? Number(form.weightPerAxleKg) : null,
+          vehicleType: form.vehicleType,
+          axleCount: Number(form.axleCount),
+          trailerCount: Number(form.trailerCount),
+          originCoordinates: form.originCoordinates
         })
       });
       const data = await response.json();
@@ -212,7 +217,10 @@ export default function TruckRoutingPage() {
           <label style={label}>אורך כולל (ס״מ)<input required type="number" min="200" max="3000" step="1" style={field} value={form.lengthCm} onChange={e => update("lengthCm", e.target.value)} placeholder="כולל נגרר"/></label>
           <label style={label}>משקל כולל מותר (ק״ג)<input required type="number" min="1000" max="100000" step="100" style={field} value={form.grossWeightKg} onChange={e => update("grossWeightKg", e.target.value)} placeholder="לפי רישיון הרכב"/></label>
           <label style={label}>משקל בפועל בנסיעה (ק״ג)<input required type="number" min="1000" max="100000" step="100" style={field} value={form.currentWeightKg} onChange={e => update("currentWeightKg", e.target.value)} placeholder="רכב + מטען + נגרר"/></label>
-          <label style={label}>סוג משאית<select required style={field} value={form.vehicleType} onChange={e => update("vehicleType", e.target.value)}><option value="StraightTruck">משאית קשיחה</option><option value="Tractor">גורר / ראש גורר</option></select></label>\n          <label style={label}>מספר סרנים<input required type="number" min="2" max="12" step="1" style={field} value={form.axleCount} onChange={e => update("axleCount", e.target.value)} placeholder="לפי רישיון הרכב"/></label>\n          <label style={label}>מספר נגררים<input required type="number" min="0" max="3" step="1" style={field} value={form.trailerCount} onChange={e => update("trailerCount", e.target.value)}/></label>\n          <label style={label}>משקל מרבי לסרן (ק״ג, אם ידוע)<input type="number" min="500" max="30000" step="100" style={field} value={form.weightPerAxleKg} onChange={e => update("weightPerAxleKg", e.target.value)} placeholder="אופציונלי"/></label>
+          <label style={label}>סוג משאית<select required style={field} value={form.vehicleType} onChange={e => update("vehicleType", e.target.value)}><option value="StraightTruck">משאית קשיחה</option><option value="Tractor">גורר / ראש גורר</option></select></label>
+          <label style={label}>מספר סרנים<input required type="number" min="2" max="12" step="1" style={field} value={form.axleCount} onChange={e => update("axleCount", e.target.value)} placeholder="לפי רישיון הרכב"/></label>
+          <label style={label}>מספר נגררים<input required type="number" min="0" max="3" step="1" style={field} value={form.trailerCount} onChange={e => update("trailerCount", e.target.value)}/></label>
+          <label style={label}>משקל מרבי לסרן (ק״ג, אם ידוע)<input type="number" min="500" max="30000" step="100" style={field} value={form.weightPerAxleKg} onChange={e => update("weightPerAxleKg", e.target.value)} placeholder="אופציונלי"/></label>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 18 }}>
           <button type="submit" disabled={busy || !providerReady} style={button}><Route size={17} style={{ verticalAlign: "middle" }}/> {busy ? "מחשב מסלול..." : providerReady ? "חשב מסלול למשאית" : "ממתין לחיבור שירות הניווט"}</button>
