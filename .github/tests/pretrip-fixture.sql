@@ -83,6 +83,22 @@ ON public.drivers
 FOR SELECT
 TO authenticated
 USING (private.is_fleet_member(fleet_id));
+CREATE POLICY drivers_insert_managers
+ON public.drivers
+FOR INSERT
+TO authenticated
+WITH CHECK (private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher']));
+CREATE POLICY drivers_update_managers
+ON public.drivers
+FOR UPDATE
+TO authenticated
+USING (private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher']))
+WITH CHECK (private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher']));
+CREATE POLICY drivers_delete_managers
+ON public.drivers
+FOR DELETE
+TO authenticated
+USING (private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher']));
 
 ALTER TABLE public.trip_locations ENABLE ROW LEVEL SECURITY;
 CREATE POLICY trip_locations_select_member
