@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+import { csvDocument } from "../../lib/csv";
 import { ArrowRight, BarChart3, Download, RefreshCw, Route, Truck, Users } from "lucide-react";
 
 const kmBetween = (a, b) => {
@@ -130,7 +131,7 @@ export default function ReportsPage() {
       r.description || "", "", "", "", "", "", ""
     ]);
     const rows = [...tripRows, ...maintenanceRows, ...incidentRows];
-    const csv = [headers, ...rows].map(row => row.map(value => '"' + String(value ?? "").replace(/"/g, '""') + '"').join(",")).join("\r\n");
+    const csv = csvDocument([headers, ...rows]);
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
