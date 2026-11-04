@@ -367,6 +367,35 @@ BEGIN
 END $test$;
 RESET ROLE;
 
+-- Dispatchers retain operational fleet-wide visibility, but cannot inspect
+-- other members' account records. Fleet managers can review all memberships.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000004',false);
+DO $test$
+DECLARE
+  f uuid := '10000000-0000-0000-0000-000000000001';
+BEGIN
+  IF (SELECT count(*) FROM public.drivers WHERE fleet_id=f) <> 2
+     OR (SELECT count(*) FROM public.vehicles WHERE fleet_id=f) <> 6
+     OR (SELECT count(*) FROM public.tasks WHERE fleet_id=f) <> 6
+     OR (SELECT count(*) FROM public.fleet_members WHERE fleet_id=f) <> 1 THEN
+    RAISE EXCEPTION 'Dispatcher operational visibility or membership privacy is misconfigured';
+  END IF;
+END $test$;
+RESET ROLE;
+
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000002',false);
+DO $test$
+DECLARE
+  f uuid := '10000000-0000-0000-0000-000000000001';
+BEGIN
+  IF (SELECT count(*) FROM public.fleet_members WHERE fleet_id=f) <> 4 THEN
+    RAISE EXCEPTION 'Fleet manager cannot review all fleet memberships';
+  END IF;
+END $test$;
+RESET ROLE;
+
 -- Assigned drivers must not directly edit vehicle identity or compliance data.
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
