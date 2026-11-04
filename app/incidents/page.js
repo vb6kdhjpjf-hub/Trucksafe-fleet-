@@ -123,7 +123,7 @@ export default function IncidentsPage() {
       if (photoPath) {
         const {error:cleanupError} = await supabase.storage.from("incident-photos").remove([photoPath]);
         setMessage("דיווח האירוע נכשל: "+(error?.message||"שגיאה לא ידועה")+(cleanupError ? " בנוסף, מחיקת התמונה נכשלה: "+cleanupError.message : ""));
-      } else setMessage("דיווח האירוע נכשל: "+(error?.message||"שגיאה לא ידועה));
+      } else setMessage("דיווח האירוע נכשל: "+(error?.message||"שגיאה לא ידועה"));
     } finally { setBusy(false); }
   }
 
