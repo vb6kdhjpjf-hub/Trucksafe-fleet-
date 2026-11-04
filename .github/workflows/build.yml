@@ -24,10 +24,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Generate reproducible dependency lockfile
+      - name: Generate dependency lockfile from package manifest
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --json > npm-audit.json || true
+      - name: Audit production dependencies (fail on high or critical)
+        run: npm audit --omit=dev --audit-level=high --json > npm-audit.json
       - name: Install exact locked dependencies
         run: npm ci --no-audit --no-fund
       - name: Build application
