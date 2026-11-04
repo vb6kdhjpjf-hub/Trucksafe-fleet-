@@ -68,9 +68,16 @@ export async function POST(request) {
     const apiKey = process.env.TRUCK_ROUTING_PROVIDER === "here" ? process.env.HERE_API_KEY : null;
     if (!apiKey) return response({ error: "מנוע ניתוב המשאיות עדיין לא הופעל. יש להשלים חיבור לספק מאושר ולבדוק אותו לפני שימוש." }, 503);
 
-    const contentLength = Number(request.headers.get("content-length") || 0);
-    if (contentLength > 16000) return response({ error: "הבקשה גדולה מדי." }, 413);
-    const raw = await request.json();
+    const rawBody = await request.text();
+    if (new TextEncoder().encode(rawBody).byteLength > 16000) {
+      return response({ error: "הבקשה גדולה מדי." }, 413);
+    }
+    let raw;
+    try {
+      raw = JSON.parse(rawBody);
+    } catch {
+      return response({ error: "נתוני הבקשה אינם JSON תקין." }, 400);
+    }
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
       return response({ error: "נתוני הנסיעה אינם תקינים." }, 400);
     }
