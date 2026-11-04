@@ -173,6 +173,20 @@ BEGIN
      OR NOT has_function_privilege('authenticated','public.finish_trip(uuid,uuid)','EXECUTE') THEN
     RAISE EXCEPTION 'authenticated cannot execute trip lifecycle RPCs';
   END IF;
+  IF (SELECT prosecdef FROM pg_proc WHERE oid='public.get_latest_trip_locations(uuid)'::regprocedure) IS TRUE
+     OR (SELECT prosecdef FROM pg_proc WHERE oid='public.get_active_trip_map_data(uuid)'::regprocedure) IS TRUE THEN
+    RAISE EXCEPTION 'Fleet location read RPCs must remain SECURITY INVOKER';
+  END IF;
+  IF has_function_privilege('anon','public.get_latest_trip_locations(uuid)','EXECUTE')
+     OR has_function_privilege('anon','public.get_active_trip_map_data(uuid)','EXECUTE')
+     OR NOT has_function_privilege('authenticated','public.get_latest_trip_locations(uuid)','EXECUTE')
+     OR NOT has_function_privilege('authenticated','public.get_active_trip_map_data(uuid)','EXECUTE') THEN
+    RAISE EXCEPTION 'Fleet location RPC grants are misconfigured';
+  END IF;
+  IF NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.get_latest_trip_locations(uuid)'::regprocedure) @> ARRAY['search_path=""'])
+     OR NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.get_active_trip_map_data(uuid)'::regprocedure) @> ARRAY['search_path=""']) THEN
+    RAISE EXCEPTION 'Fleet location RPC search_path is not empty';
+  END IF;
   IF NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.start_trip_with_inspection(uuid,uuid,uuid,uuid,text,text,jsonb)'::regprocedure) @> ARRAY['search_path=""'])
      OR NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.finish_trip(uuid,uuid)'::regprocedure) @> ARRAY['search_path=""']) THEN
     RAISE EXCEPTION 'Privileged RPC search_path is not empty';
