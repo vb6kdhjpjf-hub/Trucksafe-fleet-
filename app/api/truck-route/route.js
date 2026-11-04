@@ -32,7 +32,7 @@ async function geocode(address, apiKey) {
   };
 }
 
-export async function POST(request) {
+export async function GET() {\n  return response({ configured: Boolean(process.env.HERE_API_KEY) });\n}\n\nexport async function POST(request) {
   try {
     if (!request.headers.get("content-type")?.includes("application/json")) {
       return response({ error: "יש לשלוח בקשה בפורמט JSON." }, 415);
