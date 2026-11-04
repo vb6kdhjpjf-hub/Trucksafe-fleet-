@@ -86,7 +86,7 @@ BEGIN
     RAISE EXCEPTION 'הנהג אינו פעיל או שאינו שייך לצי';
   END IF;
 
-  IF NOT public.has_fleet_role(p_fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
+  IF NOT private.has_fleet_role(p_fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
      AND v_driver.user_id IS DISTINCT FROM v_user_id THEN
     RAISE EXCEPTION 'רק מנהל הצי או הנהג המשויך למשימה יכולים לפתוח נסיעה';
   END IF;
