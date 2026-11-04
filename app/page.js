@@ -85,9 +85,32 @@ export default function Home() {
 
   useEffect(()=>{
     if(!isSupabaseConfigured){setLoading(false);return;}
-    supabase.auth.getSession().then(async ({data})=>{setSession(data.session);if(data.session)await loadFleet(data.session.user);setLoading(false);});
-    const {data:{subscription}}=supabase.auth.onAuthStateChange(async (event,next)=>{if(event==="PASSWORD_RECOVERY")setRecoveryMode(true);setSession(next);if(next&&!recoveryMode)await loadFleet(next.user);else if(!next){setFleet(null);setVehicles([]);setDrivers([]);}setLoading(false);});
-    return ()=>subscription.unsubscribe();
+    let alive=true;
+    const searchParams=new URLSearchParams(window.location.search);
+    const hashParams=new URLSearchParams(window.location.hash.replace(/^#/,""));
+    const recoveryLink=searchParams.get("reset")==="1"||searchParams.get("type")==="recovery"||hashParams.get("type")==="recovery";
+    if(recoveryLink)setRecoveryMode(true);
+
+    // Subscribe before reading the session so a PASSWORD_RECOVERY event is not missed.
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((event,next)=>{
+      if(event==="PASSWORD_RECOVERY"){
+        setRecoveryMode(true);
+        setMessage("קישור האיפוס אומת. הזן סיסמה חדשה.");
+      }
+      setSession(next);
+      if(event!=="PASSWORD_RECOVERY"&&next&&!recoveryLink)loadFleet(next.user);
+      else if(!next){setFleet(null);setVehicles([]);setDrivers([]);}
+      setLoading(false);
+    });
+
+    supabase.auth.getSession().then(async ({data,error})=>{
+      if(!alive)return;
+      if(error)setMessage("לא הצלחנו לאמת את קישור האיפוס: "+error.message);
+      setSession(data.session);
+      if(data.session&&!recoveryLink)await loadFleet(data.session.user);
+      if(alive)setLoading(false);
+    });
+    return ()=>{alive=false;subscription.unsubscribe();};
   },[]);
 
   async function authenticate(e){
@@ -123,7 +146,7 @@ export default function Home() {
     if(!email.trim()){setMessage("יש להזין תחילה את כתובת המייל.");return;}
     setBusy(true);setMessage("");
     try {
-      const {error}=await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(),{redirectTo:window.location.origin});
+      const {error}=await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(),{redirectTo:window.location.origin+"/?reset=1"});
       if(error)setMessage("לא הצלחנו לשלוח קישור לאיפוס סיסמה: "+error.message);
       else setMessage("אם קיימת כתובת כזו במערכת, נשלח אליה קישור לאיפוס סיסמה. בדוק גם בתיקיית הספאם.");
     } catch(error) {
@@ -138,7 +161,7 @@ export default function Home() {
     try {
       const {error}=await supabase.auth.updateUser({password:newPassword});
       if(error)setMessage("לא הצלחנו לעדכן את הסיסמה: "+error.message);
-      else {setRecoveryMode(false);setNewPassword("");setMessage("הסיסמה עודכנה בהצלחה. כעת אפשר להמשיך למערכת.");}
+      else {setRecoveryMode(false);setNewPassword("");window.history.replaceState({},document.title,window.location.pathname);setMessage("הסיסמה עודכנה בהצלחה. כעת אפשר להמשיך למערכת.");}
     } catch(error) {
       setMessage("עדכון הסיסמה נכשל: "+(error?.message||"שגיאה לא ידועה"));
     } finally {setBusy(false);}
