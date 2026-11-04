@@ -440,6 +440,7 @@ TO authenticated
 WITH CHECK (
   private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
   AND status IN ('pending','assigned')
+  AND (status <> 'assigned' OR (assigned_driver_id IS NOT NULL AND assigned_vehicle_id IS NOT NULL))
 );
 CREATE POLICY tasks_update_authorized
 ON public.tasks
@@ -452,6 +453,7 @@ USING (
 WITH CHECK (
   private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
   AND status IN ('pending','assigned','cancelled')
+  AND (status <> 'assigned' OR (assigned_driver_id IS NOT NULL AND assigned_vehicle_id IS NOT NULL))
   AND NOT EXISTS (
     SELECT 1 FROM public.trips t
     WHERE t.task_id = tasks.id AND t.status = 'active'
