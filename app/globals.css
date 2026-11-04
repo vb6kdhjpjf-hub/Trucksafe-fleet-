@@ -381,3 +381,15 @@ button, a { -webkit-tap-highlight-color: transparent; }
   line-height: 1.6;
   background: #fff;
 }
+
+.form-warning {
+  display: block;
+  grid-column: 1 / -1;
+  color: #9b1c1c;
+  background: #fff0f0;
+  border: 1px solid #f2c5c5;
+  border-radius: 9px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.55;
+}
