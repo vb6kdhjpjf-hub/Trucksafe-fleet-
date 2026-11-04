@@ -153,7 +153,7 @@ export default function ReportsPage() {
 
   return <main className="truck-safe-tool-page" dir="rtl" style={{ minHeight: "100vh", padding: 24, background: "#f5f7fb", color: "#172338" }}>
     <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
-      <div><h1 style={{ margin: 0 }}>דוחות נסיעות</h1><p style={{ color: "#718096" }}>סיכום מרחקים וזמני נסיעה לפי נהג וכלי רכב</p></div>
+      <div><h1 style={{ margin: 0 }}>דוחות נסיעות</h1><p style={{ color: "#718096" }}>סיכום מרחקים וזמני נסיעה לפי נהג וכלי רכב</p><p style={{fontSize:12,color:"#8a5700",marginTop:4}}>מרחקי GPS הם אומדן קו-אווירי בין נקודות שנשמרו, לא מרחק כביש ולא מדידה מוסמכת. נקודות GPS מדווחות מהדפדפן ואינן מאומתות.</p></div>
       <div style={{ display: "flex", gap: 8 }}><button onClick={exportCsv} style={btn}><Download size={16}/> ייצוא לאקסל</button><button onClick={() => loadReport(fleetId)} style={btn}><RefreshCw size={16}/> רענון</button><button onClick={() => router.push("/")} style={btn}><ArrowRight size={16}/> לוח הבקרה</button></div>
     </header>
     {error && <p style={{ background: "#fff0f0", padding: 12, borderRadius: 10 }}>{error}</p>}
@@ -165,7 +165,7 @@ export default function ReportsPage() {
       </section>
       <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 14 }}>
         <Stat icon={<Route/>} title="נסיעות בתקופה" value={filtered.length}/>
-        <Stat icon={<BarChart3/>} title="מרחק מצטבר משוער" value={fmt(totalKm) + " ק״מ"}/>
+        <Stat icon={<BarChart3/>} title="מרחק GPS משוער" value={fmt(totalKm) + " ק״מ"}/>
         <Stat icon={<Truck/>} title="זמן נסיעה מצטבר" value={Math.floor(totalMinutes/60) + " ש׳ " + Math.round(totalMinutes%60) + " ד׳"}/>
         <Stat icon={<Users/>} title="נסיעות עם GPS מספיק" value={withDistance}/>
         <Stat icon={<BarChart3/>} title="הוצאות תחזוקה בתקופה" value={maintenanceSpend.toLocaleString("he-IL")+" ₪"}/>
@@ -177,7 +177,7 @@ export default function ReportsPage() {
         <p style={{fontSize:13,color:"#718096"}}>נסיעות מתחשבות בסינון הנהג והרכב; תחזוקה ואירועים מתחשבים בסינון הרכב.</p>
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",textAlign:"right",fontSize:14}}>
-            <thead><tr>{["חודש","נסיעות","מרחק משוער","הוצאות תחזוקה","אירועים"].map(h=><th key={h} style={{padding:"10px 6px",borderBottom:"1px solid #edf0f5"}}>{h}</th>)}</tr></thead>
+            <thead><tr>{["חודש","נסיעות","מרחק GPS משוער","הוצאות תחזוקה","אירועים"].map(h=><th key={h} style={{padding:"10px 6px",borderBottom:"1px solid #edf0f5"}}>{h}</th>)}</tr></thead>
             <tbody>{monthlySnapshot.map(m=><tr key={m.key}>{[m.label,m.trips,fmt(m.km)+" ק״מ",m.spend.toLocaleString("he-IL")+" ₪",m.incidents].map((v,i)=><td key={i} style={{padding:"11px 6px",borderBottom:"1px solid #edf0f5"}}>{v}</td>)}</tr>)}</tbody>
           </table>
         </div>
