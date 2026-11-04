@@ -1020,3 +1020,5 @@ DROP TRIGGER IF EXISTS enforce_incident_resolution_before_write ON public.incide
 CREATE TRIGGER enforce_incident_resolution_before_write
 BEFORE INSERT OR UPDATE ON public.incidents
 FOR EACH ROW EXECUTE FUNCTION private.enforce_incident_resolution();
+
+-- Safety hardening suite is exercised by .github/tests/pretrip-assertions.sql.
