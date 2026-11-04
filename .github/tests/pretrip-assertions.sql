@@ -134,3 +134,48 @@ BEGIN
     RAISE EXCEPTION 'Privileged RPC search_path is not empty';
   END IF;
 END $$;
+
+-- Exercise the failed-inspection INSERT policy under the authenticated role,
+-- rather than only observing the SECURITY DEFINER RPC's catalog metadata.
+GRANT USAGE ON SCHEMA public, private, auth TO authenticated;
+GRANT SELECT ON public.drivers, public.vehicles, public.inspections TO authenticated;
+GRANT INSERT ON public.inspections TO authenticated;
+GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated;
+
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
+INSERT INTO public.inspections (
+  fleet_id, trip_id, vehicle_id, driver_id, inspection_type,
+  checklist, defects, passed, inspected_at
+) VALUES (
+  '10000000-0000-0000-0000-000000000001', NULL,
+  '30000000-0000-0000-0000-000000000002',
+  '20000000-0000-0000-0000-000000000001',
+  'pre_trip', '{"brakes":false}', 'RLS driver test', false, now()
+);
+RESET ROLE;
+
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000003',false);
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO public.inspections (
+      fleet_id, trip_id, vehicle_id, driver_id, inspection_type,
+      checklist, defects, passed, inspected_at
+    ) VALUES (
+      '10000000-0000-0000-0000-000000000001', NULL,
+      '30000000-0000-0000-0000-000000000002',
+      '20000000-0000-0000-0000-000000000001',
+      'pre_trip', '{"brakes":false}', 'Unauthorized RLS test', false, now()
+    );
+    RAISE EXCEPTION 'Non-member bypassed failed-inspection RLS policy';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+  IF (SELECT count(*) FROM public.inspections
+      WHERE defects = 'RLS driver test') <> 0 THEN
+    RAISE EXCEPTION 'Non-member can read another fleet inspection';
+  END IF;
+END $$;
+RESET ROLE;
