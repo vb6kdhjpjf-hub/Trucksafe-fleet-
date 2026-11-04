@@ -67,6 +67,17 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', manager_user::text, true);
   v_trip_id := public.start_trip_with_inspection(f,t_manager,d,v_manager,'Origin','Destination',checklist);
   IF v_trip_id IS NULL THEN RAISE EXCEPTION 'Fleet manager could not start an assigned trip'; END IF;
+  PERFORM set_config('request.jwt.claim.sub', outsider_user::text, true);
+  BEGIN
+    PERFORM public.finish_trip(f,v_trip_id);
+    RAISE EXCEPTION 'Non-member unexpectedly finished a trip';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'Non-member unexpectedly finished a trip' THEN RAISE; END IF;
+  END;
+  IF (SELECT status FROM public.trips WHERE id=v_trip_id) <> 'active' THEN
+    RAISE EXCEPTION 'Unauthorized user changed trip status';
+  END IF;
+  PERFORM set_config('request.jwt.claim.sub', manager_user::text, true);
   PERFORM public.finish_trip(f,v_trip_id);
   IF (SELECT status FROM public.trips WHERE id=v_trip_id) <> 'completed' THEN
     RAISE EXCEPTION 'Fleet manager could not finish the trip';
@@ -75,6 +86,12 @@ BEGIN
   -- Driver-reported failed inspection is retained and blocks the vehicle.
   PERFORM set_config('request.jwt.claim.sub', driver_user::text, true);
   checklist := jsonb_set(checklist,'{"בלמים ובלם חניה תקינים"}','false'::jsonb);
+  BEGIN
+    PERFORM public.start_trip_with_inspection(f,t_bad,d,v_bad,'Origin','Destination',checklist);
+    RAISE EXCEPTION 'Failed inspection without details was accepted';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'Failed inspection without details was accepted' THEN RAISE; END IF;
+  END;
   checklist := checklist || jsonb_build_object('_defect_details','Brake fault');
   v_trip_id := public.start_trip_with_inspection(f,t_bad,d,v_bad,'Origin','Destination',checklist);
   IF v_trip_id IS NOT NULL THEN RAISE EXCEPTION 'Failed inspection unexpectedly created a trip'; END IF;
