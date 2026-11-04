@@ -76,12 +76,13 @@ export default function DriversPage() {
         license_class: form.license_class.trim() || null,
         license_expires_at: form.license_expires_at || null
       };
-      const result = editing
+      const wasEditing = Boolean(editing);
+      const result = wasEditing
         ? await supabase.from("drivers").update(payload).eq("id", editing.id).eq("fleet_id", fleet.id)
         : await supabase.from("drivers").insert({ ...payload, fleet_id: fleet.id, status: "active" });
       if (result.error) { setMessage("לא הצלחנו לשמור את הנהג: " + result.error.message); return; }
       setShowForm(false); setEditing(null); setForm(emptyForm);
-      await loadDrivers(fleet.id); setMessage(editing ? "פרטי הנהג עודכנו." : "הנהג נוסף לצי בהצלחה.");
+      await loadDrivers(fleet.id); setMessage(wasEditing ? "פרטי הנהג עודכנו." : "הנהג נוסף לצי בהצלחה.");
     } catch (error) {
       setMessage("שמירת הנהג נכשלה: " + (error?.message || "שגיאה לא ידועה"));
     } finally { setBusy(false); }
