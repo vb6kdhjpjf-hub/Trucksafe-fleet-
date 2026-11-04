@@ -13,7 +13,11 @@ const initial = {
   lengthCm: "",
   grossWeightKg: "",
   currentWeightKg: "",
-  weightPerAxleKg: ""
+  weightPerAxleKg: "",
+  vehicleType: "StraightTruck",
+  axleCount: "",
+  trailerCount: "0",
+  originCoordinates: null
 };
 
 function decodeUnsigned(encoded, state) {
@@ -140,7 +144,25 @@ export default function TruckRoutingPage() {
   }, [result]);
 
   function update(key, value) {
-    setForm(current => ({ ...current, [key]: value }));
+    setForm(current => ({ ...current, [key]: value, ...(key === "origin" ? { originCoordinates: null } : {}) }));
+  }
+
+  function useCurrentLocation() {
+    if (!navigator.geolocation) { setMessage("הדפדפן אינו תומך באיתור מיקום."); return; }
+    setLocating(true);
+    setMessage("");
+    navigator.geolocation.getCurrentPosition(position => {
+      setForm(current => ({
+        ...current,
+        origin: "המיקום הנוכחי",
+        originCoordinates: { lat: position.coords.latitude, lng: position.coords.longitude }
+      }));
+      setMessage("המיקום הנוכחי נקלט. בדוק שהוא מתאים לנקודת היציאה.");
+      setLocating(false);
+    }, error => {
+      setMessage(error.code === 1 ? "לא אושרה גישה למיקום. אפשר להזין כתובת ידנית." : "לא הצלחנו לקבל מיקום. בדוק GPS ונסה שוב.");
+      setLocating(false);
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
   }
 
   async function calculate(event) {
@@ -217,6 +239,9 @@ export default function TruckRoutingPage() {
           <label style={label}>אורך כולל (ס״מ)<input required type="number" min="200" max="3000" step="1" style={field} value={form.lengthCm} onChange={e => update("lengthCm", e.target.value)} placeholder="כולל נגרר"/></label>
           <label style={label}>משקל כולל מותר (ק״ג)<input required type="number" min="1000" max="100000" step="100" style={field} value={form.grossWeightKg} onChange={e => update("grossWeightKg", e.target.value)} placeholder="לפי רישיון הרכב"/></label>
           <label style={label}>משקל בפועל בנסיעה (ק״ג)<input required type="number" min="1000" max="100000" step="100" style={field} value={form.currentWeightKg} onChange={e => update("currentWeightKg", e.target.value)} placeholder="רכב + מטען + נגרר"/></label>
+          <label style={label}>סוג משאית<select required style={field} value={form.vehicleType} onChange={e => update("vehicleType", e.target.value)}><option value="StraightTruck">משאית קשיחה</option><option value="Tractor">גורר / ראש גורר</option></select></label>
+          <label style={label}>מספר סרנים<input required type="number" min="2" max="12" step="1" style={field} value={form.axleCount} onChange={e => update("axleCount", e.target.value)} placeholder="לפי רישיון הרכב"/></label>
+          <label style={label}>מספר נגררים<input required type="number" min="0" max="3" step="1" style={field} value={form.trailerCount} onChange={e => update("trailerCount", e.target.value)}/></label>
           <label style={label}>סוג משאית<select required style={field} value={form.vehicleType} onChange={e => update("vehicleType", e.target.value)}><option value="StraightTruck">משאית קשיחה</option><option value="Tractor">גורר / ראש גורר</option></select></label>
           <label style={label}>מספר סרנים<input required type="number" min="2" max="12" step="1" style={field} value={form.axleCount} onChange={e => update("axleCount", e.target.value)} placeholder="לפי רישיון הרכב"/></label>
           <label style={label}>מספר נגררים<input required type="number" min="0" max="3" step="1" style={field} value={form.trailerCount} onChange={e => update("trailerCount", e.target.value)}/></label>
