@@ -159,8 +159,8 @@ BEGIN
   END IF;
 END $$;
 
--- Exercise the failed-inspection INSERT policy under the authenticated role,
--- rather than only observing the SECURITY DEFINER RPC's catalog metadata.
+-- Exercise least-privilege table grants under the authenticated role, not only
+-- the SECURITY DEFINER RPC's catalog metadata.
 GRANT USAGE ON SCHEMA public, private, auth TO authenticated;
 GRANT SELECT ON public.drivers, public.vehicles, public.trips, public.inspections TO authenticated;
 GRANT INSERT ON public.inspections TO authenticated;
@@ -228,7 +228,7 @@ BEGIN
       '20000000-0000-0000-0000-000000000001',
       'pre_trip', '{"brakes":false}', 'Unauthorized RLS test', false, now()
     );
-    RAISE EXCEPTION 'Non-member bypassed failed-inspection RLS policy';
+    RAISE EXCEPTION 'Authenticated client directly inserted an inspection after write privileges were revoked';
   EXCEPTION WHEN insufficient_privilege THEN
     NULL;
   END;
