@@ -68,7 +68,9 @@ export async function POST(request) {
     if (!apiKey) return response({ error: "שירות ניווט המשאיות עדיין לא חובר. נדרש להגדיר HERE_API_KEY ב-Vercel." }, 503);
 
     const raw = await request.json();
-    const originText = typeof raw.origin === "string" ? raw.origin.trim() : "";\n    const originCoordinates = raw.originCoordinates;\n    const hasOriginCoordinates = originCoordinates && numberInRange(originCoordinates.lat, 29, 34) && numberInRange(originCoordinates.lng, 34, 36);
+    const originText = typeof raw.origin === "string" ? raw.origin.trim() : "";
+    const originCoordinates = raw.originCoordinates;
+    const hasOriginCoordinates = originCoordinates && numberInRange(originCoordinates.lat, 29, 34) && numberInRange(originCoordinates.lng, 34, 36);
     const destinationText = typeof raw.destination === "string" ? raw.destination.trim() : "";
     if (!originText || !destinationText || originText.length > 180 || destinationText.length > 180) {
       return response({ error: "יש להזין מוצא ויעד בישראל, עד 180 תווים לכל כתובת." }, 400);
@@ -79,7 +81,10 @@ export async function POST(request) {
     const lengthCm = Number(raw.lengthCm);
     const grossWeightKg = Number(raw.grossWeightKg);
     const currentWeightKg = Number(raw.currentWeightKg);
-    const weightPerAxleKg = raw.weightPerAxleKg === "" || raw.weightPerAxleKg == null ? null : Number(raw.weightPerAxleKg);\n    const axleCount = Number(raw.axleCount);\n    const trailerCount = Number(raw.trailerCount);\n    const vehicleType = raw.vehicleType === "Tractor" || raw.vehicleType === "StraightTruck" ? raw.vehicleType : null;
+    const weightPerAxleKg = raw.weightPerAxleKg === "" || raw.weightPerAxleKg == null ? null : Number(raw.weightPerAxleKg);
+    const axleCount = Number(raw.axleCount);
+    const trailerCount = Number(raw.trailerCount);
+    const vehicleType = raw.vehicleType === "Tractor" || raw.vehicleType === "StraightTruck" ? raw.vehicleType : null;
 
     if (!numberInRange(heightCm, 100, 600) ||
         !numberInRange(widthCm, 100, 350) ||
