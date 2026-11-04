@@ -483,8 +483,37 @@ RESET ROLE;
 
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000002',false);
-UPDATE public.tasks SET status='in_progress'
+UPDATE public.tasks SET status='cancelled'
 WHERE id='40000000-0000-0000-0000-000000000004';
+RESET ROLE;
+
+-- Task lifecycle states cannot be forged or historical tasks deleted by a
+-- manager; only start_trip/finish_trip may set in_progress/completed.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000002',false);
+DO $test$
+BEGIN
+  BEGIN
+    UPDATE public.tasks SET status='in_progress'
+    WHERE id='40000000-0000-0000-0000-000000000004';
+    RAISE EXCEPTION 'Manager directly set task in_progress';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  BEGIN
+    UPDATE public.tasks SET status='completed'
+    WHERE id='40000000-0000-0000-0000-000000000004';
+    RAISE EXCEPTION 'Manager directly completed task';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  UPDATE public.tasks SET status='assigned'
+  WHERE id='40000000-0000-0000-0000-000000000001';
+  IF FOUND THEN RAISE EXCEPTION 'Manager changed a completed historical task'; END IF;
+  BEGIN
+    DELETE FROM public.tasks WHERE id='40000000-0000-0000-0000-000000000004';
+    RAISE EXCEPTION 'Manager deleted a task history record';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+END $test$;
 RESET ROLE;
 
 -- A fleet member may create a new report only as themselves and in the open state.
