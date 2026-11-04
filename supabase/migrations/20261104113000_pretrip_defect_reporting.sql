@@ -793,9 +793,7 @@ BEGIN
   ELSE
     NEW.resolved_at := NULL;
     NEW.resolved_by := NULL;
-    IF OLD.status IN ('resolved','closed') THEN
-      NEW.resolution_notes := NULL;
-    END IF;
+    NEW.resolution_notes := NULL;
   END IF;
   RETURN NEW;
 END;
