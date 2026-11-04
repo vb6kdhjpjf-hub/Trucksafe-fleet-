@@ -36,7 +36,7 @@ BEGIN
   END IF;
 
   IF p_checklist IS NULL OR jsonb_typeof(p_checklist) <> 'object'
-     OR jsonb_object_length(p_checklist) NOT IN (7, 8)
+     OR (SELECT count(*) FROM jsonb_object_keys(p_checklist)) NOT IN (7, 8)
      OR EXISTS (
        SELECT 1 FROM jsonb_object_keys(p_checklist) AS supplied(key)
        WHERE supplied.key <> ALL(v_expected_keys)
