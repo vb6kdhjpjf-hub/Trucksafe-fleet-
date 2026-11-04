@@ -66,8 +66,15 @@ export default function FleetMapPage() {
 
   useEffect(() => {
     if (!fleetId) return;
-    const timer = setInterval(() => loadLocations(fleetId), 15000);
-    return () => clearInterval(timer);
+    const refresh = () => {
+      if (document.visibilityState === "visible") loadLocations(fleetId);
+    };
+    const timer = setInterval(refresh, 15000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, [fleetId]);
 
   useEffect(() => {
@@ -78,9 +85,13 @@ export default function FleetMapPage() {
       const css = document.createElement("link");
       css.rel = "stylesheet";
       css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      css.integrity = "sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=";
+      css.crossOrigin = "anonymous";
       document.head.appendChild(css);
       const script = document.createElement("script");
       script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      script.integrity = "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=";
+      script.crossOrigin = "anonymous";
       script.onload = () => resolve(window.L);
       script.onerror = reject;
       document.body.appendChild(script);
