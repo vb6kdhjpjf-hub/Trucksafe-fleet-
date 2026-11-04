@@ -85,15 +85,15 @@ export default function Home() {
     }
     setFleet({...current,role});
     setWorkspaceChecked(true);
-    const [v,d,tr,inc,incRows,ta,active,maint]=await Promise.all([
+    const [v,d,tr,inc,incRows,ta,maint,locationResult]=await Promise.all([
       supabase.from("vehicles").select("id,registration_number,make,model,vehicle_type,status,assigned_driver_id,test_due_at,insurance_due_at,registration_due_at,next_service_at").eq("fleet_id",current.id).order("created_at",{ascending:false}),
       supabase.from("drivers").select("id,full_name,phone,status,license_number,license_class,license_expires_at").eq("fleet_id",current.id).order("created_at",{ascending:false}),
       supabase.from("trips").select("id",{count:"exact",head:true}).eq("fleet_id",current.id).eq("status","active"),
       supabase.from("incidents").select("id",{count:"exact",head:true}).eq("fleet_id",current.id).in("status",["open","investigating"]),
       supabase.from("incidents").select("id,incident_type,severity,description,status,reported_at,vehicle_id").eq("fleet_id",current.id).in("status",["open","investigating"]).order("reported_at",{ascending:false}).limit(8),
       supabase.from("tasks").select("id",{count:"exact",head:true}).eq("fleet_id",current.id).in("status",["pending","assigned","in_progress"]),
-      supabase.from("trips").select("id,driver_id,vehicle_id").eq("fleet_id",current.id).eq("status","active"),
-      supabase.from("maintenance_records").select("id,vehicle_id,maintenance_type,scheduled_at,status,description").eq("fleet_id",current.id).in("status",["scheduled","in_progress"]).order("scheduled_at",{ascending:true}).limit(30)
+      supabase.from("maintenance_records").select("id,vehicle_id,maintenance_type,scheduled_at,status,description").eq("fleet_id",current.id).in("status",["scheduled","in_progress"]).order("scheduled_at",{ascending:true}).limit(30),
+      supabase.rpc("get_latest_trip_locations",{p_fleet_id:current.id})
     ]);
     if(v.error)setMessage("שגיאה בטעינת כלי הרכב: "+v.error.message); else setVehicles(v.data||[]);
     if(d.error)setMessage("שגיאה בטעינת הנהגים: "+d.error.message); else setDrivers(d.data||[]);
@@ -102,33 +102,23 @@ export default function Home() {
     if(incRows.error)setMessage("שגיאה בטעינת פירוט אירועי בטיחות: "+incRows.error.message); else setIncidentAlerts(incRows.data||[]);
     if(ta.error)setMessage("שגיאה בטעינת המשימות: "+ta.error.message); else setActiveTasks(ta.count||0);
     if(maint.error)setMessage("שגיאה בטעינת תזכורות תחזוקה: "+maint.error.message); else setMaintenanceAlerts(maint.data||[]);
-    if(active.error){setMessage("שגיאה בטעינת מיקומי נסיעות: "+active.error.message);setLiveLocations([]);} else if(active.data?.length){
-      const points=await Promise.all(active.data.map(async trip=>{
-        const {data:loc,error:locError}=await supabase.from("trip_locations").select("latitude,longitude,speed_kmh,heading_degrees,recorded_at").eq("trip_id",trip.id).order("recorded_at",{ascending:false}).limit(1).maybeSingle();
-        return locError||!loc?null:{...trip,...loc,driver: (d.data||[]).find(x=>x.id===trip.driver_id)?.full_name||"נהג לא ידוע",vehicle:(v.data||[]).find(x=>x.id===trip.vehicle_id)?.registration_number||"רכב לא ידוע"};
-      }));
-      setLiveLocations(points.filter(Boolean));
-    } else setLiveLocations([]);
+    if(locationResult.error){setMessage("שגיאה בטעינת מיקומי נסיעות: "+locationResult.error.message);setLiveLocations([]);}
+    else setLiveLocations((locationResult.data||[]).map(loc=>({...loc,id:loc.trip_id,driver:loc.driver_name||"נהג לא ידוע",vehicle:loc.vehicle_registration||"רכב לא ידוע"})));
   }
 
-  async function refreshLiveLocations() {
-    if(!fleet?.id) return;
-    const {data:trips,error}=await supabase.from("trips").select("id,driver_id,vehicle_id").eq("fleet_id",fleet.id).eq("status","active");
-    if(error) return;
-    const points=await Promise.all((trips||[]).map(async trip=>{
-      const {data:loc,error:locError}=await supabase.from("trip_locations").select("id,latitude,longitude,speed_kmh,recorded_at").eq("trip_id",trip.id).order("recorded_at",{ascending:false}).limit(1).maybeSingle();
-      if(locError||!loc) return null;
-      return {...trip,...loc,driver:drivers.find(d=>d.id===trip.driver_id)?.full_name||"נהג לא ידוע",vehicle:vehicles.find(v=>v.id===trip.vehicle_id)?.registration_number||"רכב לא ידוע"};
-    }));
-    setLiveLocations(points.filter(Boolean));
+  async function refreshLiveLocations(fleetId=fleet?.id) {
+    if(!fleetId)return;
+    const {data,error}=await supabase.rpc("get_latest_trip_locations",{p_fleet_id:fleetId});
+    if(error)return;
+    setLiveLocations((data||[]).map(loc=>({...loc,id:loc.trip_id,driver:loc.driver_name||"נהג לא ידוע",vehicle:loc.vehicle_registration||"רכב לא ידוע"})));
   }
 
   useEffect(()=>{
     if(!session||!fleet?.id) return;
-    refreshLiveLocations();
-    const refreshTimer=setInterval(refreshLiveLocations,15000);
+    refreshLiveLocations(fleet.id);
+    const refreshTimer=setInterval(()=>refreshLiveLocations(fleet.id),15000);
     return ()=>clearInterval(refreshTimer);
-  },[session?.user?.id,fleet?.id,drivers,vehicles]);
+  },[session?.user?.id,fleet?.id]);
 
   useEffect(()=>{
     if(!isSupabaseConfigured){setLoading(false);return;}
