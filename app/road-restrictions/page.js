@@ -90,7 +90,7 @@ export default function RoadRestrictionsPage() {
   const field = { width: "100%", padding: 10, border: "1px solid #dce3ee", borderRadius: 8, marginTop: 5, background: "white" };
   const btn = { display: "inline-flex", alignItems: "center", gap: 7, border: "1px solid #dce3ee", borderRadius: 9, padding: "9px 12px", background: "white", cursor: "pointer" };
 
-  return <main dir="rtl" style={{ minHeight: "100vh", padding: 20, background: "#f5f7fb", color: "#172338", maxWidth: 980, margin: "0 auto" }}>
+  return <main className="truck-safe-tool-page" dir="rtl" style={{ minHeight: "100vh", padding: 20, background: "#f5f7fb", color: "#172338", maxWidth: 980, margin: "0 auto" }}>
     <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
       <div><h1 style={{ margin: 0 }}>מגבלות דרך למשאיות</h1><p style={{ color: "#718096", margin: "6px 0" }}>מאגר מגבלות ידועות לצי</p></div>
       <button style={btn} onClick={() => router.push("/")}><ArrowRight size={16}/> לוח הבקרה</button>
