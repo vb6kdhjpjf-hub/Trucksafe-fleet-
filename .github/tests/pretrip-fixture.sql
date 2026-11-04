@@ -113,6 +113,28 @@ USING (
       AND private.is_fleet_member(t.fleet_id)
   )
 );
+CREATE POLICY trip_locations_insert_authorized
+ON public.trip_locations
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.trips t
+    WHERE t.id = trip_locations.trip_id
+      AND t.status = 'active'
+      AND t.driver_id = trip_locations.driver_id
+      AND (
+        private.has_fleet_role(t.fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
+        OR EXISTS (
+          SELECT 1 FROM public.drivers d
+          WHERE d.id = t.driver_id
+            AND d.fleet_id = t.fleet_id
+            AND d.user_id = (SELECT auth.uid())
+            AND d.status = 'active'
+        )
+      )
+  )
+);
 
 ALTER TABLE public.vehicles ENABLE ROW LEVEL SECURITY;
 CREATE POLICY vehicles_select_member
