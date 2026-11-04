@@ -50,7 +50,7 @@ A successful provider response or a route with no notices is not a guarantee tha
 - Production trip RPCs were observed using an obsolete helper reference; the proposed PR migration repairs them but has not been applied.
 - The schema-only backup workflow currently reaches the Supabase pooler but fails password authentication; no backup artifact exists yet.
 - Supabase Auth leaked-password protection is disabled (Security Advisor warning); enable only after explicit approval.
-- Performance Advisor reports 16 unused-index candidates. Do not drop them without query-plan evidence and review.
+- Performance Advisor reports 15 unused-index candidates. Do not drop them without query-plan evidence and review.
 - Vercel currently has no new preview deployment for the latest PR head due deployment quota/rate limits.
 - The truck-routing provider key is not configured.
 - Background GPS tracking and tamper-resistant telemetry are not implemented.
