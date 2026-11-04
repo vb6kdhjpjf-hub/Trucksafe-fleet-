@@ -138,7 +138,7 @@ END $$;
 -- Exercise the failed-inspection INSERT policy under the authenticated role,
 -- rather than only observing the SECURITY DEFINER RPC's catalog metadata.
 GRANT USAGE ON SCHEMA public, private, auth TO authenticated;
-GRANT SELECT ON public.drivers, public.vehicles, public.inspections TO authenticated;
+GRANT SELECT ON public.drivers, public.vehicles, public.trips, public.inspections TO authenticated;
 GRANT INSERT ON public.inspections TO authenticated;
 GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated;
 
