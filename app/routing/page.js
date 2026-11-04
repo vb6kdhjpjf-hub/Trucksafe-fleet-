@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
-import { ArrowRight, Navigation, Route, ShieldAlert, Truck } from "lucide-react";
+import { ArrowRight, MapPin, Navigation, Route, ShieldAlert, Truck } from "lucide-react";
 
 const initial = {
   origin: "",
@@ -75,7 +75,7 @@ export default function TruckRoutingPage() {
   const [result, setResult] = useState(null);
   const [message, setMessage] = useState("");
   const [mapMessage, setMapMessage] = useState("");
-  const [providerReady, setProviderReady] = useState(false);
+  const [providerReady, setProviderReady] = useState(false);\n  const [locating, setLocating] = useState(false);
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למערכת אינו מוגדר."); setLoading(false); return; }
@@ -167,7 +167,7 @@ export default function TruckRoutingPage() {
           lengthCm: Number(form.lengthCm),
           grossWeightKg: Number(form.grossWeightKg),
           currentWeightKg: Number(form.currentWeightKg),
-          weightPerAxleKg: form.weightPerAxleKg ? Number(form.weightPerAxleKg) : null
+          weightPerAxleKg: form.weightPerAxleKg ? Number(form.weightPerAxleKg) : null,\n          vehicleType: form.vehicleType,\n          axleCount: Number(form.axleCount),\n          trailerCount: Number(form.trailerCount),\n          originCoordinates: form.originCoordinates
         })
       });
       const data = await response.json();
@@ -205,14 +205,14 @@ export default function TruckRoutingPage() {
       <form onSubmit={calculate} style={{ background: "white", border: "1px solid #e5eaf1", borderRadius: 16, padding: 18, boxShadow: "0 5px 20px #17233808" }}>
         <h2 style={{ margin: "0 0 14px", fontSize: 18 }}>פרטי הנסיעה והרכב</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 14 }}>
-          <label style={label}>מוצא בישראל<input required maxLength={180} style={field} value={form.origin} onChange={e => update("origin", e.target.value)} placeholder="כתובת, יישוב או אזור"/></label>
+          <label style={label}>מוצא בישראל<div style={{ display: "flex", gap: 7, marginTop: 6 }}><input required maxLength={180} style={{ ...field, marginTop: 0, minWidth: 0 }} value={form.origin} onChange={e => update("origin", e.target.value)} placeholder="כתובת, יישוב או אזור"/><button type="button" onClick={useCurrentLocation} disabled={locating || busy} style={{ ...field, width: "auto", whiteSpace: "nowrap", marginTop: 0, cursor: "pointer" }}><MapPin size={15} style={{ verticalAlign: "middle" }}/> {locating ? "מאתר..." : "המיקום שלי"}</button></div></label>
           <label style={label}>יעד בישראל<input required maxLength={180} style={field} value={form.destination} onChange={e => update("destination", e.target.value)} placeholder="כתובת, יישוב או אזור"/></label>
           <label style={label}>גובה כולל (ס״מ)<input required type="number" min="100" max="600" step="1" style={field} value={form.heightCm} onChange={e => update("heightCm", e.target.value)} placeholder="לדוגמה: 400"/></label>
           <label style={label}>רוחב כולל (ס״מ)<input required type="number" min="100" max="350" step="1" style={field} value={form.widthCm} onChange={e => update("widthCm", e.target.value)} placeholder="לדוגמה: 250"/></label>
           <label style={label}>אורך כולל (ס״מ)<input required type="number" min="200" max="3000" step="1" style={field} value={form.lengthCm} onChange={e => update("lengthCm", e.target.value)} placeholder="כולל נגרר"/></label>
           <label style={label}>משקל כולל מותר (ק״ג)<input required type="number" min="1000" max="100000" step="100" style={field} value={form.grossWeightKg} onChange={e => update("grossWeightKg", e.target.value)} placeholder="לפי רישיון הרכב"/></label>
           <label style={label}>משקל בפועל בנסיעה (ק״ג)<input required type="number" min="1000" max="100000" step="100" style={field} value={form.currentWeightKg} onChange={e => update("currentWeightKg", e.target.value)} placeholder="רכב + מטען + נגרר"/></label>
-          <label style={label}>משקל מרבי לסרן (ק״ג, אם ידוע)<input type="number" min="500" max="30000" step="100" style={field} value={form.weightPerAxleKg} onChange={e => update("weightPerAxleKg", e.target.value)} placeholder="אופציונלי"/></label>
+          <label style={label}>סוג משאית<select required style={field} value={form.vehicleType} onChange={e => update("vehicleType", e.target.value)}><option value="StraightTruck">משאית קשיחה</option><option value="Tractor">גורר / ראש גורר</option></select></label>\n          <label style={label}>מספר סרנים<input required type="number" min="2" max="12" step="1" style={field} value={form.axleCount} onChange={e => update("axleCount", e.target.value)} placeholder="לפי רישיון הרכב"/></label>\n          <label style={label}>מספר נגררים<input required type="number" min="0" max="3" step="1" style={field} value={form.trailerCount} onChange={e => update("trailerCount", e.target.value)}/></label>\n          <label style={label}>משקל מרבי לסרן (ק״ג, אם ידוע)<input type="number" min="500" max="30000" step="100" style={field} value={form.weightPerAxleKg} onChange={e => update("weightPerAxleKg", e.target.value)} placeholder="אופציונלי"/></label>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 18 }}>
           <button type="submit" disabled={busy || !providerReady} style={button}><Route size={17} style={{ verticalAlign: "middle" }}/> {busy ? "מחשב מסלול..." : providerReady ? "חשב מסלול למשאית" : "ממתין לחיבור שירות הניווט"}</button>
