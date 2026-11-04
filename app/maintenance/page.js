@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
-import { csvDocument } from "../../lib/csv";
+import { csvDocument } from "../../lib/csv.mjs";
 import { Truck, ArrowRight, Plus, Wrench, RefreshCw, CalendarDays } from "lucide-react";
 
 const blank = { vehicle_id: "", incident_id: "", maintenance_type: "טיפול תקופתי", description: "", scheduled_at: "", completed_at: "", cost: "", odometer_km: "", status: "scheduled" };
