@@ -194,6 +194,65 @@ GRANT SELECT ON public.drivers, public.vehicles, public.trips, public.inspection
 GRANT UPDATE ON public.vehicles TO authenticated;
 GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated;
 
+-- Build a live map fixture, then call the invoker RPCs as an authenticated
+-- fleet member to prove they remain behind the underlying RLS policies.
+DO $test$
+DECLARE
+  f uuid := '10000000-0000-0000-0000-000000000001';
+  d uuid := '20000000-0000-0000-0000-000000000001';
+  v uuid := '30000000-0000-0000-0000-000000000005';
+  t uuid := '40000000-0000-0000-0000-000000000005';
+  trip_id uuid;
+BEGIN
+  INSERT INTO public.vehicles(id,fleet_id,status,assigned_driver_id) VALUES (v,f,'available',d);
+  INSERT INTO public.tasks(id,fleet_id,assigned_driver_id,assigned_vehicle_id,status) VALUES (t,f,d,v,'assigned');
+  PERFORM set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',true);
+  trip_id := public.start_trip_with_inspection(f,t,d,v,'Origin','Destination',jsonb_build_object(
+    'צמיגים ולחץ אוויר תקינים',true,
+    'בלמים ובלם חניה תקינים',true,
+    'אורות, איתותים וצופר תקינים',true,
+    'מראות, שמשות ומגבים תקינים',true,
+    'אין נזילות או נזק גלוי',true,
+    'המטען מאובטח והמשקל מתאים',true,
+    'מסמכי רכב ורישיון נהיגה בתוקף',true
+  ));
+  INSERT INTO public.trip_locations(trip_id,driver_id,latitude,longitude,recorded_at) VALUES
+    (trip_id,d,31.5000,34.9000,now()-interval '30 seconds'),
+    (trip_id,d,31.6000,35.0000,now());
+END $test$;
+
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
+DO $test$
+DECLARE
+  f uuid := '10000000-0000-0000-0000-000000000001';
+  map_count integer;
+  latest_count integer;
+  history_count integer;
+  latest_lat double precision;
+BEGIN
+  SELECT count(*) INTO map_count FROM public.get_active_trip_map_data(f);
+  SELECT jsonb_array_length(history), latitude INTO history_count, latest_lat
+  FROM public.get_active_trip_map_data(f) LIMIT 1;
+  SELECT count(*) INTO latest_count FROM public.get_latest_trip_locations(f);
+  IF map_count <> 1 OR latest_count <> 1 OR history_count <> 2 OR latest_lat <> 31.6 THEN
+    RAISE EXCEPTION 'Fleet map RPC returned incomplete or non-latest GPS data';
+  END IF;
+END $test$;
+RESET ROLE;
+
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000003',false);
+DO $test$
+DECLARE
+  f uuid := '10000000-0000-0000-0000-000000000001';
+  n integer;
+BEGIN
+  SELECT count(*) INTO n FROM public.get_active_trip_map_data(f);
+  IF n <> 0 THEN RAISE EXCEPTION 'Non-member received fleet map data'; END IF;
+END $test$;
+RESET ROLE;
+
 -- Assigned drivers must not directly edit vehicle identity or compliance data.
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
