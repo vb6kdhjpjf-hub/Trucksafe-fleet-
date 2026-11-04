@@ -1,4 +1,4 @@
-import { getTruckRoutingConfig } from "../../../../lib/truck-routing-config.mjs";
+import { getTruckRoutingConfig } from "../../../lib/truck-routing-config.mjs";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
