@@ -512,6 +512,11 @@ DROP POLICY IF EXISTS fleets_update_managers ON public.fleets;
 REVOKE UPDATE, DELETE ON public.fleets FROM PUBLIC, anon, authenticated;
 
 
+-- GPS telemetry is append-only. Clients may submit a point for an authorized
+-- active trip, but cannot rewrite or erase previously recorded evidence.
+REVOKE INSERT, UPDATE, DELETE ON public.trip_locations FROM PUBLIC, anon;
+REVOKE UPDATE, DELETE ON public.trip_locations FROM authenticated;
+
 -- Reject malformed telemetry at the database boundary. These checks validate
 -- coordinate/measurement ranges; they do not authenticate the GPS source.
 ALTER TABLE public.trip_locations
