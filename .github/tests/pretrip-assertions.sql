@@ -196,6 +196,12 @@ BEGIN
      OR NOT has_function_privilege('authenticated','public.get_trip_history_data(uuid,uuid[])','EXECUTE') THEN
     RAISE EXCEPTION 'GPS analytics RPC grants are misconfigured';
   END IF;
+  IF has_function_privilege('anon','private.has_fleet_role(uuid,text[])','EXECUTE')
+     OR has_function_privilege('anon','private.is_fleet_member(uuid)','EXECUTE')
+     OR NOT has_function_privilege('authenticated','private.has_fleet_role(uuid,text[])','EXECUTE')
+     OR NOT has_function_privilege('authenticated','private.is_fleet_member(uuid)','EXECUTE') THEN
+    RAISE EXCEPTION 'Private membership helper grants are misconfigured';
+  END IF;
   IF NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.start_trip_with_inspection(uuid,uuid,uuid,uuid,text,text,jsonb)'::regprocedure) @> ARRAY['search_path=""'])
      OR NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.finish_trip(uuid,uuid)'::regprocedure) @> ARRAY['search_path=""']) THEN
     RAISE EXCEPTION 'Privileged RPC search_path is not empty';
