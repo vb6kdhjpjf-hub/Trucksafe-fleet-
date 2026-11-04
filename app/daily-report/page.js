@@ -67,7 +67,7 @@ export default function DailyReportPage() {
   const completed = trips.filter(x => x.status === "completed").length;
   const cost = maintenance.reduce((sum, x) => sum + Number(x.cost || 0), 0);
 
-  return <main dir="rtl" style={{ minHeight: "100vh", maxWidth: 1000, margin: "0 auto", padding: 20, background: "#f5f7fb", color: "#172338" }}>
+  return <main className="truck-safe-tool-page" dir="rtl" style={{ minHeight: "100vh", maxWidth: 1000, margin: "0 auto", padding: 20, background: "#f5f7fb", color: "#172338" }}>
     <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
       <div><h1 style={{ margin: 0 }}>דוח פעילות יומי</h1><p style={{ color: "#68778c", margin: "6px 0" }}>{fleet?.name || "TruckSafe"} · {day}</p></div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button style={button} onClick={() => router.push("/") }><ArrowRight size={16}/> לוח בקרה</button><button style={button} onClick={() => fleet && load(fleet.id)}><RefreshCw size={16}/> רענון</button><button style={button} onClick={exportCsv}><FileDown size={16}/> ייצוא CSV</button></div>
