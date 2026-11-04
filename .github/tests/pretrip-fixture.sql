@@ -15,7 +15,7 @@ CREATE TABLE public.drivers (
 CREATE TABLE public.vehicles (
   id uuid PRIMARY KEY, fleet_id uuid NOT NULL, registration_number text,
   status text NOT NULL, assigned_driver_id uuid, updated_at timestamptz DEFAULT now(),
-  test_due_at date, insurance_due_at date, registration_due_at date
+  test_due_at date DEFAULT (current_date + 365), insurance_due_at date DEFAULT (current_date + 365), registration_due_at date DEFAULT (current_date + 365)
 );
 CREATE TABLE public.tasks (
   id uuid PRIMARY KEY, fleet_id uuid NOT NULL, assigned_driver_id uuid NOT NULL,
