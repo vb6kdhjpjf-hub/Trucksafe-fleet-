@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
-import { csvDocument } from "../../lib/csv";
+import { csvDocument } from "../../lib/csv.mjs";
 import { ArrowRight, RefreshCw, FileDown, Truck, AlertTriangle, Wrench, Clock3 } from "lucide-react";
 
 function localDayRange() {
