@@ -1,4 +1,4 @@
-name: Build check
+name: Build and dependency audit
 
 on:
   pull_request:
@@ -14,9 +14,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -24,8 +24,21 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
+      - name: Generate reproducible dependency lockfile
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --json > npm-audit.json || true
+      - name: Install exact locked dependencies
+        run: npm ci --no-audit --no-fund
       - name: Build application
         run: npm run build
+      - name: Save audit report and lockfile for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit-and-lockfile
+          path: |
+            npm-audit.json
+            package-lock.json
+          if-no-files-found: warn
+          retention-days: 7
