@@ -6,14 +6,12 @@ import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { csvDocument } from "../../lib/csv";
 import { ArrowRight, BarChart3, Download, RefreshCw, Route, Truck, Users } from "lucide-react";
 
-const kmBetween = (a, b) => {
   const rad = n => n * Math.PI / 180;
   const dLat = rad(Number(b.latitude) - Number(a.latitude));
   const dLng = rad(Number(b.longitude) - Number(a.longitude));
   const x = Math.sin(dLat / 2) ** 2 + Math.cos(rad(Number(a.latitude))) * Math.cos(rad(Number(b.latitude))) * Math.sin(dLng / 2) ** 2;
   return 6371 * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 };
-const distanceFor = points => points.length < 2 ? null : points.slice(1).reduce((sum, p, i) => sum + kmBetween(points[i], p), 0);
 const durationFor = trip => trip.started_at && trip.ended_at ? Math.max(0, (new Date(trip.ended_at) - new Date(trip.started_at)) / 60000) : null;
 const fmt = n => n == null ? "—" : n < 10 ? n.toFixed(1) : Math.round(n).toLocaleString("he-IL");
 
@@ -51,11 +49,21 @@ export default function ReportsPage() {
       ids.length ? supabase.from("drivers").select("id,full_name").in("id", ids) : Promise.resolve({ data: [] }),
       vehicleIds.length ? supabase.from("vehicles").select("id,registration_number").in("id", vehicleIds) : Promise.resolve({ data: [] })
     ]);
-    const rows = await Promise.all((data || []).map(async trip => {
-      const { data: points } = await supabase.from("trip_locations").select("latitude,longitude,recorded_at")
-        .eq("trip_id", trip.id).order("recorded_at", { ascending: true }).limit(3000);
-      return { ...trip, points: points || [], km: distanceFor(points || []), minutes: durationFor(trip) };
-    }));
+    const tripIds = (data || []).map(trip => trip.id);
+    const { data: distanceRows, error: distanceError } = tripIds.length
+      ? await supabase.rpc("get_trip_distance_summaries", { p_fleet_id: id, p_trip_ids: tripIds })
+      : { data: [], error: null };
+    if (distanceError) { setError("לא ניתן לחשב מרחקי GPS: " + distanceError.message); return; }
+    const distanceByTrip = new Map((distanceRows || []).map(row => [row.trip_id, row]));
+    const rows = (data || []).map(trip => {
+      const summary = distanceByTrip.get(trip.id);
+      return {
+        ...trip,
+        pointsCount: Number(summary?.point_count || 0),
+        km: summary?.distance_km == null ? null : Number(summary.distance_km),
+        minutes: durationFor(trip)
+      };
+    });
     setDrivers(driverRows.data || []);
     setVehicles(vehicleRows.data || []);
     setTrips(rows);
@@ -115,7 +123,7 @@ export default function ReportsPage() {
       drivers.find(d => d.id === t.driver_id)?.full_name || "לא צוין",
       vehicles.find(v => v.id === t.vehicle_id)?.registration_number || "לא צוין",
       t.status || "", "", "", "", "", t.km == null ? "" : t.km.toFixed(2),
-      t.minutes == null ? "" : Math.round(t.minutes), t.points.length,
+      t.minutes == null ? "" : Math.round(t.minutes), t.pointsCount,
       t.origin_address || "", t.destination_address || ""
     ]);
     const maintenanceRows = filteredMaintenance.map(r => [
