@@ -138,6 +138,8 @@ export default function IncidentsPage() {
     setBusy(false);
   }
 
+  const canResolveIncidents = ["owner", "fleet_manager", "safety_manager"].includes(fleet?.role);
+
   async function signOut() { await supabase.auth.signOut(); router.replace("/"); }
 
   if (loading) return <main className="auth-wrap"><section className="auth-card">טוען אירועי בטיחות...</section></main>;
@@ -178,7 +180,7 @@ export default function IncidentsPage() {
             {item.photo_url&&<div className="task-assignees"><a className="nav-link" href={item.photo_url} target="_blank" rel="noreferrer">צפייה בתמונת האירוע</a></div>}
             {item.driver_id&&<div className="task-assignees"><span>נהג: {drivers.find(d=>d.id===item.driver_id)?.full_name||"לא ידוע"}</span></div>}
             {item.vehicle_id&&<div className="task-assignees"><span>רכב: {vehicles.find(v=>v.id===item.vehicle_id)?.registration_number||"לא ידוע"}</span></div>}
-            {item.status!=="resolved"&&<div className="task-actions"><button className="primary-btn" disabled={busy} onClick={()=>resolveIncident(item)}><CheckCircle2 size={14}/> סימון כטופל</button></div>}
+            {item.status!=="resolved"&&canResolveIncidents&&<div className="task-actions"><button className="primary-btn" disabled={busy} onClick={()=>resolveIncident(item)}><CheckCircle2 size={14}/> סימון כטופל</button></div>}
           </article>)}</div>}
       </section>
       <p className="fleet-foot">TruckSafe Fleet V1 · דיווחי הבטיחות נשמרים במסד הנתונים של הצי</p>
