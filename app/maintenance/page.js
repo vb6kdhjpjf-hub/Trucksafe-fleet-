@@ -97,7 +97,7 @@ export default function MaintenancePage() {
     finally{setBusy(false);}
   }
   const canManageMaintenance=["owner","fleet_manager"].includes(role);
-  const canManageVehicles=["owner","fleet_manager","dispatcher"].includes(role);
+  const canManageVehicles=["owner","fleet_manager"].includes(role);
   const today=new Date().toISOString().slice(0,10);
   const pending=records.filter(r=>r.status!=="completed");
   const overdue=pending.filter(r=>r.scheduled_at && r.scheduled_at<today);
