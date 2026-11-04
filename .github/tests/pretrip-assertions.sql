@@ -381,6 +381,35 @@ BEGIN
 END $test$;
 RESET ROLE;
 
+-- Driver licence identity and expiry data can be changed only by a fleet
+-- owner/manager, never by a dispatcher.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000004',false);
+DO $test$
+BEGIN
+  BEGIN
+    INSERT INTO public.drivers(id,fleet_id,status,user_id,license_expires_at)
+    VALUES ('20000000-0000-0000-0000-000000000005',
+      '10000000-0000-0000-0000-000000000001','active',NULL,current_date+365);
+    RAISE EXCEPTION 'Dispatcher directly inserted a driver';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+  UPDATE public.drivers SET license_expires_at=current_date+500
+  WHERE id='20000000-0000-0000-0000-000000000001';
+  IF FOUND THEN RAISE EXCEPTION 'Dispatcher directly updated a driver licence'; END IF;
+  DELETE FROM public.drivers
+  WHERE id='20000000-0000-0000-0000-000000000001';
+  IF FOUND THEN RAISE EXCEPTION 'Dispatcher directly deleted a driver'; END IF;
+END $test$;
+RESET ROLE;
+
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000002',false);
+UPDATE public.drivers SET license_expires_at=current_date+200
+WHERE id='20000000-0000-0000-0000-000000000001';
+RESET ROLE;
+
 -- Direct trip lifecycle writes are disabled; only the validated RPCs may mutate trips.
 DO $test$
 BEGIN
