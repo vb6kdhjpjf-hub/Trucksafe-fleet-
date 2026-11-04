@@ -23,7 +23,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version-file: .nvmrc
       - name: Generate dependency lockfile from package manifest
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
       - name: Audit production dependencies (fail on high or critical)
