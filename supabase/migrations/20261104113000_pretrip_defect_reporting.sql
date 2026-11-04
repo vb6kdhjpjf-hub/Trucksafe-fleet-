@@ -299,6 +299,40 @@ USING (
   private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager'])
 );
 
+-- Driver identity and licence data are safety-critical. Only the fleet owner
+-- or fleet manager may create, edit, or remove driver records; dispatchers
+-- may assign tasks but cannot alter driver compliance records.
+DROP POLICY IF EXISTS drivers_insert_managers ON public.drivers;
+DROP POLICY IF EXISTS drivers_update_managers ON public.drivers;
+DROP POLICY IF EXISTS drivers_delete_managers ON public.drivers;
+
+CREATE POLICY drivers_insert_managers
+ON public.drivers
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager'])
+);
+
+CREATE POLICY drivers_update_managers
+ON public.drivers
+FOR UPDATE
+TO authenticated
+USING (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager'])
+)
+WITH CHECK (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager'])
+);
+
+CREATE POLICY drivers_delete_managers
+ON public.drivers
+FOR DELETE
+TO authenticated
+USING (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager'])
+);
+
 -- The helper was moved to the private schema by an earlier hardening migration.
 -- This narrowly validated RPC runs as its owner; keep all authorization checks explicit.
 CREATE OR REPLACE FUNCTION public.finish_trip(
