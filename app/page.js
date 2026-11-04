@@ -12,6 +12,8 @@ export default function Home() {
   const [mode,setMode]=useState("login");
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
+  const [newPassword,setNewPassword]=useState("");
+  const [recoveryMode,setRecoveryMode]=useState(false);
   const [name,setName]=useState("");
   const [fleetName,setFleetName]=useState("");
   const [message,setMessage]=useState("");
@@ -84,19 +86,62 @@ export default function Home() {
   useEffect(()=>{
     if(!isSupabaseConfigured){setLoading(false);return;}
     supabase.auth.getSession().then(async ({data})=>{setSession(data.session);if(data.session)await loadFleet(data.session.user);setLoading(false);});
-    const {data:{subscription}}=supabase.auth.onAuthStateChange(async (_event,next)=>{setSession(next);if(next)await loadFleet(next.user);else{setFleet(null);setVehicles([]);setDrivers([]);}setLoading(false);});
+    const {data:{subscription}}=supabase.auth.onAuthStateChange(async (event,next)=>{if(event==="PASSWORD_RECOVERY")setRecoveryMode(true);setSession(next);if(next&&!recoveryMode)await loadFleet(next.user);else if(!next){setFleet(null);setVehicles([]);setDrivers([]);}setLoading(false);});
     return ()=>subscription.unsubscribe();
   },[]);
 
   async function authenticate(e){
-    e.preventDefault();setBusy(true);setMessage("");
-    const result=mode==="signup"
-      ? await supabase.auth.signUp({email,password,options:{data:{full_name:name}}})
-      : await supabase.auth.signInWithPassword({email,password});
-    if(result.error)setMessage(result.error.message);
-    else if(mode==="signup"&&!result.data.session)setMessage("נשלח אליך מייל לאימות החשבון. אשר אותו ואז התחבר.");
-    else setMessage(mode==="signup"?"החשבון נוצר בהצלחה.":"התחברת בהצלחה.");
-    setBusy(false);
+    e.preventDefault();
+    setBusy(true);
+    setMessage("");
+    try {
+      const cleanEmail=email.trim().toLowerCase();
+      const result=mode==="signup"
+        ? await supabase.auth.signUp({email:cleanEmail,password,options:{data:{full_name:name.trim()}}})
+        : await supabase.auth.signInWithPassword({email:cleanEmail,password});
+      if(result.error){
+        const msg=result.error.message||"Unknown authentication error";
+        const lower=msg.toLowerCase();
+        if(lower.includes("invalid login credentials")) setMessage("המייל או הסיסמה אינם נכונים. בדוק את הפרטים או השתמש באיפוס סיסמה.");
+        else if(lower.includes("email not confirmed")) setMessage("כתובת המייל עדיין לא אומתה. בדוק את תיבת הדואר ואת תיקיית הספאם.");
+        else if(lower.includes("too many requests")) setMessage("בוצעו יותר מדי ניסיונות. המתן מעט ונסה שוב.");
+        else setMessage("ההתחברות נכשלה: "+msg);
+      } else if(mode==="signup"&&!result.data.session){
+        setMessage("נשלח אליך מייל לאימות החשבון. אשר אותו ואז התחבר.");
+      } else {
+        setMessage(mode==="signup"?"החשבון נוצר בהצלחה.":"התחברת בהצלחה.");
+        if(result.data.session){setSession(result.data.session);await loadFleet(result.data.session.user);}
+      }
+    } catch(error) {
+      setMessage("לא הצלחנו להשלים את ההתחברות. בדוק את החיבור לאינטרנט ונסה שוב. פירוט: "+(error?.message||"שגיאה לא ידועה"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendPasswordReset(){
+    if(!email.trim()){setMessage("יש להזין תחילה את כתובת המייל.");return;}
+    setBusy(true);setMessage("");
+    try {
+      const {error}=await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(),{redirectTo:window.location.origin});
+      if(error)setMessage("לא הצלחנו לשלוח קישור לאיפוס סיסמה: "+error.message);
+      else setMessage("אם קיימת כתובת כזו במערכת, נשלח אליה קישור לאיפוס סיסמה. בדוק גם בתיקיית הספאם.");
+    } catch(error) {
+      setMessage("שליחת קישור האיפוס נכשלה: "+(error?.message||"שגיאה לא ידועה"));
+    } finally {setBusy(false);}
+  }
+
+  async function saveNewPassword(e){
+    e.preventDefault();
+    if(newPassword.length<6){setMessage("הסיסמה החדשה חייבת להכיל לפחות 6 תווים.");return;}
+    setBusy(true);setMessage("");
+    try {
+      const {error}=await supabase.auth.updateUser({password:newPassword});
+      if(error)setMessage("לא הצלחנו לעדכן את הסיסמה: "+error.message);
+      else {setRecoveryMode(false);setNewPassword("");setMessage("הסיסמה עודכנה בהצלחה. כעת אפשר להמשיך למערכת.");}
+    } catch(error) {
+      setMessage("עדכון הסיסמה נכשל: "+(error?.message||"שגיאה לא ידועה"));
+    } finally {setBusy(false);}
   }
 
   async function createFleet(e){
@@ -120,6 +165,16 @@ export default function Home() {
   if(!isSupabaseConfigured)return <main className="auth-wrap"><section className="auth-card"><Truck size={36}/><h1>TruckSafe Fleet</h1><p>החיבור למסד הנתונים עדיין לא הוגדר. יש לבדוק את משתני הסביבה ב-Vercel.</p></section></main>;
   if(loading)return <main className="auth-wrap"><section className="auth-card">טוען את סביבת TruckSafe...</section></main>;
 
+  if(recoveryMode)return <main className="auth-wrap"><section className="auth-card">
+    <div className="auth-brand"><span><Truck size={25}/></span><div><h1>TruckSafe</h1><small>איפוס סיסמה</small></div></div>
+    <h2>בחירת סיסמה חדשה</h2><p>הזן סיסמה חדשה לחשבון שלך.</p>
+    <form onSubmit={saveNewPassword} className="auth-form">
+      <label>סיסמה חדשה<input type="password" minLength={6} required value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="לפחות 6 תווים"/></label>
+      <button className="primary-btn" disabled={busy}>{busy?"מעדכן...":"שמירת סיסמה חדשה"}</button>
+    </form>
+    {message&&<div className="auth-message">{message}</div>}
+  </section></main>;
+
   if(!session)return <main className="auth-wrap"><section className="auth-card">
     <div className="auth-brand"><span><Truck size={25}/></span><div><h1>TruckSafe</h1><small>ניהול צי חכם ובטוח</small></div></div>
     <h2>{mode==="login"?"כניסה למערכת":"יצירת חשבון חדש"}</h2><p>התחבר כדי לנהל את כלי הרכב, הנהגים והמשימות שלך.</p>
@@ -130,6 +185,7 @@ export default function Home() {
       <button className="primary-btn" disabled={busy}>{busy?"נא להמתין...":mode==="login"?"התחברות":"יצירת חשבון"}</button>
     </form>
     <button className="auth-switch" onClick={()=>{setMode(mode==="login"?"signup":"login");setMessage("");}}>{mode==="login"?"אין לך חשבון? יצירת חשבון":"כבר יש לך חשבון? התחברות"}</button>
+    {mode==="login"&&<button type="button" className="auth-switch" disabled={busy} onClick={sendPasswordReset}>שכחתי סיסמה – שליחת קישור לאיפוס</button>}
     {message&&<div className="auth-message">{message}</div>}
     <small className="secure-note"><ShieldCheck size={14}/> החיבור מאובטח באמצעות Supabase</small>
   </section></main>;
