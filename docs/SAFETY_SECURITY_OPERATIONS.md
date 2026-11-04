@@ -15,6 +15,7 @@ Drivers and fleet operators remain responsible for physical inspections, valid l
 7. Recorded expired licence, test, insurance or registration dates are hard stops. Missing dates remain an operational data-quality gap and must be completed by fleet management.
 
 ## 3. Authorization model
+The controls below describe the proposed PR migration and become effective in production only after that migration is separately reviewed and approved.
 - Public client access uses the Supabase publishable/legacy anon key only; never place service-role or secret keys in browser code.
 - Exposed public tables must retain RLS.
 - Fleet membership is an authorization boundary. Client-side membership writes are disabled; membership changes require a future validated server-side invitation/administration flow.
