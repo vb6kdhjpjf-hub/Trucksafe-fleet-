@@ -443,6 +443,12 @@ BEGIN
      OR has_table_privilege('authenticated','public.inspections','DELETE') THEN
     RAISE EXCEPTION 'Authenticated clients retain direct inspection write privileges';
   END IF;
+  IF NOT has_table_privilege('authenticated','public.trip_locations','INSERT')
+     OR has_table_privilege('authenticated','public.trip_locations','UPDATE')
+     OR has_table_privilege('authenticated','public.trip_locations','DELETE')
+     OR has_table_privilege('anon','public.trip_locations','INSERT') THEN
+    RAISE EXCEPTION 'GPS telemetry write privileges are misconfigured';
+  END IF;
   IF has_table_privilege('authenticated','public.fleet_members','INSERT')
      OR has_table_privilege('authenticated','public.fleet_members','UPDATE')
      OR has_table_privilege('authenticated','public.fleet_members','DELETE') THEN
