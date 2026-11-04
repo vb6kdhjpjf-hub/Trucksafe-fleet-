@@ -243,9 +243,9 @@ WITH CHECK (
   )
 );
 
--- Keep vehicle updates restricted to managers and the driver's explicit vehicle assignment.
--- The two authenticated RPCs below perform the narrowly validated trip lifecycle
--- changes as their owner; drivers do not receive broader direct vehicle UPDATE access.
+-- Direct vehicle-row updates are manager-only. Drivers change trip state only
+-- through the narrowly validated SECURITY DEFINER trip RPCs above. This prevents
+-- a driver assigned to one vehicle from editing its registration or compliance data.
 DROP POLICY IF EXISTS vehicles_update_authorized ON public.vehicles;
 
 CREATE POLICY vehicles_update_authorized
@@ -254,26 +254,9 @@ FOR UPDATE
 TO authenticated
 USING (
   private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
-  OR EXISTS (
-    SELECT 1
-    FROM public.drivers d
-    WHERE d.id = vehicles.assigned_driver_id
-      AND d.fleet_id = vehicles.fleet_id
-      AND d.user_id = (SELECT auth.uid())
-  )
 )
 WITH CHECK (
   private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
-  OR (
-    vehicles.status IN ('on_trip','available','assigned')
-    AND EXISTS (
-      SELECT 1
-      FROM public.drivers d
-      WHERE d.id = vehicles.assigned_driver_id
-        AND d.fleet_id = vehicles.fleet_id
-        AND d.user_id = (SELECT auth.uid())
-    )
-  )
 );
 
 -- The helper was moved to the private schema by an earlier hardening migration.
