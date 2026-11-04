@@ -240,6 +240,10 @@ BEGIN
      OR NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.finish_trip(uuid,uuid)'::regprocedure) @> ARRAY['search_path=""']) THEN
     RAISE EXCEPTION 'Privileged RPC search_path is not empty';
   END IF;
+  IF NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.add_fleet_owner_membership()'::regprocedure) @> ARRAY['search_path=""'])
+     OR NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.handle_new_auth_user()'::regprocedure) @> ARRAY['search_path=""']) THEN
+    RAISE EXCEPTION 'SECURITY DEFINER trigger search_path is not empty';
+  END IF;
   IF position('WHERE id = v_trip.vehicle_id AND fleet_id = p_fleet_id' IN
        pg_get_functiondef('public.finish_trip(uuid,uuid)'::regprocedure)) = 0
      OR position('FOR UPDATE' IN
