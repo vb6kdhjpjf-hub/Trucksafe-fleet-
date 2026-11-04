@@ -7,7 +7,7 @@ import { Truck, ArrowRight, Plus, AlertTriangle, MapPin, LogOut, CheckCircle2 } 
 
 const emptyForm = { incident_type: "תקלה ברכב", severity: "medium", description: "", location_text: "", driver_id: "", vehicle_id: "" };
 const severityLabels = { low: "נמוכה", medium: "בינונית", high: "גבוהה", critical: "קריטית" };
-const statusLabels = { open: "פתוח", reported: "דווח", investigating: "בטיפול", resolved: "טופל" };
+const statusLabels = { open: "פתוח", investigating: "בטיפול", resolved: "טופל", closed: "נסגר" };
 
 export default function IncidentsPage() {
   const router = useRouter();
@@ -94,7 +94,7 @@ export default function IncidentsPage() {
     try {
       if (photoFile) {
         if (!["image/jpeg","image/png","image/webp"].includes(photoFile.type)) { setMessage("אפשר להעלות תמונה מסוג JPG, PNG או WEBP בלבד."); return; }
-        if (photoFile.size > 8 * 1024 * 1024) { setMessage("גודל התמונה המרבי הוא 8MB."); return; }
+        if (photoFile.size > 5 * 1024 * 1024) { setMessage("גודל התמונה המרבי הוא 8MB."); return; }
         const extension = photoFile.type === "image/png" ? "png" : photoFile.type === "image/webp" ? "webp" : "jpg";
         photoPath = fleet.id+"/incidents/"+crypto.randomUUID()+"."+extension;
         const {error:uploadError} = await supabase.storage.from("incident-photos").upload(photoPath,photoFile,{contentType:photoFile.type,upsert:false});
@@ -105,7 +105,7 @@ export default function IncidentsPage() {
         description:form.description.trim(), location_text:form.location_text.trim()||null,
         driver_id:form.driver_id||null, vehicle_id:form.vehicle_id||null,
         latitude:gps.latitude, longitude:gps.longitude, photo_path:photoPath,
-        status:"reported", reported_at:new Date().toISOString(), created_by:session.user.id
+        status:"open", reported_at:new Date().toISOString(), created_by:session.user.id
       };
       const {error} = await supabase.from("incidents").insert(payload);
       if (error) {
