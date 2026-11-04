@@ -51,9 +51,16 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
   )
 $$;
 CREATE FUNCTION private.is_fleet_member(target_fleet uuid)
-RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $
   SELECT EXISTS (
     SELECT 1 FROM public.fleet_members fm
     WHERE fm.fleet_id = target_fleet AND fm.user_id = auth.uid()
   )
-$$;
+$;
+
+ALTER TABLE public.vehicles ENABLE ROW LEVEL SECURITY;
+CREATE POLICY vehicles_select_member
+ON public.vehicles
+FOR SELECT
+TO authenticated
+USING (private.is_fleet_member(fleet_id));
