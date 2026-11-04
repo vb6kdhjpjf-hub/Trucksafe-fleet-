@@ -1,5 +1,5 @@
 -- Exercises driver and manager authorization, lifecycle, safety lockout, and RPC grants.
-DO $$
+DO $test$
 DECLARE
   f uuid := '10000000-0000-0000-0000-000000000001';
   d uuid := '20000000-0000-0000-0000-000000000001';
@@ -157,9 +157,9 @@ BEGIN
   IF EXISTS (SELECT 1 FROM public.trips WHERE task_id=t_unauthorized AND status='active') THEN
     RAISE EXCEPTION 'Trip was created for a driver with an expired licence';
   END IF;
-END $;
+END $test$;
 
-DO $$
+DO $test$
 BEGIN
   IF (SELECT prosecdef FROM pg_proc WHERE oid='public.start_trip_with_inspection(uuid,uuid,uuid,uuid,text,text,jsonb)'::regprocedure) IS NOT TRUE
      OR (SELECT prosecdef FROM pg_proc WHERE oid='public.finish_trip(uuid,uuid)'::regprocedure) IS NOT TRUE THEN
@@ -185,7 +185,7 @@ BEGIN
            pg_get_functiondef('public.finish_trip(uuid,uuid)'::regprocedure)))) = 0 THEN
     RAISE EXCEPTION 'finish_trip does not lock the vehicle before checking concurrent active trips';
   END IF;
-END $$;
+END $test$;
 
 -- Exercise least-privilege table grants under the authenticated role, not only
 -- the SECURITY DEFINER RPC's catalog metadata.
@@ -197,7 +197,7 @@ GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated;
 -- Assigned drivers must not directly edit vehicle identity or compliance data.
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
-DO $$
+DO $test$
 BEGIN
   BEGIN
     UPDATE public.vehicles
@@ -209,7 +209,7 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN
     NULL;
   END;
-END $$;
+END $test$;
 RESET ROLE;
 
 -- Fleet managers retain direct vehicle update access.
@@ -222,7 +222,7 @@ RESET ROLE;
 
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
-DO $
+DO $test$
 BEGIN
   BEGIN
     INSERT INTO public.inspections (
@@ -238,12 +238,12 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN
     NULL;
   END;
-END $;
+END $test$;
 RESET ROLE;
 
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000003',false);
-DO $$
+DO $test$
 BEGIN
   BEGIN
     INSERT INTO public.inspections (
@@ -263,11 +263,11 @@ BEGIN
       WHERE defects = 'RLS driver test') <> 0 THEN
     RAISE EXCEPTION 'Non-member can read another fleet inspection';
   END IF;
-END $$;
+END $test$;
 RESET ROLE;
 
 -- Direct trip lifecycle writes are disabled; only the validated RPCs may mutate trips.
-DO $$
+DO $test$
 BEGIN
   IF has_table_privilege('authenticated','public.trips','INSERT')
      OR has_table_privilege('authenticated','public.trips','UPDATE')
@@ -289,20 +289,20 @@ BEGIN
      OR NOT has_table_privilege('authenticated','public.fleets','INSERT') THEN
     RAISE EXCEPTION 'Fleet creation or ownership metadata privileges are misconfigured';
   END IF;
-END $;
+END $test$;
 
 -- Assigned drivers cannot mark tasks completed directly; managers can still
 -- perform ordinary task administration.
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
-DO $$
+DO $test$
 BEGIN
   UPDATE public.tasks SET status='completed'
   WHERE id='40000000-0000-0000-0000-000000000004';
   IF FOUND THEN
     RAISE EXCEPTION 'Assigned driver directly completed a task';
   END IF;
-END $$;
+END $test$;
 RESET ROLE;
 
 SET ROLE authenticated;
@@ -324,7 +324,7 @@ INSERT INTO public.incidents (
   'medium','test','Valid incident report','open',now(),
   '50000000-0000-0000-0000-000000000001'
 );
-DO $$
+DO $test$
 BEGIN
   BEGIN
     INSERT INTO public.incidents (
@@ -341,6 +341,6 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN
     NULL;
   END;
-END $$;
+END $test$;
 RESET ROLE;
 
