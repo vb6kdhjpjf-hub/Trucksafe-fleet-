@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:security": "node --test .github/tests/csv-safety.test.mjs"
+    "test:security": "node --test .github/tests/*.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.119.0",
