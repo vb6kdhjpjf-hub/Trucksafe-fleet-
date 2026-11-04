@@ -244,8 +244,8 @@ WITH CHECK (
 
 -- Align vehicle update authorization with task assignment and active-trip ownership.
 -- A driver's vehicle assignment is recorded on the task as well as (optionally)
--- on the vehicle row. Permit the assigned driver to perform only the trip
--- lifecycle status changes through the existing row-level policy.
+-- on the vehicle row. Permit the assigned driver to update the vehicle
+-- row during the start/finish lifecycle when the task or active trip proves assignment.
 DROP POLICY IF EXISTS vehicles_update_authorized ON public.vehicles;
 
 CREATE POLICY vehicles_update_authorized
