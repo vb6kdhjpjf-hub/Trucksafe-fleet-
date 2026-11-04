@@ -8,7 +8,7 @@ DECLARE
   t_ok uuid := '40000000-0000-0000-0000-000000000001';
   t_bad uuid := '40000000-0000-0000-0000-000000000002';
   user_id uuid := '50000000-0000-0000-0000-000000000001';
-  trip_id uuid;
+  v_trip_id uuid;
   checklist jsonb := jsonb_build_object(
     'צמיגים ולחץ אוויר תקינים', true,
     'בלמים ובלם חניה תקינים', true,
@@ -27,20 +27,20 @@ BEGIN
 
   PERFORM set_config('request.jwt.claim.sub', user_id::text, true);
   PERFORM set_config('test.is_manager','false',true);
-  trip_id := public.start_trip_with_inspection(f,t_ok,d,v_ok,'Origin','Destination',checklist);
-  IF trip_id IS NULL THEN RAISE EXCEPTION 'Successful checklist did not create a trip'; END IF;
-  IF (SELECT status FROM public.trips WHERE id=trip_id) <> 'active' THEN
+  v_trip_id := public.start_trip_with_inspection(f,t_ok,d,v_ok,'Origin','Destination',checklist);
+  IF v_trip_id IS NULL THEN RAISE EXCEPTION 'Successful checklist did not create a trip'; END IF;
+  IF (SELECT status FROM public.trips WHERE id=v_trip_id) <> 'active' THEN
     RAISE EXCEPTION 'Trip was not created as active';
   END IF;
   IF (SELECT status FROM public.vehicles WHERE id=v_ok) <> 'on_trip' THEN
     RAISE EXCEPTION 'Vehicle was not marked on_trip';
   END IF;
-  IF NOT (SELECT passed FROM public.inspections WHERE inspections.trip_id=trip_id) THEN
+  IF NOT (SELECT passed FROM public.inspections WHERE inspections.trip_id=v_trip_id) THEN
     RAISE EXCEPTION 'Successful inspection was not saved as passed';
   END IF;
 
-  PERFORM public.finish_trip(f,trip_id);
-  IF (SELECT status FROM public.trips WHERE id=trip_id) <> 'completed' THEN
+  PERFORM public.finish_trip(f,v_trip_id);
+  IF (SELECT status FROM public.trips WHERE id=v_trip_id) <> 'completed' THEN
     RAISE EXCEPTION 'finish_trip did not complete trip';
   END IF;
   IF (SELECT status FROM public.vehicles WHERE id=v_ok) <> 'available' THEN
@@ -49,8 +49,8 @@ BEGIN
 
   checklist := jsonb_set(checklist,'{"בלמים ובלם חניה תקינים"}','false'::jsonb);
   checklist := checklist || jsonb_build_object('_defect_details','Brake fault');
-  trip_id := public.start_trip_with_inspection(f,t_bad,d,v_bad,'Origin','Destination',checklist);
-  IF trip_id IS NOT NULL THEN RAISE EXCEPTION 'Failed inspection unexpectedly created a trip'; END IF;
+  v_trip_id := public.start_trip_with_inspection(f,t_bad,d,v_bad,'Origin','Destination',checklist);
+  IF v_trip_id IS NOT NULL THEN RAISE EXCEPTION 'Failed inspection unexpectedly created a trip'; END IF;
   IF NOT EXISTS (SELECT 1 FROM public.inspections WHERE vehicle_id=v_bad AND passed=false AND trip_id IS NULL) THEN
     RAISE EXCEPTION 'Failed inspection was not recorded';
   END IF;
