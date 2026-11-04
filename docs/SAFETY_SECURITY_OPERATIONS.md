@@ -22,6 +22,7 @@ The controls below describe the proposed PR migration and become effective in pr
 - Direct trip and inspection writes are disabled for authenticated clients. Trip lifecycle writes must go through the validated RPCs.
 - Task status updates are manager/dispatcher-only; drivers use the trip RPC lifecycle. Only the trip RPCs can set `in_progress` or `completed`; tasks cannot be deleted through the client, and assigned tasks require both a driver and a vehicle.
 - Driver identity/licence and vehicle compliance records can be created or changed only by owners/fleet managers; dispatchers can assign work but cannot change those safety-critical records.
+- Drivers can read only their own driver profile, assigned vehicles/tasks, own trips/GPS, and related incidents/maintenance. Dispatch, fleet management and safety roles retain the fleet-wide operational view; ordinary drivers cannot browse other members' records.
 - Incident creation requires a fleet membership, the authenticated reporter identity, and initial status `open`.
 - An incident cannot move to `resolved` or `closed` without non-empty treatment notes. The database stamps the resolver and time; reopening clears the previous resolution metadata, so the vehicle lockout cannot be released by a status-only update.
 - The private membership helper functions use an empty search_path; privileged trip RPCs use explicit identity/assignment/role checks and an empty search_path.
