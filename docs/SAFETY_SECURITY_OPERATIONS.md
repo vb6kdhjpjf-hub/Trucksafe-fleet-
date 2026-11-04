@@ -23,6 +23,7 @@ The controls below describe the proposed PR migration and become effective in pr
 - Task status updates are manager/dispatcher-only; drivers use the trip RPC lifecycle.
 - Driver identity/licence and vehicle compliance records can be created or changed only by owners/fleet managers; dispatchers can assign work but cannot change those safety-critical records.
 - Incident creation requires a fleet membership, the authenticated reporter identity, and initial status `open`.
+- An incident cannot move to `resolved` or `closed` without non-empty treatment notes. The database stamps the resolver and time; reopening clears the previous resolution metadata, so the vehicle lockout cannot be released by a status-only update.
 - The private membership helper functions use an empty search_path; privileged trip RPCs use explicit identity/assignment/role checks and an empty search_path.
 
 ## 4. GPS limitations
@@ -52,6 +53,7 @@ A successful provider response or a route with no notices is not a guarantee tha
 - Vercel currently has no new preview deployment for the latest PR head due deployment quota/rate limits.
 - The truck-routing provider key is not configured.
 - Background GPS tracking and tamper-resistant telemetry are not implemented.
+- Driver licence class/vehicle-category eligibility and the authenticity of manually entered document dates are not verified against Ministry of Transport or insurer systems.
 
 ## 8. Go-live checklist
 - [ ] Successful schema-only backup artifact reviewed and stored safely.
