@@ -242,6 +242,20 @@ BEGIN
   INSERT INTO public.trip_locations(trip_id,driver_id,latitude,longitude,recorded_at) VALUES
     (trip_id,d,31.5000,34.9000,now()-interval '30 seconds'),
     (trip_id,d,31.6000,35.0000,now());
+  BEGIN
+    INSERT INTO public.trip_locations(trip_id,driver_id,latitude,longitude,recorded_at)
+    VALUES (trip_id,d,91,35,now());
+    RAISE EXCEPTION 'Out-of-range GPS latitude was accepted';
+  EXCEPTION WHEN check_violation THEN
+    NULL;
+  END;
+  BEGIN
+    INSERT INTO public.trip_locations(trip_id,driver_id,latitude,longitude,speed_kmh,recorded_at)
+    VALUES (trip_id,d,31.6,35,-1,now());
+    RAISE EXCEPTION 'Negative GPS speed was accepted';
+  EXCEPTION WHEN check_violation THEN
+    NULL;
+  END;
 END $test$;
 
 SET ROLE authenticated;
