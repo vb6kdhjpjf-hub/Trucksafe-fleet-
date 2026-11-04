@@ -143,10 +143,12 @@ export default function IncidentsPage() {
     if (!notes) { setMessage("יש להזין תיעוד טיפול לפני סגירת האירוע."); return; }
     setBusy(true); setMessage("");
     try {
-      const {error} = await supabase.from("incidents")
+      const {data,error} = await supabase.from("incidents")
         .update({status:"resolved",resolution_notes:notes})
-        .eq("id",incident.id).eq("fleet_id",fleet.id);
+        .eq("id",incident.id).eq("fleet_id",fleet.id)
+        .select("id").maybeSingle();
       if (error) setMessage("לא הצלחנו לעדכן את האירוע: "+error.message);
+      else if (!data) setMessage("האירוע לא נמצא או שאין הרשאה לעדכן אותו.");
       else {
         setResolvingIncidentId(null);
         setResolutionNotes("");
