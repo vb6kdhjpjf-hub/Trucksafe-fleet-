@@ -133,6 +133,14 @@ BEGIN
      OR NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.finish_trip(uuid,uuid)'::regprocedure) @> ARRAY['search_path=""']) THEN
     RAISE EXCEPTION 'Privileged RPC search_path is not empty';
   END IF;
+  IF position('WHERE id = v_trip.vehicle_id AND fleet_id = p_fleet_id' IN
+       pg_get_functiondef('public.finish_trip(uuid,uuid)'::regprocedure)) = 0
+     OR position('FOR UPDATE' IN
+       substring(pg_get_functiondef('public.finish_trip(uuid,uuid)'::regprocedure)
+         FROM position('WHERE id = v_trip.vehicle_id AND fleet_id = p_fleet_id' IN
+           pg_get_functiondef('public.finish_trip(uuid,uuid)'::regprocedure)))) = 0 THEN
+    RAISE EXCEPTION 'finish_trip does not lock the vehicle before checking concurrent active trips';
+  END IF;
 END $$;
 
 -- Exercise the failed-inspection INSERT policy under the authenticated role,
