@@ -428,3 +428,19 @@ AS $function$
       AND fm.user_id = auth.uid()
   );
 $function$;
+
+
+-- Fleet membership is an authorization boundary, not an ordinary CRUD table.
+-- No client role may directly add, promote, demote, or remove memberships.
+-- Owner membership is provisioned only by the protected fleet-creation trigger;
+-- future invitations/role changes must use a separately validated server RPC.
+DROP POLICY IF EXISTS fleet_members_insert_managers ON public.fleet_members;
+DROP POLICY IF EXISTS fleet_members_update_managers ON public.fleet_members;
+DROP POLICY IF EXISTS fleet_members_delete_managers ON public.fleet_members;
+REVOKE INSERT, UPDATE, DELETE ON public.fleet_members FROM PUBLIC, anon, authenticated;
+
+-- No current client workflow edits or deletes fleet ownership metadata.
+-- Keep fleet creation and member-scoped reads, but prevent manager-level
+-- clients from changing owner_user_id through the Data API.
+DROP POLICY IF EXISTS fleets_update_managers ON public.fleets;
+REVOKE UPDATE, DELETE ON public.fleets FROM PUBLIC, anon, authenticated;
