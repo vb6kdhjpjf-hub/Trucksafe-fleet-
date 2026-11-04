@@ -202,6 +202,12 @@ BEGIN
      OR NOT has_function_privilege('authenticated','private.is_fleet_member(uuid)','EXECUTE') THEN
     RAISE EXCEPTION 'Private membership helper grants are misconfigured';
   END IF;
+  IF (SELECT prosecdef FROM pg_proc WHERE oid='private.enforce_incident_resolution()'::regprocedure) IS TRUE
+     OR has_function_privilege('anon','private.enforce_incident_resolution()','EXECUTE')
+     OR NOT has_function_privilege('authenticated','private.enforce_incident_resolution()','EXECUTE')
+     OR NOT ((SELECT proconfig FROM pg_proc WHERE oid='private.enforce_incident_resolution()'::regprocedure) @> ARRAY['search_path=""']) THEN
+    RAISE EXCEPTION 'Incident resolution trigger security is misconfigured';
+  END IF;
   IF NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.start_trip_with_inspection(uuid,uuid,uuid,uuid,text,text,jsonb)'::regprocedure) @> ARRAY['search_path=""'])
      OR NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.finish_trip(uuid,uuid)'::regprocedure) @> ARRAY['search_path=""']) THEN
     RAISE EXCEPTION 'Privileged RPC search_path is not empty';
