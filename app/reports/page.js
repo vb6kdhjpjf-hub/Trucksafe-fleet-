@@ -142,7 +142,7 @@ export default function ReportsPage() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  return <main dir="rtl" style={{ minHeight: "100vh", padding: 24, background: "#f5f7fb", color: "#172338" }}>
+  return <main className="truck-safe-tool-page" dir="rtl" style={{ minHeight: "100vh", padding: 24, background: "#f5f7fb", color: "#172338" }}>
     <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
       <div><h1 style={{ margin: 0 }}>דוחות נסיעות</h1><p style={{ color: "#718096" }}>סיכום מרחקים וזמני נסיעה לפי נהג וכלי רכב</p></div>
       <div style={{ display: "flex", gap: 8 }}><button onClick={exportCsv} style={btn}><Download size={16}/> ייצוא לאקסל</button><button onClick={() => loadReport(fleetId)} style={btn}><RefreshCw size={16}/> רענון</button><button onClick={() => router.push("/")} style={btn}><ArrowRight size={16}/> לוח הבקרה</button></div>
