@@ -13,6 +13,7 @@ DECLARE
   t_unauthorized uuid := '40000000-0000-0000-0000-000000000004';
   driver_user uuid := '50000000-0000-0000-0000-000000000001';
   manager_user uuid := '50000000-0000-0000-0000-000000000002';
+  dispatcher_user uuid := '50000000-0000-0000-0000-000000000004';
   outsider_user uuid := '50000000-0000-0000-0000-000000000003';
   v_trip_id uuid;
   checklist jsonb := jsonb_build_object(
@@ -26,7 +27,7 @@ DECLARE
   );
 BEGIN
   INSERT INTO public.fleet_members VALUES
-    (f,driver_user,'driver'),(f,manager_user,'fleet_manager');
+    (f,driver_user,'driver'),(f,manager_user,'fleet_manager'),(f,dispatcher_user,'dispatcher');
   INSERT INTO public.drivers VALUES (d,f,'active',driver_user,current_date + 365);
   INSERT INTO public.vehicles(id,fleet_id,status,assigned_driver_id) VALUES
     (v_ok,f,'available',d),(v_bad,f,'available',d),
@@ -354,6 +355,29 @@ BEGIN
       WHERE defects = 'RLS driver test') <> 0 THEN
     RAISE EXCEPTION 'Non-member can read another fleet inspection';
   END IF;
+END $test$;
+RESET ROLE;
+
+-- Dispatchers may assign work, but cannot create, alter, or delete vehicle
+-- identity or compliance records.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000004',false);
+DO $test$
+BEGIN
+  BEGIN
+    INSERT INTO public.vehicles(id,fleet_id,registration_number,status)
+    VALUES ('30000000-0000-0000-0000-000000000006',
+      '10000000-0000-0000-0000-000000000001','DISPATCHER-INSERT','available');
+    RAISE EXCEPTION 'Dispatcher directly inserted a vehicle';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+  UPDATE public.vehicles SET registration_number='DISPATCHER-UPDATE'
+  WHERE id='30000000-0000-0000-0000-000000000001';
+  IF FOUND THEN RAISE EXCEPTION 'Dispatcher directly updated a vehicle'; END IF;
+  DELETE FROM public.vehicles
+  WHERE id='30000000-0000-0000-0000-000000000001';
+  IF FOUND THEN RAISE EXCEPTION 'Dispatcher directly deleted a vehicle'; END IF;
 END $test$;
 RESET ROLE;
 
