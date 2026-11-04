@@ -748,3 +748,63 @@ REVOKE ALL ON FUNCTION public.get_trip_distance_summaries(uuid, uuid[]) FROM PUB
 REVOKE ALL ON FUNCTION public.get_trip_history_data(uuid, uuid[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_trip_distance_summaries(uuid, uuid[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_trip_history_data(uuid, uuid[]) TO authenticated;
+
+
+-- A safety incident cannot release a vehicle lockout without a recorded
+-- resolution note. The server, not the browser, owns resolution timestamps
+-- and the resolving user's identity.
+ALTER TABLE public.incidents
+  ADD COLUMN resolution_notes text,
+  ADD COLUMN resolved_by uuid;
+
+CREATE OR REPLACE FUNCTION private.enforce_incident_resolution()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path TO ''
+AS $function$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.status IN ('resolved','closed') THEN
+      IF NULLIF(btrim(NEW.resolution_notes), '') IS NULL THEN
+        RAISE EXCEPTION 'יש להזין תיעוד טיפול לפני סגירת אירוע בטיחות';
+      END IF;
+      NEW.resolved_at := now();
+      NEW.resolved_by := auth.uid();
+    ELSE
+      NEW.resolved_at := NULL;
+      NEW.resolved_by := NULL;
+      NEW.resolution_notes := NULL;
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  IF NEW.status IN ('resolved','closed') THEN
+    IF NULLIF(btrim(NEW.resolution_notes), '') IS NULL THEN
+      RAISE EXCEPTION 'יש להזין תיעוד טיפול לפני סגירת אירוע בטיחות';
+    END IF;
+    IF OLD.status NOT IN ('resolved','closed') THEN
+      NEW.resolved_at := now();
+      NEW.resolved_by := auth.uid();
+    ELSE
+      NEW.resolved_at := OLD.resolved_at;
+      NEW.resolved_by := OLD.resolved_by;
+    END IF;
+  ELSE
+    NEW.resolved_at := NULL;
+    NEW.resolved_by := NULL;
+    IF OLD.status IN ('resolved','closed') THEN
+      NEW.resolution_notes := NULL;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION private.enforce_incident_resolution() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION private.enforce_incident_resolution() TO authenticated, service_role;
+
+DROP TRIGGER IF EXISTS enforce_incident_resolution_before_write ON public.incidents;
+CREATE TRIGGER enforce_incident_resolution_before_write
+BEFORE INSERT OR UPDATE ON public.incidents
+FOR EACH ROW EXECUTE FUNCTION private.enforce_incident_resolution();
