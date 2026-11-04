@@ -294,3 +294,45 @@ button, a { -webkit-tap-highlight-color: transparent; }
     padding: 14px !important;
   }
 }
+
+
+/* Compliance data is a required part of the vehicle setup workflow. */
+.vehicle-form {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  align-items: end;
+  gap: 14px;
+}
+.vehicle-form-title,
+.vehicle-form-note,
+.vehicle-form-actions {
+  grid-column: 1 / -1;
+}
+.vehicle-form-title {
+  margin: 0;
+  color: var(--ts-ink);
+  font-size: 17px;
+  font-weight: 800;
+}
+.vehicle-form-note {
+  margin: -6px 0 2px;
+  color: #8a5700;
+  background: #fff8e8;
+  border: 1px solid #f0d9a8;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.vehicle-form label { min-width: 0; }
+.vehicle-form input[type="date"] { min-width: 0; }
+.vehicle-form-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.vehicle-compliance-line {
+  color: #526078 !important;
+  font-size: 11px !important;
+  line-height: 1.6;
+}
