@@ -252,7 +252,17 @@ BEGIN
      OR has_table_privilege('authenticated','public.inspections','DELETE') THEN
     RAISE EXCEPTION 'Authenticated clients retain direct inspection write privileges';
   END IF;
-END $$;
+  IF has_table_privilege('authenticated','public.fleet_members','INSERT')
+     OR has_table_privilege('authenticated','public.fleet_members','UPDATE')
+     OR has_table_privilege('authenticated','public.fleet_members','DELETE') THEN
+    RAISE EXCEPTION 'Authenticated clients retain direct fleet membership write privileges';
+  END IF;
+  IF has_table_privilege('authenticated','public.fleets','UPDATE')
+     OR has_table_privilege('authenticated','public.fleets','DELETE')
+     OR NOT has_table_privilege('authenticated','public.fleets','INSERT') THEN
+    RAISE EXCEPTION 'Fleet creation or ownership metadata privileges are misconfigured';
+  END IF;
+END $;
 
 -- Assigned drivers cannot mark tasks completed directly; managers can still
 -- perform ordinary task administration.
