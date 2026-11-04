@@ -33,7 +33,7 @@ GPS coordinates and speed are client-reported telemetry and are not tamper-proof
 The live dashboard/map use batched, RLS-preserving database reads. The map and history screens show at most 500 recent GPS points per trip. Trip distance reports use a Haversine estimate between saved GPS points (straight-line segments), not road distance or certified odometer data. Do not use them as sole evidence for legal, disciplinary, emergency or insurance decisions.
 
 ## 5. Truck routing limitations
-The HERE routing provider is not configured in the current environment. The route API must remain unavailable until an approved provider account/key is configured and tested. Fleet-entered road restriction records are not yet automatically incorporated into route calculations.
+The HERE routing provider is not configured in the current environment. The route API requires both an approved provider key and the explicit `TRUCK_ROUTING_ENABLED=true` switch. Do not enable it until server-side per-user/fleet rate limiting, usage budgets, route-restriction coverage and operational validation are implemented and tested. Fleet-entered road restriction records are not yet automatically incorporated into route calculations.
 
 A successful provider response or a route with no notices is not a guarantee that every bridge, road restriction, time-window closure, work zone, weight limit or local rule has been considered. Verify current official information before departure and during the trip.
 
