@@ -488,6 +488,13 @@ AS $function$
   );
 $function$;
 
+-- Membership helpers are needed by authenticated RLS policies, not anonymous
+-- clients. Keep their SECURITY DEFINER surface private.
+REVOKE ALL ON FUNCTION private.has_fleet_role(uuid, text[]) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION private.is_fleet_member(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION private.has_fleet_role(uuid, text[]) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION private.is_fleet_member(uuid) TO authenticated, service_role;
+
 
 -- Fleet membership is an authorization boundary, not an ordinary CRUD table.
 -- No client role may directly add, promote, demote, or remove memberships.
