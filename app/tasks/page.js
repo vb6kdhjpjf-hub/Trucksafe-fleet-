@@ -94,11 +94,20 @@ export default function TasksPage() {
 
   async function updateStatus(task, status) {
     if (!canManageTasks) { setMessage("אין הרשאה לשנות את סטטוס המשימה."); return; }
+    if (!["pending","assigned","cancelled"].includes(status)) {
+      setMessage("סטטוס בתהליך או הושלמה מתעדכן רק דרך תהליך הנסיעה המאובטח.");
+      return;
+    }
     setBusy(true); setMessage("");
-    const { error } = await supabase.from("tasks").update({ status }).eq("id", task.id).eq("fleet_id", fleet.id);
-    if (error) setMessage("לא הצלחנו לעדכן סטטוס: " + error.message);
-    else { await loadWorkspace(session.user); setMessage("סטטוס המשימה עודכן."); }
-    setBusy(false);
+    try {
+      const { data, error } = await supabase.from("tasks").update({ status })
+        .eq("id", task.id).eq("fleet_id", fleet.id).select("id").maybeSingle();
+      if (error) setMessage("לא הצלחנו לעדכן סטטוס: " + error.message);
+      else if (!data) setMessage("המשימה לא נמצאה או שלא ניתן לשנות את הסטטוס שלה.");
+      else { await loadWorkspace(session.user); setMessage("סטטוס המשימה עודכן."); }
+    } catch (error) {
+      setMessage("עדכון הסטטוס נכשל: " + (error?.message || "שגיאה לא ידועה"));
+    } finally { setBusy(false); }
   }
 
   async function startTrip(task) {
@@ -267,7 +276,7 @@ export default function TasksPage() {
             {(task.pickup_address || task.delivery_address) && <div className="task-route"><span><MapPin size={14}/> איסוף: {task.pickup_address || "לא צוין"}</span><span><MapPin size={14}/> יעד: {task.delivery_address || "לא צוין"}</span></div>}
             <div className="task-assignees"><span>נהג: {drivers.find(d=>d.id===task.assigned_driver_id)?.full_name || "לא שובץ"}</span><span>רכב: {vehicles.find(v=>v.id===task.assigned_vehicle_id)?.registration_number || "לא שובץ"}</span>{task.scheduled_at && <span><CalendarClock size={13}/> {new Date(task.scheduled_at).toLocaleString("he-IL")}</span>}</div>
             {task.description && <p className="task-description">{task.description}</p>}
-            <div className="task-actions">{canManageTasks && <label>סטטוס<select disabled={busy} value={task.status} onChange={e=>updateStatus(task,e.target.value)}>{Object.entries(labels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>}{!["completed","cancelled"].includes(task.status) && <button className="primary-btn" disabled={busy} onClick={()=>startTrip(task)}><Play size={14}/> פתיחת נסיעה</button>}</div>
+            <div className="task-actions">{canManageTasks && !["in_progress","completed"].includes(task.status) && <label>סטטוס<select disabled={busy} value={task.status} onChange={e=>updateStatus(task,e.target.value)}>{Object.entries(labels).filter(([value])=>["pending","assigned","cancelled"].includes(value)).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>}{canManageTasks && ["in_progress","completed"].includes(task.status) && <small>סטטוס הנסיעה מתעדכן אוטומטית דרך תהליך הנסיעה.</small>}{!["in_progress","completed","cancelled"].includes(task.status) && <button className="primary-btn" disabled={busy} onClick={()=>startTrip(task)}><Play size={14}/> פתיחת נסיעה</button>}</div>
           </article>)}</div>}
       </section>
       <p className="fleet-foot">TruckSafe Fleet V1 · המשימות והנסיעות נשמרות במסד הנתונים</p>
