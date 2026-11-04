@@ -147,7 +147,7 @@ export default function FleetMapPage() {
     if (layers.length) map.fitBounds(L.featureGroup(layers).getBounds().pad(0.2));
   }, [locations, mapReady]);
 
-  return <main dir="rtl" style={{ minHeight: "100vh", padding: 24, background: "#f5f7fb", color: "#172338" }}>
+  return <main className="truck-safe-tool-page" dir="rtl" style={{ minHeight: "100vh", padding: 24, background: "#f5f7fb", color: "#172338" }}>
     <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
       <div><h1 style={{ margin: 0 }}>מפת הנהגים</h1><p style={{ margin: "5px 0", color: "#718096" }}>מיקום הנהגים ומסלול הנסיעה שנשמר עד כה · רענון אוטומטי כל 15 שניות</p></div>
       <div style={{ display: "flex", gap: 8 }}>
