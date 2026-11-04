@@ -27,7 +27,7 @@ DECLARE
 BEGIN
   INSERT INTO public.fleet_members VALUES
     (f,driver_user,'driver'),(f,manager_user,'fleet_manager');
-  INSERT INTO public.drivers VALUES (d,f,'active',driver_user);
+  INSERT INTO public.drivers VALUES (d,f,'active',driver_user,current_date + 365);
   INSERT INTO public.vehicles(id,fleet_id,status,assigned_driver_id) VALUES
     (v_ok,f,'available',d),(v_bad,f,'available',d),
     (v_manager,f,'available',d),(v_unauthorized,f,'available',d);
@@ -113,7 +113,23 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN
     IF SQLERRM = 'Incomplete checklist was accepted' THEN RAISE; END IF;
   END;
-END $$;
+
+  -- A recorded expired vehicle test must block a trip even when the driver
+  -- checks every item as valid.
+  UPDATE public.vehicles SET test_due_at = current_date - 1 WHERE id = v_unauthorized;
+  checklist := jsonb_set(checklist - '_defect_details',
+    '{"בלמים ובלם חניה תקינים"}','true'::jsonb);
+  BEGIN
+    PERFORM public.start_trip_with_inspection(f,t_unauthorized,d,v_unauthorized,'Origin','Destination',checklist);
+    RAISE EXCEPTION 'Expired vehicle document was accepted';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'Expired vehicle document was accepted' THEN RAISE; END IF;
+    IF SQLERRM NOT LIKE '%פג תוקף%' THEN RAISE; END IF;
+  END;
+  IF EXISTS (SELECT 1 FROM public.trips WHERE task_id=t_unauthorized AND status='active') THEN
+    RAISE EXCEPTION 'Trip was created for a vehicle with expired documents';
+  END IF;
+END $;
 
 DO $$
 BEGIN
@@ -179,15 +195,23 @@ RESET ROLE;
 
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
-INSERT INTO public.inspections (
-  fleet_id, trip_id, vehicle_id, driver_id, inspection_type,
-  checklist, defects, passed, inspected_at
-) VALUES (
-  '10000000-0000-0000-0000-000000000001', NULL,
-  '30000000-0000-0000-0000-000000000002',
-  '20000000-0000-0000-0000-000000000001',
-  'pre_trip', '{"brakes":false}', 'RLS driver test', false, now()
-);
+DO $
+BEGIN
+  BEGIN
+    INSERT INTO public.inspections (
+      fleet_id, trip_id, vehicle_id, driver_id, inspection_type,
+      checklist, defects, passed, inspected_at
+    ) VALUES (
+      '10000000-0000-0000-0000-000000000001', NULL,
+      '30000000-0000-0000-0000-000000000002',
+      '20000000-0000-0000-0000-000000000001',
+      'pre_trip', '{"brakes":false}', 'RLS driver test', false, now()
+    );
+    RAISE EXCEPTION 'Authenticated client directly inserted an inspection';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+END $;
 RESET ROLE;
 
 SET ROLE authenticated;
@@ -214,3 +238,72 @@ BEGIN
   END IF;
 END $$;
 RESET ROLE;
+
+-- Direct trip lifecycle writes are disabled; only the validated RPCs may mutate trips.
+DO $$
+BEGIN
+  IF has_table_privilege('authenticated','public.trips','INSERT')
+     OR has_table_privilege('authenticated','public.trips','UPDATE')
+     OR has_table_privilege('authenticated','public.trips','DELETE') THEN
+    RAISE EXCEPTION 'Authenticated clients retain direct trip write privileges';
+  END IF;
+  IF has_table_privilege('authenticated','public.inspections','INSERT')
+     OR has_table_privilege('authenticated','public.inspections','UPDATE')
+     OR has_table_privilege('authenticated','public.inspections','DELETE') THEN
+    RAISE EXCEPTION 'Authenticated clients retain direct inspection write privileges';
+  END IF;
+END $$;
+
+-- Assigned drivers cannot mark tasks completed directly; managers can still
+-- perform ordinary task administration.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
+DO $$
+BEGIN
+  UPDATE public.tasks SET status='completed'
+  WHERE id='40000000-0000-0000-0000-000000000004';
+  IF FOUND THEN
+    RAISE EXCEPTION 'Assigned driver directly completed a task';
+  END IF;
+END $$;
+RESET ROLE;
+
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000002',false);
+UPDATE public.tasks SET status='in_progress'
+WHERE id='40000000-0000-0000-0000-000000000004';
+RESET ROLE;
+
+-- A fleet member may create a new report only as themselves and in the open state.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
+INSERT INTO public.incidents (
+  fleet_id, driver_id, vehicle_id, severity, incident_type,
+  description, status, reported_at, created_by
+) VALUES (
+  '10000000-0000-0000-0000-000000000001',
+  '20000000-0000-0000-0000-000000000001',
+  '30000000-0000-0000-0000-000000000002',
+  'medium','test','Valid incident report','open',now(),
+  '50000000-0000-0000-0000-000000000001'
+);
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO public.incidents (
+      fleet_id, driver_id, vehicle_id, severity, incident_type,
+      description, status, reported_at, created_by
+    ) VALUES (
+      '10000000-0000-0000-0000-000000000001',
+      '20000000-0000-0000-0000-000000000001',
+      '30000000-0000-0000-0000-000000000002',
+      'critical','test','Spoofed closed incident','closed',now(),
+      '50000000-0000-0000-0000-000000000003'
+    );
+    RAISE EXCEPTION 'Incident insert bypassed reporter/status checks';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+END $$;
+RESET ROLE;
+
