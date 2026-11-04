@@ -184,8 +184,16 @@ BEGIN
     RAISE EXCEPTION 'Fleet location RPC grants are misconfigured';
   END IF;
   IF NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.get_latest_trip_locations(uuid)'::regprocedure) @> ARRAY['search_path=""'])
-     OR NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.get_active_trip_map_data(uuid)'::regprocedure) @> ARRAY['search_path=""']) THEN
-    RAISE EXCEPTION 'Fleet location RPC search_path is not empty';
+     OR NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.get_active_trip_map_data(uuid)'::regprocedure) @> ARRAY['search_path=""'])
+     OR NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.get_trip_distance_summaries(uuid,uuid[])'::regprocedure) @> ARRAY['search_path=""'])
+     OR NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.get_trip_history_data(uuid,uuid[])'::regprocedure) @> ARRAY['search_path=""']) THEN
+    RAISE EXCEPTION 'Fleet read RPC search_path is not empty';
+  END IF;
+  IF has_function_privilege('anon','public.get_trip_distance_summaries(uuid,uuid[])','EXECUTE')
+     OR has_function_privilege('anon','public.get_trip_history_data(uuid,uuid[])','EXECUTE')
+     OR NOT has_function_privilege('authenticated','public.get_trip_distance_summaries(uuid,uuid[])','EXECUTE')
+     OR NOT has_function_privilege('authenticated','public.get_trip_history_data(uuid,uuid[])','EXECUTE') THEN
+    RAISE EXCEPTION 'GPS analytics RPC grants are misconfigured';
   END IF;
   IF NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.start_trip_with_inspection(uuid,uuid,uuid,uuid,text,text,jsonb)'::regprocedure) @> ARRAY['search_path=""'])
      OR NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.finish_trip(uuid,uuid)'::regprocedure) @> ARRAY['search_path=""']) THEN
@@ -244,13 +252,23 @@ DECLARE
   latest_count integer;
   history_count integer;
   latest_lat double precision;
+  distance_value double precision;
+  gps_points bigint;
+  history_points jsonb;
 BEGIN
   SELECT count(*) INTO map_count FROM public.get_active_trip_map_data(f);
   SELECT jsonb_array_length(history), latitude INTO history_count, latest_lat
   FROM public.get_active_trip_map_data(f) LIMIT 1;
   SELECT count(*) INTO latest_count FROM public.get_latest_trip_locations(f);
+  SELECT distance_km, point_count INTO distance_value, gps_points
+  FROM public.get_trip_distance_summaries(f,ARRAY['40000000-0000-0000-0000-000000000005']::uuid[]);
+  SELECT points INTO history_points
+  FROM public.get_trip_history_data(f,ARRAY['40000000-0000-0000-0000-000000000005']::uuid[]);
   IF map_count <> 1 OR latest_count <> 1 OR history_count <> 2 OR latest_lat <> 31.6 THEN
     RAISE EXCEPTION 'Fleet map RPC returned incomplete or non-latest GPS data';
+  END IF;
+  IF distance_value IS NULL OR distance_value <= 0 OR gps_points <> 2 OR jsonb_array_length(history_points) <> 2 THEN
+    RAISE EXCEPTION 'GPS analytics RPC returned incomplete trip data';
   END IF;
 END $test$;
 RESET ROLE;
