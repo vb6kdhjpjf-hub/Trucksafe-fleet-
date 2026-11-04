@@ -134,7 +134,7 @@ export default function TasksPage() {
       setPreTripDefectDetails("");
       await loadWorkspace(session.user);
       if (!tripId) {
-        setMessage("הבדיקה נשמרה ונמצאו ליקויים. הנסיעה לא נפתחה והרכב לא סומן כפעיל בנסיעה. יש לטפל בליקויים ולבצע בדיקה חדשה.");
+        setMessage("הבדיקה נשמרה ונפתח אירוע בטיחות. הנסיעה לא נפתחה. יש לטפל בתקלה, שמנהל הבטיחות יאשר את הטיפול, ורק לאחר מכן לבצע בדיקה חדשה.");
         return;
       }
       setMessage("בדיקת הרכב עברה בהצלחה והנסיעה נפתחה.");
