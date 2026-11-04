@@ -11,7 +11,7 @@ CREATE OR REPLACE FUNCTION public.start_trip_with_inspection(
 RETURNS uuid
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path TO 'public'
+SET search_path TO ''
 AS $function$
 DECLARE
   v_trip_id uuid;
@@ -285,7 +285,7 @@ CREATE OR REPLACE FUNCTION public.finish_trip(
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path TO 'public'
+SET search_path TO ''
 AS $function$
 DECLARE
   v_trip public.trips%rowtype;
