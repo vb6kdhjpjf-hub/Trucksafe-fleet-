@@ -284,6 +284,7 @@ CREATE OR REPLACE FUNCTION public.finish_trip(
 )
 RETURNS void
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path TO 'public'
 AS $function$
 DECLARE
