@@ -44,6 +44,21 @@ CREATE TABLE public.inspections (
   inspection_type text NOT NULL, checklist jsonb NOT NULL, defects text,
   passed boolean NOT NULL, inspected_at timestamptz NOT NULL
 );
+CREATE TABLE public.maintenance_records (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  fleet_id uuid NOT NULL,
+  vehicle_id uuid,
+  maintenance_type text,
+  description text,
+  scheduled_at date,
+  completed_at date,
+  cost numeric,
+  odometer_km numeric,
+  status text,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now(),
+  incident_id uuid
+);
 CREATE TABLE public.incidents (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), fleet_id uuid NOT NULL,
   driver_id uuid NOT NULL, vehicle_id uuid NOT NULL, severity text NOT NULL,
@@ -210,6 +225,13 @@ WITH CHECK (
   )
 );
 
+ALTER TABLE public.maintenance_records ENABLE ROW LEVEL SECURITY;
+CREATE POLICY maintenance_select_member
+ON public.maintenance_records
+FOR SELECT
+TO authenticated
+USING (private.is_fleet_member(fleet_id));
+
 ALTER TABLE public.incidents ENABLE ROW LEVEL SECURITY;
 CREATE POLICY incidents_insert_member
 ON public.incidents
@@ -221,5 +243,5 @@ WITH CHECK (private.is_fleet_member(fleet_id));
 -- Simulate Supabase's normal authenticated table grants before the migration
 -- so the migration's explicit revocations are exercised by the tests.
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.trips, public.trip_locations, public.inspections,
-  public.tasks, public.vehicles, public.incidents, public.fleet_members,
+  public.tasks, public.vehicles, public.incidents, public.fleet_members, public.maintenance_records,
   public.fleets TO authenticated;
