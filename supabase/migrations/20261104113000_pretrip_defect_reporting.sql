@@ -98,6 +98,16 @@ BEGIN
     RAISE EXCEPTION 'הרכב אינו זמין לנסיעה או שאינו שייך לצי';
   END IF;
 
+  IF EXISTS (
+    SELECT 1 FROM public.incidents i
+    WHERE i.fleet_id = p_fleet_id
+      AND i.vehicle_id = p_vehicle_id
+      AND i.incident_type = 'ליקוי בבדיקת בטיחות לפני נסיעה'
+      AND i.status IN ('open', 'investigating')
+  ) THEN
+    RAISE EXCEPTION 'קיימת תקלה בטיחותית פתוחה לרכב. מנהל הבטיחות חייב לאשר את הטיפול לפני בדיקה ונסיעה חדשה';
+  END IF;
+
   IF EXISTS (SELECT 1 FROM public.trips WHERE task_id = p_task_id AND status IN ('planned', 'active')) THEN
     RAISE EXCEPTION 'כבר קיימת נסיעה פעילה או מתוכננת למשימה';
   END IF;
@@ -114,6 +124,16 @@ BEGIN
       p_fleet_id, NULL, p_vehicle_id, p_driver_id, 'pre_trip',
       v_checklist, v_failed_items || '. פירוט הנהג: ' || v_defect_details,
       false, now()
+    );
+
+    INSERT INTO public.incidents (
+      fleet_id, driver_id, vehicle_id, severity, incident_type,
+      description, status, reported_at, created_by
+    ) VALUES (
+      p_fleet_id, p_driver_id, p_vehicle_id, 'high',
+      'ליקוי בבדיקת בטיחות לפני נסיעה',
+      'סעיפים שנכשלו: ' || v_failed_items || '. פירוט הנהג: ' || v_defect_details,
+      'open', now(), v_user_id
     );
     RETURN NULL;
   END IF;
