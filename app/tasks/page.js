@@ -26,7 +26,7 @@ export default function TasksPage() {
   const [preTripTask, setPreTripTask] = useState(null);
   const [preTripChecks, setPreTripChecks] = useState({});
   const [preTripDefectDetails, setPreTripDefectDetails] = useState("");
-  const preTripItems = ["צמיגים ולחץ אוויר תקינים","בלמים ובלם חניה תקינים","אורות, איתותים וצופר תקינים","מראות, שמשות ומגבים תקינים","אין נזילות או נזק גלוי","המטען מאובטח והמשקל מתאים","מסמכי רכב ורישום בתוקף ותקינים"];
+  const preTripItems = ["צמיגים ולחץ אוויר תקינים","בלמים ובלם חניה תקינים","אורות, איתותים וצופר תקינים","מראות, שמשות ומגבים תקינים","אין נזילות או נזק גלוי","המטען מאובטח והמשקל מתאים","מסמכי רכב ורישיון נהיגה בתוקף"];
   const preTripRpcKeys = ["צמיגים ולחץ אוויר תקינים","בלמים ובלם חניה תקינים","אורות, איתותים וצופר תקינים","מראות, שמשות ומגבים תקינים","אין נזילות או נזק גלוי","המטען מאובטח והמשקל מתאים","מסמכי רכב ורישיון נהיגה בתוקף"];
   const watchIdRef = useRef(null);
   const lastLocationWriteRef = useRef(0);
