@@ -21,13 +21,16 @@ The controls below describe the proposed PR migration and become effective in pr
 - Fleet membership is an authorization boundary. Client-side membership writes are disabled; membership changes require a future validated server-side invitation/administration flow.
 - Direct trip and inspection writes are disabled for authenticated clients. Trip lifecycle writes must go through the validated RPCs.
 - Task status updates are manager/dispatcher-only; drivers use the trip RPC lifecycle.
+- Driver identity/licence and vehicle compliance records can be created or changed only by owners/fleet managers; dispatchers can assign work but cannot change those safety-critical records.
 - Incident creation requires a fleet membership, the authenticated reporter identity, and initial status `open`.
 - The private membership helper functions use an empty search_path; privileged trip RPCs use explicit identity/assignment/role checks and an empty search_path.
 
 ## 4. GPS limitations
 Browser geolocation is not guaranteed to run when a tab is backgrounded, the browser is closed, the device is locked, battery optimization suspends the app, or permission is revoked. A missing or stale point must never be interpreted as proof that a driver stopped, arrived, or is safe.
 
-GPS coordinates and speed are client-reported telemetry and are not tamper-proof. Do not use them as sole evidence for legal, disciplinary, emergency or insurance decisions.
+GPS coordinates and speed are client-reported telemetry and are not tamper-proof. Database constraints reject out-of-range coordinates, negative speeds and invalid headings, but these checks do not prove that the device is at the reported location.
+
+The live dashboard/map use batched, RLS-preserving database reads. The map and history screens show at most 500 recent GPS points per trip. Trip distance reports use a Haversine estimate between saved GPS points (straight-line segments), not road distance or certified odometer data. Do not use them as sole evidence for legal, disciplinary, emergency or insurance decisions.
 
 ## 5. Truck routing limitations
 The HERE routing provider is not configured in the current environment. The route API must remain unavailable until an approved provider account/key is configured and tested. Fleet-entered road restriction records are not yet automatically incorporated into route calculations.
