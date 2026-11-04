@@ -68,6 +68,10 @@ BEGIN
     WHERE p_checklist ->> k = 'false'
   ), ', '), '');
 
+  IF p_checklist ? '_defect_details' AND v_defect_details IS NULL THEN
+    RAISE EXCEPTION 'תיאור התקלה אינו יכול להיות ריק';
+  END IF;
+
   IF v_failed_items IS NOT NULL AND v_defect_details IS NULL THEN
     RAISE EXCEPTION 'יש לפרט את הליקוי לפני שמירת הבדיקה';
   END IF;
