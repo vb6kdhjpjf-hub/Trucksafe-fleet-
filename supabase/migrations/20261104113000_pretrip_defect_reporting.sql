@@ -35,7 +35,7 @@ BEGIN
     RAISE EXCEPTION 'יש להתחבר כדי לפתוח נסיעה';
   END IF;
 
-  IF jsonb_typeof(p_checklist) <> 'object'
+  IF p_checklist IS NULL OR jsonb_typeof(p_checklist) <> 'object'
      OR jsonb_object_length(p_checklist) NOT IN (7, 8)
      OR EXISTS (
        SELECT 1 FROM unnest(v_expected_keys) AS k
@@ -146,3 +146,65 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.start_trip_with_inspection(uuid, uuid, uuid, uuid, text, text, jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.start_trip_with_inspection(uuid, uuid, uuid, uuid, text, text, jsonb) TO authenticated;
+
+
+-- Permit an authenticated, assigned driver (or fleet manager) to save a failed
+-- pre-trip inspection with no trip_id. Keep the original policy for trip-linked
+-- inspections unchanged.
+DROP POLICY IF EXISTS inspections_insert_authorized ON public.inspections;
+
+CREATE POLICY inspections_insert_authorized
+ON public.inspections
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  (
+    trip_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1
+      FROM public.trips t
+      WHERE t.id = inspections.trip_id
+        AND t.fleet_id = inspections.fleet_id
+        AND t.vehicle_id = inspections.vehicle_id
+        AND t.driver_id = inspections.driver_id
+        AND t.status = 'active'
+        AND (
+          private.has_fleet_role(t.fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
+          OR EXISTS (
+            SELECT 1
+            FROM public.drivers d
+            WHERE d.id = t.driver_id
+              AND d.fleet_id = t.fleet_id
+              AND d.user_id = (SELECT auth.uid())
+              AND d.status = 'active'
+          )
+        )
+    )
+  )
+  OR
+  (
+    trip_id IS NULL
+    AND inspection_type = 'pre_trip'
+    AND passed = false
+    AND defects IS NOT NULL
+    AND private.is_fleet_member(fleet_id)
+    AND EXISTS (
+      SELECT 1
+      FROM public.drivers d
+      WHERE d.id = inspections.driver_id
+        AND d.fleet_id = inspections.fleet_id
+        AND d.status = 'active'
+        AND (
+          private.has_fleet_role(inspections.fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
+          OR d.user_id = (SELECT auth.uid())
+        )
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM public.vehicles v
+      WHERE v.id = inspections.vehicle_id
+        AND v.fleet_id = inspections.fleet_id
+        AND v.status IN ('available','assigned')
+    )
+  )
+);
