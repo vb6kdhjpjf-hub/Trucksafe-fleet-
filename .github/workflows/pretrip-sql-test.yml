@@ -1,6 +1,12 @@
 name: Pre-trip SQL integration test
 
 on:
+  push:
+    branches: [feat/pretrip-defect-reporting]
+    paths:
+      - "supabase/migrations/**"
+      - ".github/tests/**"
+      - ".github/workflows/pretrip-sql-test.yml"
   pull_request:
     paths:
       - "supabase/migrations/**"
