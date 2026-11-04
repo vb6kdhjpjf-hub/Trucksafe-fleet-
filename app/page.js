@@ -25,6 +25,8 @@ export default function Home() {
   const [activeTrips,setActiveTrips]=useState(0);
   const [openIncidents,setOpenIncidents]=useState(0);
   const [incidentAlerts,setIncidentAlerts]=useState([]);
+  const [lockedVehicleIds,setLockedVehicleIds]=useState([]);
+  const [lockStatusAvailable,setLockStatusAvailable]=useState(false);
   const [activeTasks,setActiveTasks]=useState(0);
   const [maintenanceAlerts,setMaintenanceAlerts]=useState([]);
   const [liveLocations,setLiveLocations]=useState([]);
@@ -85,12 +87,13 @@ export default function Home() {
     }
     setFleet({...current,role});
     setWorkspaceChecked(true);
-    const [v,d,tr,inc,incRows,ta,maint,locationResult]=await Promise.all([
+    const [v,d,tr,inc,incRows,lockRows,ta,maint,locationResult]=await Promise.all([
       supabase.from("vehicles").select("id,registration_number,make,model,vehicle_type,status,assigned_driver_id,test_due_at,insurance_due_at,registration_due_at,next_service_at").eq("fleet_id",current.id).order("created_at",{ascending:false}),
       supabase.from("drivers").select("id,full_name,phone,status,license_number,license_class,license_expires_at").eq("fleet_id",current.id).order("created_at",{ascending:false}),
       supabase.from("trips").select("id",{count:"exact",head:true}).eq("fleet_id",current.id).eq("status","active"),
       supabase.from("incidents").select("id",{count:"exact",head:true}).eq("fleet_id",current.id).in("status",["open","investigating"]),
       supabase.from("incidents").select("id,incident_type,severity,description,status,reported_at,vehicle_id").eq("fleet_id",current.id).in("status",["open","investigating"]).order("reported_at",{ascending:false}).limit(8),
+      supabase.from("incidents").select("vehicle_id").eq("fleet_id",current.id).in("status",["open","investigating"]),
       supabase.from("tasks").select("id",{count:"exact",head:true}).eq("fleet_id",current.id).in("status",["pending","assigned","in_progress"]),
       supabase.from("maintenance_records").select("id,vehicle_id,maintenance_type,scheduled_at,status,description").eq("fleet_id",current.id).in("status",["scheduled","in_progress"]).order("scheduled_at",{ascending:true}).limit(30),
       supabase.rpc("get_latest_trip_locations",{p_fleet_id:current.id})
@@ -100,6 +103,8 @@ export default function Home() {
     if(tr.error)setMessage("שגיאה בטעינת הנסיעות: "+tr.error.message); else setActiveTrips(tr.count||0);
     if(inc.error)setMessage("שגיאה בטעינת אירועי בטיחות: "+inc.error.message); else setOpenIncidents(inc.count||0);
     if(incRows.error)setMessage("שגיאה בטעינת פירוט אירועי בטיחות: "+incRows.error.message); else setIncidentAlerts(incRows.data||[]);
+    if(lockRows.error){setLockStatusAvailable(false);setLockedVehicleIds([]);setMessage("לא ניתן לאמת כרגע נעילות בטיחות של כלי רכב: "+lockRows.error.message);}
+    else{setLockStatusAvailable(true);setLockedVehicleIds([...new Set((lockRows.data||[]).map(row=>row.vehicle_id).filter(Boolean))]);}
     if(ta.error)setMessage("שגיאה בטעינת המשימות: "+ta.error.message); else setActiveTasks(ta.count||0);
     if(maint.error)setMessage("שגיאה בטעינת תזכורות תחזוקה: "+maint.error.message); else setMaintenanceAlerts(maint.data||[]);
     if(locationResult.error){setMessage("שגיאה בטעינת מיקומי נסיעות: "+locationResult.error.message);setLiveLocations([]);}
@@ -402,7 +407,7 @@ export default function Home() {
         <label>טיפול תקופתי הבא<input type="date" value={nextServiceAt} onChange={e=>setNextServiceAt(e.target.value)}/></label>
         <div className="vehicle-form-actions"><button className="primary-btn" disabled={busy}>{busy?"שומר...":editingVehicleId?"שמירת עדכון":"שמירת רכב"}</button><button type="button" className="secondary-btn" disabled={busy} onClick={resetVehicleForm}>ביטול</button></div>
       </form>}
-      {vehicles.length===0?<div className="fleet-empty">עדיין לא הוספת כלי רכב. לחץ על "הוספת רכב" כדי להתחיל.</div>:<div className="vehicle-list">{vehicles.map(v=><div className="vehicle-row" key={v.id}><Truck size={20}/><div><b>{v.registration_number}</b><small>{[v.make,v.model,v.vehicle_type].filter(Boolean).join(" · ")}{v.assigned_driver_id ? " · נהג: "+(drivers.find(d=>d.id===v.assigned_driver_id)?.full_name||"לא נמצא") : " · ללא נהג משויך"}</small><small className="vehicle-compliance-line">טסט: {v.test_due_at||"חסר"} · ביטוח: {v.insurance_due_at||"חסר"} · רישיון רכב: {v.registration_due_at||"חסר"}</small></div><span>{v.status==="available"?"זמין":v.status==="assigned"?"משויך":v.status==="on_trip"?"בנסיעה":v.status==="maintenance"?"בטיפול":v.status==="inactive"?"לא פעיל":v.status}</span>{canManageVehicles&&<button type="button" className="secondary-btn" onClick={()=>editVehicle(v)}><Pencil size={14}/> עדכון מסמכים</button>}</div>)}</div>}
+      {vehicles.length===0?<div className="fleet-empty">עדיין לא הוספת כלי רכב. לחץ על "הוספת רכב" כדי להתחיל.</div>:<div className="vehicle-list">{vehicles.map(v=><div className="vehicle-row" key={v.id}><Truck size={20}/><div><b>{v.registration_number}</b><small>{[v.make,v.model,v.vehicle_type].filter(Boolean).join(" · ")}{v.assigned_driver_id ? " · נהג: "+(drivers.find(d=>d.id===v.assigned_driver_id)?.full_name||"לא נמצא") : " · ללא נהג משויך"}</small><small className="vehicle-compliance-line">טסט: {v.test_due_at||"חסר"} · ביטוח: {v.insurance_due_at||"חסר"} · רישיון רכב: {v.registration_due_at||"חסר"}</small></div><span className={!lockStatusAvailable||lockedVehicleIds.includes(v.id)?"status-late":""}>{!lockStatusAvailable?"מצב נעילה לא מאומת":lockedVehicleIds.includes(v.id)?"נעול עקב אירוע בטיחות":v.status==="available"?"זמין":v.status==="assigned"?"משויך":v.status==="on_trip"?"בנסיעה":v.status==="maintenance"?"בטיפול":v.status==="inactive"?"לא פעיל":v.status}</span>{canManageVehicles&&<button type="button" className="secondary-btn" onClick={()=>editVehicle(v)}><Pencil size={14}/> עדכון מסמכים</button>}</div>)}</div>}
       </section>
       <p className="fleet-foot">TruckSafe Fleet V1 · מחובר למסד הנתונים · נתוני הצי מוצגים מהמערכת</p>
     </section>
