@@ -225,9 +225,16 @@ export default function Home() {
     if(newPassword.length<6){setMessage("הסיסמה החדשה חייבת להכיל לפחות 6 תווים.");return;}
     setBusy(true);setMessage("");
     try {
-      const {error}=await supabase.auth.updateUser({password:newPassword});
+      const {data,error}=await supabase.auth.updateUser({password:newPassword});
       if(error)setMessage("לא הצלחנו לעדכן את הסיסמה: "+error.message);
-      else {setRecoveryMode(false);setNewPassword("");window.history.replaceState({},document.title,window.location.pathname);setMessage("הסיסמה עודכנה בהצלחה. כעת אפשר להמשיך למערכת.");}
+      else {
+        setRecoveryMode(false);
+        setNewPassword("");
+        window.history.replaceState({},document.title,window.location.pathname);
+        const user=data.user||(await supabase.auth.getUser()).data.user;
+        if(user) await loadFleet(user);
+        setMessage("הסיסמה עודכנה בהצלחה. כעת אפשר להמשיך למערכת.");
+      }
     } catch(error) {
       setMessage("עדכון הסיסמה נכשל: "+(error?.message||"שגיאה לא ידועה"));
     } finally {setBusy(false);}
