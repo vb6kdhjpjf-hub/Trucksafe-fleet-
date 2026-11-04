@@ -27,6 +27,7 @@ export default function TasksPage() {
   const [preTripChecks, setPreTripChecks] = useState({});
   const [preTripDefectDetails, setPreTripDefectDetails] = useState("");
   const preTripItems = ["צמיגים ולחץ אוויר תקינים","בלמים ובלם חניה תקינים","אורות, איתותים וצופר תקינים","מראות, שמשות ומגבים תקינים","אין נזילות או נזק גלוי","המטען מאובטח והמשקל מתאים","מסמכי רכב ורישום בתוקף ותקינים"];
+  const preTripRpcKeys = ["צמיגים ולחץ אוויר תקינים","בלמים ובלם חניה תקינים","אורות, איתותים וצופר תקינים","מראות, שמשות ומגבים תקינים","אין נזילות או נזק גלוי","המטען מאובטח והמשקל מתאים","מסמכי רכב ורישיון נהיגה בתוקף"];
   const watchIdRef = useRef(null);
   const lastLocationWriteRef = useRef(0);
 
@@ -117,7 +118,7 @@ export default function TasksPage() {
       return;
     }
     setBusy(true); setMessage("");
-    const checklist = Object.fromEntries(preTripItems.map((item, i) => [item, preTripChecks[i]]));
+    const checklist = Object.fromEntries(preTripRpcKeys.map((item, i) => [item, preTripChecks[i]]));
     if (hasDefect) checklist._defect_details = preTripDefectDetails.trim().slice(0, 1000);
     try {
       const { data: tripId, error } = await supabase.rpc("start_trip_with_inspection", {
