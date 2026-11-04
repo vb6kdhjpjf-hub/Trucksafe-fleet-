@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
-import { Truck, ShieldCheck, LogOut, Plus, Users, Navigation, AlertTriangle, ClipboardList, BarChart3, Wrench, Route } from "lucide-react";
+import { Truck, ShieldCheck, LogOut, Plus, Users, Navigation, AlertTriangle, ClipboardList, BarChart3, Wrench, Route, Pencil } from "lucide-react";
 
 export default function Home() {
   const [session,setSession]=useState(null);
@@ -33,6 +33,11 @@ export default function Home() {
   const [vehicleType,setVehicleType]=useState("משאית");
   const [vehicleMake,setVehicleMake]=useState("");
   const [assignedDriverId,setAssignedDriverId]=useState("");
+  const [testDueAt,setTestDueAt]=useState("");
+  const [insuranceDueAt,setInsuranceDueAt]=useState("");
+  const [registrationDueAt,setRegistrationDueAt]=useState("");
+  const [nextServiceAt,setNextServiceAt]=useState("");
+  const [editingVehicleId,setEditingVehicleId]=useState(null);
 
   async function loadFleet(user) {
     const requestId=++fleetLoadRef.current;
@@ -248,15 +253,73 @@ export default function Home() {
     setBusy(false);
   }
 
-  async function addVehicle(e){
-    e.preventDefault();setBusy(true);setMessage("");
-    const {error}=await supabase.from("vehicles").insert({fleet_id:fleet.id,registration_number:registration.trim(),vehicle_type:vehicleType,make:vehicleMake.trim()||null,status:"available",assigned_driver_id:assignedDriverId||null});
-    if(error)setMessage("לא הצלחנו להוסיף רכב: "+error.message);
-    else {setRegistration("");setVehicleMake("");setAssignedDriverId("");setShowVehicle(false);await loadFleet(session.user);setMessage("הרכב נוסף לצי.");}
-    setBusy(false);
+  function resetVehicleForm(){
+    setEditingVehicleId(null);
+    setRegistration("");
+    setVehicleType("משאית");
+    setVehicleMake("");
+    setAssignedDriverId("");
+    setTestDueAt("");
+    setInsuranceDueAt("");
+    setRegistrationDueAt("");
+    setNextServiceAt("");
+    setShowVehicle(false);
+  }
+
+  function editVehicle(vehicle){
+    setEditingVehicleId(vehicle.id);
+    setRegistration(vehicle.registration_number||"");
+    setVehicleType(vehicle.vehicle_type||"משאית");
+    setVehicleMake(vehicle.make||"");
+    setAssignedDriverId(vehicle.assigned_driver_id||"");
+    setTestDueAt(vehicle.test_due_at||"");
+    setInsuranceDueAt(vehicle.insurance_due_at||"");
+    setRegistrationDueAt(vehicle.registration_due_at||"");
+    setNextServiceAt(vehicle.next_service_at||"");
+    setShowVehicle(true);
+    setMessage("");
+  }
+
+  async function saveVehicle(e){
+    e.preventDefault();
+    if(!fleet||!canManageVehicles)return;
+    if(!testDueAt||!insuranceDueAt||!registrationDueAt){
+      setMessage("יש להזין תוקף טסט, ביטוח ורישיון רכב. בלי הנתונים האלה לא ניתן לפתוח נסיעה.");
+      return;
+    }
+    setBusy(true);setMessage("");
+    const payload={
+      registration_number:registration.trim(),
+      vehicle_type:vehicleType,
+      make:vehicleMake.trim()||null,
+      assigned_driver_id:assignedDriverId||null,
+      test_due_at:testDueAt,
+      insurance_due_at:insuranceDueAt,
+      registration_due_at:registrationDueAt,
+      next_service_at:nextServiceAt||null
+    };
+    try{
+      let error=null;
+      if(editingVehicleId){
+        const result=await supabase.from("vehicles").update(payload).eq("id",editingVehicleId).eq("fleet_id",fleet.id).select("id").maybeSingle();
+        error=result.error;
+        if(!error&&!result.data)error=new Error("הרכב לא נמצא או שאין הרשאה לעדכן אותו.");
+      }else{
+        const result=await supabase.from("vehicles").insert({...payload,fleet_id:fleet.id,status:"available"}).select("id").single();
+        error=result.error;
+      }
+      if(error){setMessage("לא הצלחנו לשמור את פרטי הרכב: "+error.message);return;}
+      resetVehicleForm();
+      await loadFleet(session.user);
+      setMessage(editingVehicleId?"מסמכי הרכב ופרטיו עודכנו.":"הרכב נוסף לצי עם נתוני תוקף.");
+    }catch(error){
+      setMessage("שמירת הרכב נכשלה: "+(error?.message||"שגיאה לא ידועה"));
+    }finally{setBusy(false);}
   }
 
   async function signOut(){await supabase.auth.signOut();setMessage("התנתקת מהמערכת.");}
+
+  const canManageVehicles=["owner","fleet_manager","dispatcher"].includes(fleet?.role);
 
   if(!isSupabaseConfigured)return <main className="auth-wrap"><section className="auth-card"><Truck size={36}/><h1>TruckSafe Fleet</h1><p>החיבור למסד הנתונים עדיין לא הוגדר. יש לבדוק את משתני הסביבה ב-Vercel.</p></section></main>;
   if(loading)return <main className="auth-wrap"><section className="auth-card">טוען את סביבת TruckSafe...</section></main>;
@@ -314,9 +377,21 @@ export default function Home() {
       <section className="fleet-panel"><div className="fleet-panel-head"><div><h3>מיקומי נהגים בזמן אמת</h3><p>המיקום האחרון שנשמר בכל נסיעה פעילה</p></div><span className="role-pill">{liveLocations.length} מיקומים</span></div>
       {liveLocations.length===0?<div className="fleet-empty"><Navigation size={26}/><p>עדיין אין נקודות GPS בנסיעות הפעילות.</p><span>כדי לראות נהג כאן, יש להתחיל מעקב GPS במסך משימות ונסיעות.</span></div>:<div className="vehicle-list">{liveLocations.map(loc=><div className="vehicle-row" key={loc.id}><Navigation size={20}/><div><b>{loc.driver} · {loc.vehicle}</b><small>עודכן: {new Date(loc.recorded_at).toLocaleString("he-IL")} · {loc.speed_kmh==null?"מהירות לא זמינה":Math.round(Number(loc.speed_kmh))+" קמ״ש"}</small><small style={{color:!loc.recorded_at||Date.now()-new Date(loc.recorded_at).getTime()>10*60*1000?"#b42318":Date.now()-new Date(loc.recorded_at).getTime()>2*60*1000?"#a15c00":"#16803c",fontWeight:600}}>{!loc.recorded_at?"זמן עדכון לא ידוע":Date.now()-new Date(loc.recorded_at).getTime()>10*60*1000?"המיקום לא עודכן מעל 10 דקות":Date.now()-new Date(loc.recorded_at).getTime()>2*60*1000?"המיקום מתעכב — מעל 2 דקות":"מיקום מעודכן"}</small><small>{Number(loc.latitude).toFixed(5)}, {Number(loc.longitude).toFixed(5)}</small></div><a className="nav-link" target="_blank" rel="noreferrer" href={"https://www.google.com/maps?q="+loc.latitude+","+loc.longitude}>פתיחה במפה</a></div>)}</div>}
       </section>
-      <section className="fleet-panel"><div className="fleet-panel-head"><div><h3>כלי הרכב שלי</h3><p>נתונים שנשמרים במסד הנתונים של הצי</p></div><button className="primary-btn" onClick={()=>setShowVehicle(!showVehicle)}><Plus size={16}/> הוספת רכב</button></div>
-      {showVehicle&&<form className="vehicle-form" onSubmit={addVehicle}><label>מספר רישוי<input required value={registration} onChange={e=>setRegistration(e.target.value)} placeholder="12-345-67"/></label><label>סוג רכב<select value={vehicleType} onChange={e=>setVehicleType(e.target.value)}><option>משאית</option><option>גורר</option><option>נגרר</option><option>מסחרית</option><option>רכב אחר</option></select></label><label>יצרן / דגם<input value={vehicleMake} onChange={e=>setVehicleMake(e.target.value)} placeholder="לדוגמה: Volvo FH"/></label><label>נהג משויך<select value={assignedDriverId} onChange={e=>setAssignedDriverId(e.target.value)}><option value="">ללא נהג משויך</option>{drivers.filter(d=>d.status==="active").map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label><button className="primary-btn" disabled={busy}>שמירת רכב</button></form>}
-      {vehicles.length===0?<div className="fleet-empty">עדיין לא הוספת כלי רכב. לחץ על "הוספת רכב" כדי להתחיל.</div>:<div className="vehicle-list">{vehicles.map(v=><div className="vehicle-row" key={v.id}><Truck size={20}/><div><b>{v.registration_number}</b><small>{[v.make,v.model,v.vehicle_type].filter(Boolean).join(" · ")}{v.assigned_driver_id ? " · נהג: "+(drivers.find(d=>d.id===v.assigned_driver_id)?.full_name||"לא נמצא") : " · ללא נהג משויך"}</small></div><span>{v.status==="available"?"זמין":v.status==="assigned"?"משויך":v.status==="on_trip"?"בנסיעה":v.status==="maintenance"?"בטיפול":v.status==="inactive"?"לא פעיל":v.status}</span></div>)}</div>}
+      <section className="fleet-panel"><div className="fleet-panel-head"><div><h3>כלי הרכב שלי</h3><p>נתונים שנשמרים במסד הנתונים של הצי</p></div>{canManageVehicles&&<button className="primary-btn" onClick={()=>{if(showVehicle)resetVehicleForm();else{resetVehicleForm();setShowVehicle(true);}}}><Plus size={16}/> הוספת רכב</button>}</div>
+      {showVehicle&&canManageVehicles&&<form className="vehicle-form" onSubmit={saveVehicle}>
+        <h3 className="vehicle-form-title">{editingVehicleId?"עדכון פרטי רכב ומסמכים":"הוספת רכב לצי"}</h3>
+        <p className="vehicle-form-note">יש להזין תאריכי תוקף מדויקים לפי המסמכים המקוריים. תאריך חסר או שפג תוקפו ימנע פתיחת נסיעה.</p>
+        <label>מספר רישוי *<input required maxLength={20} value={registration} onChange={e=>setRegistration(e.target.value)} placeholder="12-345-67"/></label>
+        <label>סוג רכב<select value={vehicleType} onChange={e=>setVehicleType(e.target.value)}><option>משאית</option><option>גורר</option><option>נגרר</option><option>מסחרית</option><option>רכב אחר</option></select></label>
+        <label>יצרן / דגם<input maxLength={100} value={vehicleMake} onChange={e=>setVehicleMake(e.target.value)} placeholder="לדוגמה: Volvo FH"/></label>
+        <label>נהג משויך<select value={assignedDriverId} onChange={e=>setAssignedDriverId(e.target.value)}><option value="">ללא נהג משויך</option>{drivers.filter(d=>d.status==="active").map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label>
+        <label>טסט בתוקף עד *<input type="date" required value={testDueAt} onChange={e=>setTestDueAt(e.target.value)}/></label>
+        <label>ביטוח בתוקף עד *<input type="date" required value={insuranceDueAt} onChange={e=>setInsuranceDueAt(e.target.value)}/></label>
+        <label>רישיון רכב בתוקף עד *<input type="date" required value={registrationDueAt} onChange={e=>setRegistrationDueAt(e.target.value)}/></label>
+        <label>טיפול תקופתי הבא<input type="date" value={nextServiceAt} onChange={e=>setNextServiceAt(e.target.value)}/></label>
+        <div className="vehicle-form-actions"><button className="primary-btn" disabled={busy}>{busy?"שומר...":editingVehicleId?"שמירת עדכון":"שמירת רכב"}</button><button type="button" className="secondary-btn" disabled={busy} onClick={resetVehicleForm}>ביטול</button></div>
+      </form>}
+      {vehicles.length===0?<div className="fleet-empty">עדיין לא הוספת כלי רכב. לחץ על "הוספת רכב" כדי להתחיל.</div>:<div className="vehicle-list">{vehicles.map(v=><div className="vehicle-row" key={v.id}><Truck size={20}/><div><b>{v.registration_number}</b><small>{[v.make,v.model,v.vehicle_type].filter(Boolean).join(" · ")}{v.assigned_driver_id ? " · נהג: "+(drivers.find(d=>d.id===v.assigned_driver_id)?.full_name||"לא נמצא") : " · ללא נהג משויך"}</small><small className="vehicle-compliance-line">טסט: {v.test_due_at||"חסר"} · ביטוח: {v.insurance_due_at||"חסר"} · רישיון רכב: {v.registration_due_at||"חסר"}</small></div><span>{v.status==="available"?"זמין":v.status==="assigned"?"משויך":v.status==="on_trip"?"בנסיעה":v.status==="maintenance"?"בטיפול":v.status==="inactive"?"לא פעיל":v.status}</span>{canManageVehicles&&<button type="button" className="secondary-btn" onClick={()=>editVehicle(v)}><Pencil size={14}/> עדכון מסמכים</button>}</div>)}</div>}
       </section>
       <p className="fleet-foot">TruckSafe Fleet V1 · מחובר למסד הנתונים · נתוני הצי מוצגים מהמערכת</p>
     </section>
