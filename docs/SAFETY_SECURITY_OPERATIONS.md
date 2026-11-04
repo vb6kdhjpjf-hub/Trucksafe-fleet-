@@ -12,7 +12,7 @@ Drivers and fleet operators remain responsible for physical inspections, valid l
 4. A failed inspection is retained, a high-severity incident is opened, and the vehicle is locked out from starting another trip while the incident remains open or under investigation.
 5. A successful inspection and trip start are performed atomically.
 6. Trip completion updates the trip, task and vehicle state atomically.
-7. Recorded expired licence, test, insurance or registration dates are hard stops. Missing dates remain an operational data-quality gap and must be completed by fleet management.
+7. Recorded expired licence, test, insurance or registration dates are hard stops. Missing driver licence expiry or vehicle test/insurance/registration dates are hard stops; fleet management must enter and verify these dates before a trip can start.
 
 ## 3. Authorization model
 The controls below describe the proposed PR migration and become effective in production only after that migration is separately reviewed and approved.
