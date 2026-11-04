@@ -19,14 +19,21 @@ export default function TripHistoryPage() {
       .select("id,status,origin_address,destination_address,started_at,ended_at,driver_id,vehicle_id")
       .eq("fleet_id", id).order("started_at", { ascending: false }).limit(100);
     if (tripError) { setError("לא ניתן לטעון היסטוריית נסיעות: " + tripError.message); return; }
-    const rows = await Promise.all((data || []).map(async trip => {
-      const [{ data: driver }, { data: vehicle }, { data: points }] = await Promise.all([
-        supabase.from("drivers").select("full_name").eq("id", trip.driver_id).maybeSingle(),
-        supabase.from("vehicles").select("registration_number").eq("id", trip.vehicle_id).maybeSingle(),
-        supabase.from("trip_locations").select("latitude,longitude,recorded_at").eq("trip_id", trip.id).order("recorded_at", { ascending: true }).limit(3000)
-      ]);
-      return { ...trip, driverName: driver?.full_name || "לא צוין", vehicleName: vehicle?.registration_number || "לא צוין", points: points || [] };
-    }));
+    const tripIds = (data || []).map(trip => trip.id);
+    const { data: historyRows, error: historyError } = tripIds.length
+      ? await supabase.rpc("get_trip_history_data", { p_fleet_id: id, p_trip_ids: tripIds })
+      : { data: [], error: null };
+    if (historyError) { setError("לא ניתן לטעון נקודות GPS: " + historyError.message); return; }
+    const historyByTrip = new Map((historyRows || []).map(row => [row.trip_id, row]));
+    const rows = (data || []).map(trip => {
+      const history = historyByTrip.get(trip.id);
+      return {
+        ...trip,
+        driverName: history?.driver_name || "לא צוין",
+        vehicleName: history?.vehicle_registration || "לא צוין",
+        points: Array.isArray(history?.points) ? history.points : []
+      };
+    });
     setTrips(rows);
     setError("");
   }
@@ -56,7 +63,7 @@ export default function TripHistoryPage() {
   const date = value => value ? new Date(value).toLocaleString("he-IL") : "—";
   return <main className="truck-safe-tool-page" dir="rtl" style={{ minHeight: "100vh", padding: 24, background: "#f5f7fb", color: "#172338" }}>
     <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
-      <div><h1 style={{ margin: 0 }}>היסטוריית נסיעות</h1><p style={{ color: "#718096" }}>עד 100 הנסיעות האחרונות, כולל מסלולי GPS שנשמרו</p></div>
+      <div><h1 style={{ margin: 0 }}>היסטוריית נסיעות</h1><p style={{ color: "#718096" }}>עד 100 הנסיעות האחרונות, עם עד 500 נקודות GPS אחרונות לכל נסיעה</p></div>
       <div style={{ display: "flex", gap: 8 }}>
         <button onClick={() => loadHistory(fleetId)} style={btn}><RefreshCw size={16}/> רענון</button>
         <button onClick={() => router.push("/")} style={btn}><ArrowRight size={16}/> לוח הבקרה</button>
@@ -80,6 +87,7 @@ export default function TripHistoryPage() {
             </div>)}
         </div>}
       </article>)}
+    <p style={{fontSize:12,color:"#718096",marginTop:18}}>לשמירה על ביצועים מוצגות עד 500 נקודות GPS אחרונות לכל נסיעה. נקודות GPS הן נתוני מיקום מדווחים מהדפדפן, אינן מאומתות ואינן תחליף למדידה מוסמכת.</p>
   </main>;
 }
 const btn = { display: "inline-flex", alignItems: "center", gap: 7, border: "1px solid #e1e7f0", background: "white", padding: "9px 12px", borderRadius: 10, cursor: "pointer", color: "#172338" };
