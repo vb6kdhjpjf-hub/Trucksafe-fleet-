@@ -494,18 +494,53 @@ INSERT INTO public.incidents (
   'medium','test','Valid incident report','open',now(),
   '50000000-0000-0000-0000-000000000001'
 );
+RESET ROLE;
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000002',false);
+DO $test$
+DECLARE
+  incident_id uuid;
+  resolved_at timestamptz;
+  resolved_by uuid;
+BEGIN
+  SELECT id INTO incident_id FROM public.incidents
+  WHERE description='Valid incident report'
+    AND fleet_id='10000000-0000-0000-0000-000000000001'
+  LIMIT 1;
+  BEGIN
+    UPDATE public.incidents
+    SET status='resolved', resolution_notes='   '
+    WHERE id=incident_id;
+    RAISE EXCEPTION 'Incident resolved without resolution notes';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'Incident resolved without resolution notes' THEN RAISE; END IF;
+    IF SQLERRM NOT LIKE '%תיעוד טיפול%' THEN RAISE; END IF;
+  END;
+  UPDATE public.incidents
+  SET status='resolved', resolution_notes='בוצעה בדיקה חוזרת והתקלה טופלה'
+  WHERE id=incident_id;
+  SELECT incidents.resolved_at, incidents.resolved_by
+  INTO resolved_at, resolved_by
+  FROM public.incidents WHERE id=incident_id;
+  IF resolved_at IS NULL OR resolved_by <> auth.uid() THEN
+    RAISE EXCEPTION 'Incident resolution metadata was not assigned by the database';
+  END IF;
+END $test$;
+RESET ROLE;
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
 DO $test$
 BEGIN
   BEGIN
     INSERT INTO public.incidents (
       fleet_id, driver_id, vehicle_id, severity, incident_type,
-      description, status, reported_at, created_by
+      description, status, reported_at, created_by, resolution_notes
     ) VALUES (
       '10000000-0000-0000-0000-000000000001',
       '20000000-0000-0000-0000-000000000001',
       '30000000-0000-0000-0000-000000000002',
       'critical','test','Spoofed closed incident','closed',now(),
-      '50000000-0000-0000-0000-000000000003'
+      '50000000-0000-0000-0000-000000000003','attempted spoof'
     );
     RAISE EXCEPTION 'Incident insert bypassed reporter/status checks';
   EXCEPTION WHEN insufficient_privilege THEN
