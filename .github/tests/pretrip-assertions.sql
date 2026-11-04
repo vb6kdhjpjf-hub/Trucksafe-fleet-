@@ -304,6 +304,10 @@ DECLARE
   gps_points bigint;
   history_points jsonb;
 BEGIN
+  INSERT INTO public.trip_locations(trip_id,driver_id,latitude,longitude,speed_kmh,heading_degrees)
+  SELECT t.id,t.driver_id,31.7000,35.1000,35,180
+  FROM public.trips t
+  WHERE t.task_id='40000000-0000-0000-0000-000000000005' AND t.status='active';
   SELECT count(*) INTO map_count FROM public.get_active_trip_map_data(f);
   SELECT jsonb_array_length(history), latitude INTO history_count, latest_lat
   FROM public.get_active_trip_map_data(f) LIMIT 1;
@@ -312,10 +316,10 @@ BEGIN
   FROM public.get_trip_distance_summaries(f,ARRAY['40000000-0000-0000-0000-000000000005']::uuid[]);
   SELECT points INTO history_points
   FROM public.get_trip_history_data(f,ARRAY['40000000-0000-0000-0000-000000000005']::uuid[]);
-  IF map_count <> 1 OR latest_count <> 1 OR history_count <> 2 OR latest_lat <> 31.6 THEN
+  IF map_count <> 1 OR latest_count <> 1 OR history_count <> 3 OR latest_lat <> 31.7 THEN
     RAISE EXCEPTION 'Fleet map RPC returned incomplete or non-latest GPS data';
   END IF;
-  IF distance_value IS NULL OR distance_value <= 0 OR gps_points <> 2 OR jsonb_array_length(history_points) <> 2 THEN
+  IF distance_value IS NULL OR distance_value <= 0 OR gps_points <> 3 OR jsonb_array_length(history_points) <> 3 THEN
     RAISE EXCEPTION 'GPS analytics RPC returned incomplete trip data';
   END IF;
 END $test$;
@@ -470,11 +474,17 @@ BEGIN
      OR has_table_privilege('authenticated','public.inspections','DELETE') THEN
     RAISE EXCEPTION 'Authenticated clients retain direct inspection write privileges';
   END IF;
-  IF NOT has_table_privilege('authenticated','public.trip_locations','INSERT')
+  IF has_table_privilege('authenticated','public.trip_locations','INSERT')
+     OR NOT has_column_privilege('authenticated','public.trip_locations','trip_id','INSERT')
+     OR NOT has_column_privilege('authenticated','public.trip_locations','driver_id','INSERT')
+     OR NOT has_column_privilege('authenticated','public.trip_locations','latitude','INSERT')
+     OR NOT has_column_privilege('authenticated','public.trip_locations','longitude','INSERT')
+     OR has_column_privilege('authenticated','public.trip_locations','recorded_at','INSERT')
+     OR has_column_privilege('authenticated','public.trip_locations','id','INSERT')
      OR has_table_privilege('authenticated','public.trip_locations','UPDATE')
      OR has_table_privilege('authenticated','public.trip_locations','DELETE')
      OR has_table_privilege('anon','public.trip_locations','INSERT') THEN
-    RAISE EXCEPTION 'GPS telemetry write privileges are misconfigured';
+    RAISE EXCEPTION 'GPS telemetry column privileges are misconfigured';
   END IF;
   IF has_table_privilege('authenticated','public.fleet_members','INSERT')
      OR has_table_privilege('authenticated','public.fleet_members','UPDATE')
