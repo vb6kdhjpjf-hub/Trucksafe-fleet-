@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+import { csvDocument } from "../../lib/csv";
 import { ArrowRight, RefreshCw, FileDown, Truck, AlertTriangle, Wrench, Clock3 } from "lucide-react";
 
 function localDayRange() {
@@ -11,7 +12,6 @@ function localDayRange() {
   const end = new Date(start); end.setDate(end.getDate() + 1);
   return { start: start.toISOString(), end: end.toISOString(), label: now.toLocaleDateString("he-IL") };
 }
-function csvCell(value) { return '"' + String(value ?? "").replace(/"/g, '""') + '"'; }
 
 export default function DailyReportPage() {
   const router = useRouter();
