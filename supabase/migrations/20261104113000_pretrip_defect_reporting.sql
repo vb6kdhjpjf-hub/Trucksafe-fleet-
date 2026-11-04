@@ -451,3 +451,124 @@ REVOKE INSERT, UPDATE, DELETE ON public.fleet_members FROM PUBLIC, anon, authent
 -- clients from changing owner_user_id through the Data API.
 DROP POLICY IF EXISTS fleets_update_managers ON public.fleets;
 REVOKE UPDATE, DELETE ON public.fleets FROM PUBLIC, anon, authenticated;
+
+
+-- Return one latest GPS point per active trip for the dashboard without N+1
+-- client queries. SECURITY INVOKER preserves the underlying RLS policies.
+CREATE OR REPLACE FUNCTION public.get_latest_trip_locations(p_fleet_id uuid)
+RETURNS TABLE (
+  trip_id uuid,
+  driver_id uuid,
+  vehicle_id uuid,
+  latitude double precision,
+  longitude double precision,
+  speed_kmh numeric,
+  recorded_at timestamptz,
+  driver_name text,
+  vehicle_registration text
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path TO ''
+AS $function$
+  SELECT
+    t.id,
+    t.driver_id,
+    t.vehicle_id,
+    latest.latitude,
+    latest.longitude,
+    latest.speed_kmh,
+    latest.recorded_at,
+    d.full_name,
+    v.registration_number
+  FROM public.trips t
+  JOIN LATERAL (
+    SELECT tl.latitude, tl.longitude, tl.speed_kmh, tl.recorded_at
+    FROM public.trip_locations tl
+    WHERE tl.trip_id = t.id
+    ORDER BY tl.recorded_at DESC
+    LIMIT 1
+  ) latest ON true
+  LEFT JOIN public.drivers d
+    ON d.id = t.driver_id AND d.fleet_id = t.fleet_id
+  LEFT JOIN public.vehicles v
+    ON v.id = t.vehicle_id AND v.fleet_id = t.fleet_id
+  WHERE t.fleet_id = p_fleet_id
+    AND t.status = 'active';
+$function$;
+
+-- Map view returns the latest location and at most 500 recent route points
+-- per active trip in one database request.
+CREATE OR REPLACE FUNCTION public.get_active_trip_map_data(p_fleet_id uuid)
+RETURNS TABLE (
+  trip_id uuid,
+  driver_id uuid,
+  vehicle_id uuid,
+  origin_address text,
+  destination_address text,
+  started_at timestamptz,
+  latitude double precision,
+  longitude double precision,
+  speed_kmh numeric,
+  recorded_at timestamptz,
+  history jsonb,
+  driver_name text,
+  vehicle_registration text
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path TO ''
+AS $function$
+  SELECT
+    t.id,
+    t.driver_id,
+    t.vehicle_id,
+    t.origin_address,
+    t.destination_address,
+    t.started_at,
+    latest.latitude,
+    latest.longitude,
+    latest.speed_kmh,
+    latest.recorded_at,
+    COALESCE(history.points, '[]'::jsonb),
+    d.full_name,
+    v.registration_number
+  FROM public.trips t
+  JOIN LATERAL (
+    SELECT tl.latitude, tl.longitude, tl.speed_kmh, tl.recorded_at
+    FROM public.trip_locations tl
+    WHERE tl.trip_id = t.id
+    ORDER BY tl.recorded_at DESC
+    LIMIT 1
+  ) latest ON true
+  LEFT JOIN LATERAL (
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'latitude', sample.latitude,
+        'longitude', sample.longitude,
+        'recorded_at', sample.recorded_at
+      )
+      ORDER BY sample.recorded_at ASC
+    ) AS points
+    FROM (
+      SELECT tl.latitude, tl.longitude, tl.recorded_at
+      FROM public.trip_locations tl
+      WHERE tl.trip_id = t.id
+      ORDER BY tl.recorded_at DESC
+      LIMIT 500
+    ) sample
+  ) history ON true
+  LEFT JOIN public.drivers d
+    ON d.id = t.driver_id AND d.fleet_id = t.fleet_id
+  LEFT JOIN public.vehicles v
+    ON v.id = t.vehicle_id AND v.fleet_id = t.fleet_id
+  WHERE t.fleet_id = p_fleet_id
+    AND t.status = 'active';
+$function$;
+
+REVOKE ALL ON FUNCTION public.get_latest_trip_locations(uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.get_active_trip_map_data(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_latest_trip_locations(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_active_trip_map_data(uuid) TO authenticated;
