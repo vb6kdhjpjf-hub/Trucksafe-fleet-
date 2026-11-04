@@ -92,7 +92,7 @@ export default function TruckRoutingPage() {
       fetch("/api/truck-route").then(response => response.json()).then(status => {
         if (!alive) return;
         setProviderReady(Boolean(status.configured));
-        if (!status.configured) setMessage("מנוע ניתוב המשאיות מוכן בקוד, אך עדיין חסר מפתח HERE_API_KEY ב-Vercel.");
+        if (!status.configured) setMessage("מנוע ניתוב המשאיות עדיין לא הופעל. יש להשלים חיבור לספק מאושר ולבדוק אותו לפני שימוש.");
       }).catch(() => { if (alive) setMessage("לא ניתן לבדוק את זמינות שירות הניווט."); });
     }).catch(() => { if (alive) { setMessage("לא ניתן לאמת את ההתחברות."); setLoading(false); } });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -167,7 +167,7 @@ export default function TruckRoutingPage() {
 
   async function calculate(event) {
     event.preventDefault();
-    if (!providerReady) { setMessage("שירות הניווט עדיין לא חובר. יש להגדיר HERE_API_KEY ב-Vercel."); return; }
+    if (!providerReady) { setMessage("מנוע ניתוב המשאיות עדיין לא הופעל. אין לחשב מסלול עד להשלמת החיבור והבדיקות."); return; }
     setBusy(true);
     setMessage("");
     setResult(null);

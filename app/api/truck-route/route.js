@@ -33,7 +33,8 @@ async function geocode(address, apiKey) {
 }
 
 export async function GET() {
-  return response({ configured: Boolean(process.env.HERE_API_KEY) });
+  const providerEnabled = process.env.TRUCK_ROUTING_PROVIDER === "here";
+  return response({ configured: providerEnabled && Boolean(process.env.HERE_API_KEY) });
 }
 
 export async function POST(request) {
@@ -64,8 +65,8 @@ export async function POST(request) {
       .maybeSingle();
     if (membershipError || !membership) return response({ error: "אין לחשבון הרשאה לתכנון מסלולים בצי." }, 403);
 
-    const apiKey = process.env.HERE_API_KEY;
-    if (!apiKey) return response({ error: "שירות ניווט המשאיות עדיין לא חובר. נדרש להגדיר HERE_API_KEY ב-Vercel." }, 503);
+    const apiKey = process.env.TRUCK_ROUTING_PROVIDER === "here" ? process.env.HERE_API_KEY : null;
+    if (!apiKey) return response({ error: "מנוע ניתוב המשאיות עדיין לא הופעל. יש להשלים חיבור לספק מאושר ולבדוק אותו לפני שימוש." }, 503);
 
     const contentLength = Number(request.headers.get("content-length") || 0);
     if (contentLength > 16000) return response({ error: "הבקשה גדולה מדי." }, 413);
