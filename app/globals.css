@@ -336,3 +336,48 @@ button, a { -webkit-tap-highlight-color: transparent; }
   font-size: 11px !important;
   line-height: 1.6;
 }
+
+
+.incident-resolution,
+.incident-resolution-form {
+  margin-top: 12px;
+  border: 1px solid #dbe4ee;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 12px 14px;
+}
+.incident-resolution b {
+  color: #1f3b56;
+  font-size: 13px;
+}
+.incident-resolution p {
+  margin: 6px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.incident-resolution small {
+  color: #64748b;
+  font-size: 11px;
+}
+.incident-resolution-form label {
+  display: grid;
+  gap: 8px;
+  color: #24364b;
+  font-size: 13px;
+  font-weight: 700;
+}
+.incident-resolution-form textarea {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  font-weight: 400;
+  line-height: 1.6;
+  background: #fff;
+}
