@@ -10,6 +10,7 @@ const labels = { height: "גובה מרבי", weight: "משקל מרבי", width
 
 export default function RoadRestrictionsPage() {
   const router = useRouter();
+  const [session, setSession] = useState(null);
   const [fleet, setFleet] = useState(null);
   const [rows, setRows] = useState([]);
   const [form, setForm] = useState(blank);
@@ -30,6 +31,7 @@ export default function RoadRestrictionsPage() {
     supabase.auth.getSession().then(async ({ data, error }) => {
       if (!alive) return;
       if (error || !data.session) { router.replace("/"); return; }
+      setSession(data.session);
       const { data: member, error: memberError } = await supabase.from("fleet_members").select("fleet_id,role").eq("user_id", data.session.user.id).limit(1).maybeSingle();
       if (!alive) return;
       if (memberError || !member) { setMessage(memberError?.message || "לא נמצא צי לחשבון."); setLoading(false); return; }
@@ -43,6 +45,7 @@ export default function RoadRestrictionsPage() {
 
   async function save(e) {
     e.preventDefault();
+    if (!session?.user?.id) { setMessage("פג תוקף החיבור. יש להתחבר מחדש."); return; }
     if (!fleet || !["owner", "fleet_manager", "dispatcher"].includes(fleet.role)) { setMessage("אין הרשאה להוסיף מגבלת דרך."); return; }
     if (!form.road_name.trim()) { setMessage("יש להזין שם כביש."); return; }
     const keys = ["max_height_m", "max_weight_t", "max_width_m", "max_length_m"];
