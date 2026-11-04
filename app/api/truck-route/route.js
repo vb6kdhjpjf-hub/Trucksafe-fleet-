@@ -67,13 +67,24 @@ export async function POST(request) {
     const apiKey = process.env.HERE_API_KEY;
     if (!apiKey) return response({ error: "שירות ניווט המשאיות עדיין לא חובר. נדרש להגדיר HERE_API_KEY ב-Vercel." }, 503);
 
+    const contentLength = Number(request.headers.get("content-length") || 0);
+    if (contentLength > 16000) return response({ error: "הבקשה גדולה מדי." }, 413);
     const raw = await request.json();
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return response({ error: "נתוני הנסיעה אינם תקינים." }, 400);
+    }
     const originText = typeof raw.origin === "string" ? raw.origin.trim() : "";
     const originCoordinates = raw.originCoordinates;
-    const hasOriginCoordinates = originCoordinates && numberInRange(originCoordinates.lat, 29, 34) && numberInRange(originCoordinates.lng, 34, 36);
+    const hasOriginCoordinates = originCoordinates &&
+      numberInRange(originCoordinates.lat, 29, 34) &&
+      numberInRange(originCoordinates.lng, 34, 36);
+    const usesCoordinates = originCoordinates !== null && originCoordinates !== undefined;
     const destinationText = typeof raw.destination === "string" ? raw.destination.trim() : "";
     if (!originText || !destinationText || originText.length > 180 || destinationText.length > 180) {
       return response({ error: "יש להזין מוצא ויעד בישראל, עד 180 תווים לכל כתובת." }, 400);
+    }
+    if (usesCoordinates && !hasOriginCoordinates) {
+      return response({ error: "המיקום הנוכחי אינו תקין או נמצא מחוץ לישראל. אפשר להזין מוצא ידני." }, 400);
     }
 
     const heightCm = Number(raw.heightCm);
@@ -84,7 +95,7 @@ export async function POST(request) {
     const weightPerAxleKg = raw.weightPerAxleKg === "" || raw.weightPerAxleKg == null ? null : Number(raw.weightPerAxleKg);
     const axleCount = Number(raw.axleCount);
     const trailerCount = Number(raw.trailerCount);
-    const vehicleType = raw.vehicleType === "Tractor" || raw.vehicleType === "StraightTruck" ? raw.vehicleType : null;
+    const vehicleType = raw.vehicleType;
 
     if (!numberInRange(heightCm, 100, 600) ||
         !numberInRange(widthCm, 100, 350) ||
@@ -92,12 +103,17 @@ export async function POST(request) {
         !numberInRange(grossWeightKg, 1000, 100000) ||
         !numberInRange(currentWeightKg, 1000, 100000) ||
         currentWeightKg > grossWeightKg ||
+        !Number.isInteger(axleCount) || axleCount < 2 || axleCount > 12 ||
+        !Number.isInteger(trailerCount) || trailerCount < 0 || trailerCount > 3 ||
+        !["StraightTruck", "Tractor"].includes(vehicleType) ||
         (weightPerAxleKg !== null && !numberInRange(weightPerAxleKg, 500, 30000))) {
-      return response({ error: "יש לבדוק את מידות המשאית והמשקלים. המשקל בפועל חייב להיות קטן או שווה למשקל הכולל המותר." }, 400);
+      return response({ error: "יש לבדוק את סוג המשאית, מספר הסרנים והנגררים, המידות והמשקלים. המשקל בפועל חייב להיות קטן או שווה למשקל הכולל המותר." }, 400);
     }
 
     const [origin, destination] = await Promise.all([
-      geocode(originText, apiKey),
+      hasOriginCoordinates
+        ? Promise.resolve({ lat: originCoordinates.lat, lng: originCoordinates.lng, label: "המיקום הנוכחי" })
+        : geocode(originText, apiKey),
       geocode(destinationText, apiKey)
     ]);
     if (!origin || !destination) {
@@ -118,6 +134,9 @@ export async function POST(request) {
       "vehicle[length]": String(Math.round(lengthCm)),
       "vehicle[grossWeight]": String(Math.round(grossWeightKg)),
       "vehicle[currentWeight]": String(Math.round(currentWeightKg)),
+      "vehicle[type]": vehicleType,
+      "vehicle[axleCount]": String(axleCount),
+      "vehicle[trailerCount]": String(trailerCount),
       apiKey
     };
     if (weightPerAxleKg !== null) params["vehicle[weightPerAxle]"] = String(Math.round(weightPerAxleKg));
