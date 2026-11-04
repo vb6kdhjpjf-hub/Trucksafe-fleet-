@@ -73,7 +73,7 @@ export default function TruckRoutingPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState("");\n  const [mapMessage, setMapMessage] = useState("");\n  const [providerReady, setProviderReady] = useState(false);
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למערכת אינו מוגדר."); setLoading(false); return; }
@@ -124,7 +124,7 @@ export default function TruckRoutingPage() {
       L.marker(points[0]).addTo(map).bindPopup("מוצא");
       L.marker(points[points.length - 1]).addTo(map).bindPopup("יעד");
       map.fitBounds(line.getBounds().pad(0.12));
-    }).catch(() => setMessage("המסלול חושב, אך לא הצלחנו לטעון את שכבת המפה. אפשר לעיין בהוראות הנסיעה."));
+    }).catch(() => setMapMessage("המסלול חושב, אך לא הצלחנו לטעון את שכבת המפה. אפשר לעיין בהוראות הנסיעה."));
     return () => {
       cancelled = true;
       if (map) map.remove();
@@ -207,7 +207,7 @@ export default function TruckRoutingPage() {
           <label style={label}>משקל מרבי לסרן (ק״ג, אם ידוע)<input type="number" min="500" max="30000" step="100" style={field} value={form.weightPerAxleKg} onChange={e => update("weightPerAxleKg", e.target.value)} placeholder="אופציונלי"/></label>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 18 }}>
-          <button type="submit" disabled={busy} style={button}><Route size={17} style={{ verticalAlign: "middle" }}/> {busy ? "מחשב מסלול..." : "חשב מסלול למשאית"}</button>
+          <button type="submit" disabled={busy || !providerReady} style={button}><Route size={17} style={{ verticalAlign: "middle" }}/> {busy ? "מחשב מסלול..." : providerReady ? "חשב מסלול למשאית" : "ממתין לחיבור שירות הניווט"}</button>
           <span style={{ color: "#718096", fontSize: 12 }}>המשקלים והמידות נדרשים כדי למנוע חישוב לפי פרופיל משאית שגוי.</span>
         </div>
       </form>
@@ -223,7 +223,7 @@ export default function TruckRoutingPage() {
         {result.notices.filter(n => n.severity.toLowerCase() !== "critical").length > 0 && <div style={{ background: "#fff8e8", border: "1px solid #f0d9a8", borderRadius: 12, padding: 14 }}><b>הודעות ספק הניווט</b><ul>{result.notices.filter(n => n.severity.toLowerCase() !== "critical").map((n,i)=><li key={i}>{n.title}</li>)}</ul></div>}
         <div style={{ background: "white", border: "1px solid #e5eaf1", borderRadius: 14, padding: 12 }}>
           <h3 style={{ margin: "4px 4px 10px", fontSize: 16 }}>מפת המסלול למשאית</h3>
-          <div ref={mapElement} style={{ height: 360, minHeight: 280, borderRadius: 10, zIndex: 0, background: "#edf1f6" }}/>
+          <div ref={mapElement} style={{ height: 360, minHeight: 280, borderRadius: 10, zIndex: 0, background: "#edf1f6" }}/>\n          {mapMessage && <p role="status" style={{ color: "#9b5b16", fontSize: 12 }}>{mapMessage}</p>}
         </div>
         {result.actions.length > 0 && <div style={{ background: "white", border: "1px solid #e5eaf1", borderRadius: 14, padding: 16 }}>
           <h3 style={{ marginTop: 0 }}>הוראות נסיעה</h3>
