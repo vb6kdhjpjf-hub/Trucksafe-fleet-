@@ -100,6 +100,13 @@ BEGIN
     RAISE EXCEPTION 'הנהג אינו פעיל או שאינו שייך לצי';
   END IF;
 
+  -- Do not rely only on the driver's self-attested checklist when the fleet
+  -- has a recorded licence expiry date.
+  IF v_driver.license_expires_at IS NOT NULL
+     AND v_driver.license_expires_at::date < current_date THEN
+    RAISE EXCEPTION 'רישיון הנהיגה של הנהג פג תוקף. יש לעדכן את המסמכים לפני פתיחת נסיעה';
+  END IF;
+
   IF NOT private.has_fleet_role(p_fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
      AND v_driver.user_id IS DISTINCT FROM v_user_id THEN
     RAISE EXCEPTION 'רק מנהל הצי או הנהג המשויך למשימה יכולים לפתוח נסיעה';
@@ -110,6 +117,14 @@ BEGIN
   FOR UPDATE;
   IF NOT FOUND OR v_vehicle.status NOT IN ('available', 'assigned') THEN
     RAISE EXCEPTION 'הרכב אינו זמין לנסיעה או שאינו שייך לצי';
+  END IF;
+
+  -- A recorded expired vehicle document is a hard stop, independent of the
+  -- driver's checklist response.
+  IF (v_vehicle.test_due_at IS NOT NULL AND v_vehicle.test_due_at::date < current_date)
+     OR (v_vehicle.insurance_due_at IS NOT NULL AND v_vehicle.insurance_due_at::date < current_date)
+     OR (v_vehicle.registration_due_at IS NOT NULL AND v_vehicle.registration_due_at::date < current_date) THEN
+    RAISE EXCEPTION 'אחד ממסמכי הרכב פג תוקף. יש לעדכן את הטסט, הביטוח או רישיון הרכב לפני פתיחת נסיעה';
   END IF;
 
   IF EXISTS (
@@ -338,3 +353,78 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.finish_trip(uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.finish_trip(uuid, uuid) TO authenticated;
+
+
+-- Close direct-write paths that could bypass the pre-trip inspection and the
+-- atomic trip/vehicle/task lifecycle. The authenticated client must use the
+-- validated RPCs above; audit records remain read-only to fleet users.
+DROP POLICY IF EXISTS trips_insert_authorized ON public.trips;
+DROP POLICY IF EXISTS trips_update_authorized ON public.trips;
+DROP POLICY IF EXISTS trips_delete_managers ON public.trips;
+REVOKE INSERT, UPDATE, DELETE ON public.trips FROM PUBLIC, anon, authenticated;
+
+-- Inspection rows are created only by the validated lifecycle RPC so a client
+-- cannot record a failed check without also creating the safety incident/lockout.
+DROP POLICY IF EXISTS inspections_insert_authorized ON public.inspections;
+REVOKE INSERT, UPDATE, DELETE ON public.inspections FROM PUBLIC, anon, authenticated;
+
+-- Drivers must not mark tasks complete directly. start_trip_with_inspection
+-- and finish_trip update task state atomically as their owner; managers retain
+-- the ordinary task-management path.
+DROP POLICY IF EXISTS tasks_update_authorized ON public.tasks;
+CREATE POLICY tasks_update_authorized
+ON public.tasks
+FOR UPDATE
+TO authenticated
+USING (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
+)
+WITH CHECK (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
+);
+
+-- Incident reports may be created by any authenticated fleet member, but the
+-- reporter must identify themselves and a new report cannot be inserted as
+-- already resolved/closed.
+DROP POLICY IF EXISTS incidents_insert_member ON public.incidents;
+CREATE POLICY incidents_insert_member
+ON public.incidents
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  private.is_fleet_member(fleet_id)
+  AND created_by = (SELECT auth.uid())
+  AND status = 'open'
+);
+
+-- Harden the private membership helpers against search_path object shadowing.
+CREATE OR REPLACE FUNCTION private.has_fleet_role(target_fleet uuid, allowed_roles text[])
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO ''
+AS $function$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.fleet_members fm
+    WHERE fm.fleet_id = target_fleet
+      AND fm.user_id = auth.uid()
+      AND fm.role = ANY(allowed_roles)
+  );
+$function$;
+
+CREATE OR REPLACE FUNCTION private.is_fleet_member(target_fleet uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO ''
+AS $function$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.fleet_members fm
+    WHERE fm.fleet_id = target_fleet
+      AND fm.user_id = auth.uid()
+  );
+$function$;
