@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+import { csvDocument } from "../../lib/csv";
 import { Truck, ArrowRight, Plus, Wrench, RefreshCw, CalendarDays } from "lucide-react";
 
 const blank = { vehicle_id: "", incident_id: "", maintenance_type: "טיפול תקופתי", description: "", scheduled_at: "", completed_at: "", cost: "", odometer_km: "", status: "scheduled" };
@@ -70,7 +71,7 @@ export default function MaintenancePage() {
   function exportMaintenanceCosts(){
     const rows=[["רכב","סוג טיפול","תאריך ביצוע","עלות בשח","קילומטראז","סטטוס"]];
     completedRecords.forEach(r=>{const v=vehicles.find(x=>x.id===r.vehicle_id);rows.push([v?.registration_number||"",r.maintenance_type||"",r.completed_at||r.scheduled_at||"",Number(r.cost||0),r.odometer_km??"", "הושלם"]);});
-    const csv="\uFEFF"+rows.map(row=>row.map(value=>"\""+String(value??"").replace(/\"/g,"\"\"")+"\"").join(",")).join("\n");
+    const csv=csvDocument(rows);
     const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8;"}));
     const link=document.createElement("a");link.href=url;link.download="trucksafe-maintenance-costs.csv";document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
