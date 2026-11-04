@@ -110,4 +110,5 @@ WITH CHECK (private.is_fleet_member(fleet_id));
 -- Simulate Supabase's normal authenticated table grants before the migration
 -- so the migration's explicit revocations are exercised by the tests.
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.trips, public.inspections,
-  public.tasks, public.vehicles, public.incidents TO authenticated;
+  public.tasks, public.vehicles, public.incidents, public.fleet_members,
+  public.fleets TO authenticated;
