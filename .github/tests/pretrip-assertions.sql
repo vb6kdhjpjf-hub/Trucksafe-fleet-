@@ -337,6 +337,24 @@ BEGIN
 END $test$;
 RESET ROLE;
 
+-- A dispatcher is a fleet member but is not the assigned driver, so cannot
+-- inject a GPS point on another user's active trip.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000004',false);
+DO $test$
+BEGIN
+  BEGIN
+    INSERT INTO public.trip_locations(trip_id,driver_id,latitude,longitude)
+    SELECT t.id,t.driver_id,31.8,35.2
+    FROM public.trips t
+    WHERE t.task_id='40000000-0000-0000-0000-000000000005' AND t.status='active';
+    RAISE EXCEPTION 'Dispatcher injected a driver GPS point';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+END $test$;
+RESET ROLE;
+
 -- Assigned drivers must not directly edit vehicle identity or compliance data.
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
