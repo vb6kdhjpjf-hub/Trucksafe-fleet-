@@ -103,6 +103,41 @@ ON public.vehicles
 FOR SELECT
 TO authenticated
 USING (private.is_fleet_member(fleet_id));
+CREATE POLICY vehicles_insert_managers
+ON public.vehicles
+FOR INSERT
+TO authenticated
+WITH CHECK (private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher']));
+CREATE POLICY vehicles_update_authorized
+ON public.vehicles
+FOR UPDATE
+TO authenticated
+USING (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
+  OR EXISTS (
+    SELECT 1 FROM public.drivers d
+    WHERE d.id = vehicles.assigned_driver_id
+      AND d.fleet_id = vehicles.fleet_id
+      AND d.user_id = (SELECT auth.uid())
+  )
+)
+WITH CHECK (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
+  OR (
+    status IN ('on_trip','available','assigned')
+    AND EXISTS (
+      SELECT 1 FROM public.drivers d
+      WHERE d.id = vehicles.assigned_driver_id
+        AND d.fleet_id = vehicles.fleet_id
+        AND d.user_id = (SELECT auth.uid())
+    )
+  )
+);
+CREATE POLICY vehicles_delete_managers
+ON public.vehicles
+FOR DELETE
+TO authenticated
+USING (private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher']));
 
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tasks_select_member
