@@ -4,6 +4,10 @@ CREATE ROLE authenticated NOLOGIN;
 CREATE SCHEMA auth;
 CREATE SCHEMA private;
 CREATE TABLE public.fleets (id uuid PRIMARY KEY);
+CREATE TABLE public.fleet_members (
+  fleet_id uuid NOT NULL, user_id uuid NOT NULL, role text NOT NULL,
+  PRIMARY KEY (fleet_id, user_id)
+);
 CREATE TABLE public.drivers (
   id uuid PRIMARY KEY, fleet_id uuid NOT NULL, status text NOT NULL, user_id uuid
 );
@@ -37,9 +41,19 @@ ALTER TABLE public.inspections ENABLE ROW LEVEL SECURITY;
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
   SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
 $$;
-CREATE FUNCTION private.has_fleet_role(p_fleet_id uuid, p_roles text[])
-RETURNS boolean LANGUAGE sql STABLE AS $$
-  SELECT COALESCE(current_setting('test.is_manager', true), 'false') = 'true'
+CREATE FUNCTION private.has_fleet_role(target_fleet uuid, allowed_roles text[])
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.fleet_members fm
+    WHERE fm.fleet_id = target_fleet
+      AND fm.user_id = auth.uid()
+      AND fm.role = ANY(allowed_roles)
+  )
 $$;
-CREATE FUNCTION private.is_fleet_member(p_fleet_id uuid)
-RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;
+CREATE FUNCTION private.is_fleet_member(target_fleet uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.fleet_members fm
+    WHERE fm.fleet_id = target_fleet AND fm.user_id = auth.uid()
+  )
+$$;
