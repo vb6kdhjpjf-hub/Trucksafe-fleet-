@@ -21,7 +21,7 @@ jobs:
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v3
         with:
-          version: v3.stable
+          version: latest
 
       - name: Validate required secret is present
         shell: bash
