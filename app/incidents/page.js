@@ -94,7 +94,7 @@ export default function IncidentsPage() {
     try {
       if (photoFile) {
         if (!["image/jpeg","image/png","image/webp"].includes(photoFile.type)) { setMessage("אפשר להעלות תמונה מסוג JPG, PNG או WEBP בלבד."); return; }
-        if (photoFile.size > 5 * 1024 * 1024) { setMessage("גודל התמונה המרבי הוא 8MB."); return; }
+        if (photoFile.size > 5 * 1024 * 1024) { setMessage("גודל התמונה המרבי הוא 5MB."); return; }
         const extension = photoFile.type === "image/png" ? "png" : photoFile.type === "image/webp" ? "webp" : "jpg";
         photoPath = fleet.id+"/incidents/"+crypto.randomUUID()+"."+extension;
         const {error:uploadError} = await supabase.storage.from("incident-photos").upload(photoPath,photoFile,{contentType:photoFile.type,upsert:false});
@@ -123,7 +123,7 @@ export default function IncidentsPage() {
       if (photoPath) {
         const {error:cleanupError} = await supabase.storage.from("incident-photos").remove([photoPath]);
         setMessage("דיווח האירוע נכשל: "+(error?.message||"שגיאה לא ידועה")+(cleanupError ? " בנוסף, מחיקת התמונה נכשלה: "+cleanupError.message : ""));
-      } else setMessage("דיווח האירוע נכשל: "+(error?.message||"שגיאה לא ידועה"));
+      } else setMessage("דיווח האירוע נכשל: "+(error?.message||"שגיאה לא ידועה));
     } finally { setBusy(false); }
   }
 
