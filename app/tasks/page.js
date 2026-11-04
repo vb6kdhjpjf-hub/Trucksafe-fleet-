@@ -27,6 +27,7 @@ export default function TasksPage() {
   const [preTripChecks, setPreTripChecks] = useState({});
   const [preTripDefectDetails, setPreTripDefectDetails] = useState("");
   const preTripItems = ["צמיגים ולחץ אוויר תקינים","בלמים ובלם חניה תקינים","אורות, איתותים וצופר תקינים","מראות, שמשות ומגבים תקינים","אין נזילות או נזק גלוי","המטען מאובטח והמשקל מתאים","מסמכי רכב ורישיון נהיגה בתוקף"];
+  const canManageTasks = ["owner", "fleet_manager", "dispatcher"].includes(fleet?.role);
   const watchIdRef = useRef(null);
   const lastLocationWriteRef = useRef(0);
 
@@ -92,6 +93,7 @@ export default function TasksPage() {
   }
 
   async function updateStatus(task, status) {
+    if (!canManageTasks) { setMessage("אין הרשאה לשנות את סטטוס המשימה."); return; }
     setBusy(true); setMessage("");
     const { error } = await supabase.from("tasks").update({ status }).eq("id", task.id).eq("fleet_id", fleet.id);
     if (error) setMessage("לא הצלחנו לעדכן סטטוס: " + error.message);
@@ -226,6 +228,7 @@ export default function TasksPage() {
       {preTripTask && <section className="fleet-panel"><div className="fleet-panel-head"><div><h3>בדיקת בטיחות לפני יציאה</h3><p>{preTripTask.title} · יש לבדוק בפועל ולבחור מצב לכל סעיף</p></div><span className="role-pill">בדיקת בטיחות</span></div><div className="task-list">{preTripItems.map((item, i) => <div className="task-card" key={item} style={{ gap: 10 }}><b>{i + 1}. {item}</b><div className="task-actions"><button type="button" className={preTripChecks[i] === true ? "primary-btn" : "secondary-btn"} disabled={busy} aria-pressed={preTripChecks[i] === true} onClick={() => setPreTripChecks(old => ({ ...old, [i]: true }))}>✓ תקין</button><button type="button" className={preTripChecks[i] === false ? "primary-btn" : "secondary-btn"} disabled={busy} aria-pressed={preTripChecks[i] === false} onClick={() => setPreTripChecks(old => ({ ...old, [i]: false }))}>! נמצאה תקלה</button></div></div>)}</div>{preTripItems.some((_, i) => preTripChecks[i] === false) && <div className="auth-message" role="alert"><b>נמצאה תקלה — לא ניתן לפתוח נסיעה.</b><label style={{ display: "block", marginTop: 10 }}>תיאור הליקוי<textarea rows="3" maxLength={1000} required value={preTripDefectDetails} onChange={e => setPreTripDefectDetails(e.target.value)} placeholder="פרט מה נמצא, באיזה חלק ברכב ומה דורש טיפול..." style={{ width: "100%", marginTop: 6 }}/></label></div>}<div className="task-actions"><button className="primary-btn" disabled={busy || !preTripItems.every((_, i) => typeof preTripChecks[i] === "boolean") || (preTripItems.some((_, i) => preTripChecks[i] === false) && !preTripDefectDetails.trim())} onClick={confirmPreTrip}>{busy ? "שומר בדיקה..." : preTripItems.some((_, i) => preTripChecks[i] === false) ? "שמירת בדיקה ודיווח תקלה" : "אישור בדיקה ופתיחת נסיעה"}</button><button className="secondary-btn" disabled={busy} onClick={() => setPreTripTask(null)}>ביטול</button></div></section>}
       <section className="fleet-panel">
         <div className="fleet-panel-head"><div><h3>נסיעות פעילות</h3><p>מעקב ועדכון נסיעות שהתחילו</p></div><span className="role-pill">{trips.filter(t=>t.status==="active").length} פעילות</span></div>
+        <p className="fleet-foot">מעקב GPS דרך הדפדפן פועל רק כל עוד מסך זה פתוח והדפדפן פעיל. סגירת האפליקציה או נעילת המכשיר עלולות לעצור אותו; אין להסתמך עליו כמעקב רקע מובטח.</p>
         {trips.filter(t=>t.status==="active").length === 0 ? <div className="fleet-empty">אין כרגע נסיעות פעילות.</div> :
           <div className="task-list">{trips.filter(t=>t.status==="active").map(trip => <article className="task-card" key={trip.id}>
             <div className="task-card-top"><div><b>{tasks.find(t=>t.id===trip.task_id)?.title || "נסיעה ללא משימה"}</b><small>התחלה: {trip.started_at ? new Date(trip.started_at).toLocaleString("he-IL") : "לא צוין"}</small></div><span className="task-status task-in_progress">בנסיעה</span></div>
@@ -244,8 +247,8 @@ export default function TasksPage() {
         </article>)}</div>}
       </section>
       <section className="fleet-panel">
-        <div className="fleet-panel-head"><div><h3>משימות הצי</h3><p>יצירת משימות, שיוך נהגים וכלי רכב ומעקב סטטוס</p></div><button className="primary-btn" onClick={() => { setShowForm(!showForm); setMessage(""); }}><Plus size={16}/> משימה חדשה</button></div>
-        {showForm && <form className="task-form" onSubmit={saveTask}>
+        <div className="fleet-panel-head"><div><h3>משימות הצי</h3><p>יצירת משימות, שיוך נהגים וכלי רכב ומעקב סטטוס</p></div>{canManageTasks && <button className="primary-btn" onClick={() => { setShowForm(!showForm); setMessage(""); }}><Plus size={16}/> משימה חדשה</button>}</div>
+        {showForm && canManageTasks && <form className="task-form" onSubmit={saveTask}>
           <div className="driver-form-title">פרטי המשימה</div>
           <div className="task-form-grid">
             <label>כותרת המשימה *<input required value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="לדוגמה: הובלת מטען ללקוח"/></label>
@@ -264,7 +267,7 @@ export default function TasksPage() {
             {(task.pickup_address || task.delivery_address) && <div className="task-route"><span><MapPin size={14}/> איסוף: {task.pickup_address || "לא צוין"}</span><span><MapPin size={14}/> יעד: {task.delivery_address || "לא צוין"}</span></div>}
             <div className="task-assignees"><span>נהג: {drivers.find(d=>d.id===task.assigned_driver_id)?.full_name || "לא שובץ"}</span><span>רכב: {vehicles.find(v=>v.id===task.assigned_vehicle_id)?.registration_number || "לא שובץ"}</span>{task.scheduled_at && <span><CalendarClock size={13}/> {new Date(task.scheduled_at).toLocaleString("he-IL")}</span>}</div>
             {task.description && <p className="task-description">{task.description}</p>}
-            <div className="task-actions"><label>סטטוס<select disabled={busy} value={task.status} onChange={e=>updateStatus(task,e.target.value)}>{Object.entries(labels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>{!["completed","cancelled"].includes(task.status) && <button className="primary-btn" disabled={busy} onClick={()=>startTrip(task)}><Play size={14}/> פתיחת נסיעה</button>}</div>
+            <div className="task-actions">{canManageTasks && <label>סטטוס<select disabled={busy} value={task.status} onChange={e=>updateStatus(task,e.target.value)}>{Object.entries(labels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>}{!["completed","cancelled"].includes(task.status) && <button className="primary-btn" disabled={busy} onClick={()=>startTrip(task)}><Play size={14}/> פתיחת נסיעה</button>}</div>
           </article>)}</div>}
       </section>
       <p className="fleet-foot">TruckSafe Fleet V1 · המשימות והנסיעות נשמרות במסד הנתונים</p>
