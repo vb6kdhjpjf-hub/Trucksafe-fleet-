@@ -14,6 +14,10 @@ DECLARE
   driver_user uuid := '50000000-0000-0000-0000-000000000001';
   manager_user uuid := '50000000-0000-0000-0000-000000000002';
   dispatcher_user uuid := '50000000-0000-0000-0000-000000000004';
+  other_driver_user uuid := '50000000-0000-0000-0000-000000000005';
+  other_driver_id uuid := '20000000-0000-0000-0000-000000000002';
+  other_vehicle_id uuid := '30000000-0000-0000-0000-000000000007';
+  other_task_id uuid := '40000000-0000-0000-0000-000000000006';
   outsider_user uuid := '50000000-0000-0000-0000-000000000003';
   v_trip_id uuid;
   checklist jsonb := jsonb_build_object(
@@ -27,14 +31,16 @@ DECLARE
   );
 BEGIN
   INSERT INTO public.fleet_members VALUES
-    (f,driver_user,'driver'),(f,manager_user,'fleet_manager'),(f,dispatcher_user,'dispatcher');
-  INSERT INTO public.drivers VALUES (d,f,'active',driver_user,current_date + 365);
+    (f,driver_user,'driver'),(f,manager_user,'fleet_manager'),(f,dispatcher_user,'dispatcher'),(f,other_driver_user,'driver');
+  INSERT INTO public.drivers VALUES (d,f,'active',driver_user,current_date + 365),(other_driver_id,f,'active',other_driver_user,current_date + 365);
   INSERT INTO public.vehicles(id,fleet_id,status,assigned_driver_id) VALUES
     (v_ok,f,'available',d),(v_bad,f,'available',d),
-    (v_manager,f,'available',d),(v_unauthorized,f,'available',d);
+    (v_manager,f,'available',d),(v_unauthorized,f,'available',d),
+    (other_vehicle_id,f,'available',other_driver_id);
   INSERT INTO public.tasks(id,fleet_id,assigned_driver_id,assigned_vehicle_id,status) VALUES
     (t_ok,f,d,v_ok,'assigned'),(t_bad,f,d,v_bad,'assigned'),
-    (t_manager,f,d,v_manager,'assigned'),(t_unauthorized,f,d,v_unauthorized,'assigned');
+    (t_manager,f,d,v_manager,'assigned'),(t_unauthorized,f,d,v_unauthorized,'assigned'),
+    (other_task_id,f,other_driver_id,other_vehicle_id,'assigned');
 
   -- Assigned driver can start and finish their own trip.
   PERFORM set_config('request.jwt.claim.sub', driver_user::text, true);
