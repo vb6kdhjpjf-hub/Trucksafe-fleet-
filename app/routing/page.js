@@ -224,7 +224,7 @@ export default function TruckRoutingPage() {
 
       <section style={{ background: "#fff8e8", border: "1px solid #f0d9a8", borderRadius: 14, padding: 14, marginBottom: 16 }}>
         <b><ShieldAlert size={17} style={{ verticalAlign: "middle" }}/> בטיחות לפני הכול</b>
-        <p style={{ margin: "7px 0 0", lineHeight: 1.6, fontSize: 13 }}>המערכת משתמשת בנתוני ניתוב למשאיות של HERE. גם מסלול ללא התראות אינו הבטחה שהדרך בטוחה או חוקית בכל רגע. חובה לבדוק שילוט, הוראות משטרה, עבודות בכביש ומגבלות מקומיות לפני ובמהלך הנסיעה. מסלול עם התראה קריטית אינו מאושר ליציאה.</p>
+        <p style={{ margin: "7px 0 0", lineHeight: 1.6, fontSize: 13 }}>מנוע הניתוב של HERE עדיין אינו מוגדר בחיבור השרת הנוכחי, ולכן חישוב מסלולים אינו זמין. בנוסף, רשימת מגבלות הדרך שהוזנו במערכת עדיין אינה משולבת בחישוב המסלול האוטומטי. גם לאחר הפעלת ספק הניתוב, מסלול ללא התראות אינו הבטחה שהדרך בטוחה או חוקית בכל רגע. חובה לבדוק שילוט, הוראות משטרה, עבודות בכביש ומגבלות מקומיות לפני ובמהלך הנסיעה. אין להשתמש במערכת כתחליף לאישור מסלול מוסמך.</p>
       </section>
 
       {message && <div role="status" style={{ background: result?.hasCriticalNotices ? "#fff0f0" : "#eef4ff", border: "1px solid #dce6f7", borderRadius: 10, padding: 12, marginBottom: 14, lineHeight: 1.5 }}>{message}</div>}
