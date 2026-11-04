@@ -24,24 +24,18 @@ export default function FleetMapPage() {
     if (!id || loadingLocations.current) return;
     loadingLocations.current = true;
     try {
-      const { data: trips, error: tripError } = await supabase.from("trips")
-        .select("id,driver_id,vehicle_id,origin_address,destination_address,started_at")
-        .eq("fleet_id", id).eq("status", "active");
-      if (tripError) throw tripError;
-      const points = await Promise.all((trips || []).map(async trip => {
-        const [latest, historyResult, driverResult, vehicleResult] = await Promise.all([
-          supabase.from("trip_locations").select("id,latitude,longitude,speed_kmh,recorded_at")
-            .eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(1).maybeSingle(),
-          supabase.from("trip_locations").select("latitude,longitude,recorded_at").eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(500),
-          supabase.from("drivers").select("full_name").eq("id", trip.driver_id).maybeSingle(),
-          supabase.from("vehicles").select("registration_number").eq("id", trip.vehicle_id).maybeSingle()
-        ]);
-        const childError = latest.error || historyResult.error || driverResult.error || vehicleResult.error;
-        if (childError) throw childError;
-        const loc = latest.data;
-        return loc ? { ...trip, ...loc, history: (historyResult.data || []).reverse(), driver: driverResult.data?.full_name || "נהג", vehicle: vehicleResult.data?.registration_number || "רכב" } : null;
+      const { data, error: queryError } = await supabase.rpc("get_active_trip_map_data", {
+        p_fleet_id: id
+      });
+      if (queryError) throw queryError;
+      const points = (data || []).map(row => ({
+        ...row,
+        id: row.trip_id,
+        history: Array.isArray(row.history) ? row.history : [],
+        driver: row.driver_name || "נהג",
+        vehicle: row.vehicle_registration || "רכב"
       }));
-      setLocations(points.filter(Boolean));
+      setLocations(points);
       setError("");
     } catch (error) {
       setError("לא ניתן לרענן את מיקומי הנהגים: " + (error?.message || "שגיאה לא ידועה"));
