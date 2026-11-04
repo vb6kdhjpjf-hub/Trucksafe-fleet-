@@ -115,6 +115,27 @@ BEGIN
     IF SQLERRM = 'Incomplete checklist was accepted' THEN RAISE; END IF;
   END;
 
+  -- A fleet manager must document corrective action before the lockout is
+  -- released. Once resolved, the same vehicle can pass a fresh inspection.
+  PERFORM set_config('request.jwt.claim.sub', manager_user::text, true);
+  UPDATE public.incidents
+  SET status='resolved', resolution_notes='בוצעה בדיקה חוזרת ותוקנה תקלה במערכת הבלמים'
+  WHERE vehicle_id=v_bad AND status='open';
+  IF NOT EXISTS (
+    SELECT 1 FROM public.incidents
+    WHERE vehicle_id=v_bad AND status='resolved'
+      AND resolved_at IS NOT NULL AND resolved_by=manager_user
+      AND resolution_notes IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'Incident resolution evidence or server metadata was not saved';
+  END IF;
+  PERFORM set_config('request.jwt.claim.sub', driver_user::text, true);
+  checklist := jsonb_set(checklist - '_defect_details',
+    '{"בלמים ובלם חניה תקינים"}','true'::jsonb);
+  v_trip_id := public.start_trip_with_inspection(f,t_bad,d,v_bad,'Origin','Destination',checklist);
+  IF v_trip_id IS NULL THEN RAISE EXCEPTION 'Resolved safety lockout did not release after a fresh passed inspection'; END IF;
+  PERFORM public.finish_trip(f,v_trip_id);
+
   -- Complete all checklist items, then verify that missing and expired
   -- compliance data independently blocks a trip.
   checklist := jsonb_set(checklist - '_defect_details',
