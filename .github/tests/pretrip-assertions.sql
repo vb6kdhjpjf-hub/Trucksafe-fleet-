@@ -522,7 +522,7 @@ BEGIN
   SELECT incidents.resolved_at, incidents.resolved_by
   INTO resolved_at, resolved_by
   FROM public.incidents WHERE id=incident_id;
-  IF resolved_at IS NULL OR resolved_by <> auth.uid() THEN
+  IF resolved_at IS NULL OR resolved_by IS DISTINCT FROM auth.uid() THEN
     RAISE EXCEPTION 'Incident resolution metadata was not assigned by the database';
   END IF;
 END $test$;
