@@ -154,7 +154,7 @@ GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated;
 -- Assigned drivers must not directly edit vehicle identity or compliance data.
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
-DO $
+DO $$
 BEGIN
   BEGIN
     UPDATE public.vehicles
@@ -166,7 +166,7 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN
     NULL;
   END;
-END $;
+END $$;
 RESET ROLE;
 
 -- Fleet managers retain direct vehicle update access.
