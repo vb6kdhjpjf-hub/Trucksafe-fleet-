@@ -140,16 +140,31 @@ export default function Home() {
         setMessage("קישור האיפוס אומת. הזן סיסמה חדשה.");
       }
       setSession(next);
-      if(event!=="PASSWORD_RECOVERY"&&next&&!recoveryLink)loadFleet(next.user);
-      else if(!next){setFleet(null);setVehicles([]);setDrivers([]);}
-      setLoading(false);
+      if(!next){
+        setFleet(null);
+        setWorkspaceChecked(false);
+        setVehicles([]);
+        setDrivers([]);
+        setLiveLocations([]);
+        if(event==="SIGNED_OUT")setLoading(false);
+      }
     });
 
-    supabase.auth.getSession().then(async ({data,error})=>{
+    // Validate the persisted token with the Auth server before trusting its user ID.
+    // This prevents a deleted/expired account's cached browser session from opening
+    // the "create organization" flow or being mistaken for a new user.
+    supabase.auth.getUser().then(async ({data,error})=>{
       if(!alive)return;
-      if(error)setMessage("לא הצלחנו לאמת את קישור האיפוס: "+error.message);
-      setSession(data.session);
-      if(data.session&&!recoveryLink)await loadFleet(data.session.user);
+      if(error){
+        setMessage("פג תוקף ההתחברות או שהחשבון אינו זמין. יש להתחבר מחדש עם החשבון הפעיל.");
+        await supabase.auth.signOut();
+        if(alive){setSession(null);setFleet(null);setLoading(false);}
+        return;
+      }
+      const {data:{session:currentSession}}=await supabase.auth.getSession();
+      if(!alive)return;
+      setSession(currentSession);
+      if(data.user&&!recoveryLink)await loadFleet(data.user);
       if(alive)setLoading(false);
     });
     return ()=>{alive=false;subscription.unsubscribe();};
