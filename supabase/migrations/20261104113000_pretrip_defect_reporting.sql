@@ -10,6 +10,7 @@ CREATE OR REPLACE FUNCTION public.start_trip_with_inspection(
 )
 RETURNS uuid
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path TO 'public'
 AS $function$
 DECLARE
@@ -242,10 +243,9 @@ WITH CHECK (
   )
 );
 
--- Align vehicle update authorization with task assignment and active-trip ownership.
--- A driver's vehicle assignment is recorded on the task as well as (optionally)
--- on the vehicle row. Permit the assigned driver to update the vehicle
--- row during the start/finish lifecycle when the task or active trip proves assignment.
+-- Keep vehicle updates restricted to managers and the driver's explicit vehicle assignment.
+-- The two authenticated RPCs below perform the narrowly validated trip lifecycle
+-- changes as their owner; drivers do not receive broader direct vehicle UPDATE access.
 DROP POLICY IF EXISTS vehicles_update_authorized ON public.vehicles;
 
 CREATE POLICY vehicles_update_authorized
@@ -261,63 +261,17 @@ USING (
       AND d.fleet_id = vehicles.fleet_id
       AND d.user_id = (SELECT auth.uid())
   )
-  OR EXISTS (
-    SELECT 1
-    FROM public.tasks t
-    JOIN public.drivers d
-      ON d.id = t.assigned_driver_id
-     AND d.fleet_id = t.fleet_id
-    WHERE t.fleet_id = vehicles.fleet_id
-      AND t.assigned_vehicle_id = vehicles.id
-      AND t.status IN ('pending','assigned')
-      AND d.user_id = (SELECT auth.uid())
-  )
-  OR EXISTS (
-    SELECT 1
-    FROM public.trips tr
-    JOIN public.drivers d
-      ON d.id = tr.driver_id
-     AND d.fleet_id = tr.fleet_id
-    WHERE tr.fleet_id = vehicles.fleet_id
-      AND tr.vehicle_id = vehicles.id
-      AND tr.status = 'active'
-      AND d.user_id = (SELECT auth.uid())
-  )
 )
 WITH CHECK (
   private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
   OR (
     vehicles.status IN ('on_trip','available','assigned')
-    AND (
-      EXISTS (
-        SELECT 1
-        FROM public.drivers d
-        WHERE d.id = vehicles.assigned_driver_id
-          AND d.fleet_id = vehicles.fleet_id
-          AND d.user_id = (SELECT auth.uid())
-      )
-      OR EXISTS (
-        SELECT 1
-        FROM public.tasks t
-        JOIN public.drivers d
-          ON d.id = t.assigned_driver_id
-         AND d.fleet_id = t.fleet_id
-        WHERE t.fleet_id = vehicles.fleet_id
-          AND t.assigned_vehicle_id = vehicles.id
-          AND t.status IN ('pending','assigned')
-          AND d.user_id = (SELECT auth.uid())
-      )
-      OR EXISTS (
-        SELECT 1
-        FROM public.trips tr
-        JOIN public.drivers d
-          ON d.id = tr.driver_id
-         AND d.fleet_id = tr.fleet_id
-        WHERE tr.fleet_id = vehicles.fleet_id
-          AND tr.vehicle_id = vehicles.id
-          AND tr.status = 'active'
-          AND d.user_id = (SELECT auth.uid())
-      )
+    AND EXISTS (
+      SELECT 1
+      FROM public.drivers d
+      WHERE d.id = vehicles.assigned_driver_id
+        AND d.fleet_id = vehicles.fleet_id
+        AND d.user_id = (SELECT auth.uid())
     )
   )
 );
