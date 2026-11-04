@@ -514,6 +514,180 @@ REVOKE ALL ON FUNCTION private.is_fleet_member(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION private.has_fleet_role(uuid, text[]) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION private.is_fleet_member(uuid) TO authenticated, service_role;
 
+-- Limit driver-facing reads to that driver's own records. Fleet operations and
+-- safety roles retain the fleet-wide view required for dispatch and oversight.
+DROP POLICY IF EXISTS fleet_members_select_member ON public.fleet_members;
+CREATE POLICY fleet_members_select_member
+ON public.fleet_members
+FOR SELECT
+TO authenticated
+USING (
+  user_id = (SELECT auth.uid())
+  OR private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager'])
+);
+
+DROP POLICY IF EXISTS drivers_select_member ON public.drivers;
+CREATE POLICY drivers_select_member
+ON public.drivers
+FOR SELECT
+TO authenticated
+USING (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher','safety_manager'])
+  OR user_id = (SELECT auth.uid())
+);
+
+DROP POLICY IF EXISTS vehicles_select_member ON public.vehicles;
+CREATE POLICY vehicles_select_member
+ON public.vehicles
+FOR SELECT
+TO authenticated
+USING (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher','safety_manager'])
+  OR EXISTS (
+    SELECT 1
+    FROM public.drivers d
+    WHERE d.fleet_id = vehicles.fleet_id
+      AND d.user_id = (SELECT auth.uid())
+      AND (
+        d.id = vehicles.assigned_driver_id
+        OR EXISTS (
+          SELECT 1 FROM public.tasks t
+          WHERE t.fleet_id = vehicles.fleet_id
+            AND t.assigned_vehicle_id = vehicles.id
+            AND t.assigned_driver_id = d.id
+            AND t.status IN ('pending','assigned','in_progress')
+        )
+      )
+  )
+);
+
+DROP POLICY IF EXISTS tasks_select_member ON public.tasks;
+CREATE POLICY tasks_select_member
+ON public.tasks
+FOR SELECT
+TO authenticated
+USING (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher','safety_manager'])
+  OR EXISTS (
+    SELECT 1 FROM public.drivers d
+    WHERE d.id = tasks.assigned_driver_id
+      AND d.fleet_id = tasks.fleet_id
+      AND d.user_id = (SELECT auth.uid())
+  )
+);
+
+DROP POLICY IF EXISTS trips_select_member ON public.trips;
+CREATE POLICY trips_select_member
+ON public.trips
+FOR SELECT
+TO authenticated
+USING (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher','safety_manager'])
+  OR EXISTS (
+    SELECT 1 FROM public.drivers d
+    WHERE d.id = trips.driver_id
+      AND d.fleet_id = trips.fleet_id
+      AND d.user_id = (SELECT auth.uid())
+  )
+);
+
+DROP POLICY IF EXISTS trip_locations_select_member ON public.trip_locations;
+CREATE POLICY trip_locations_select_member
+ON public.trip_locations
+FOR SELECT
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.trips t
+    WHERE t.id = trip_locations.trip_id
+      AND (
+        private.has_fleet_role(t.fleet_id, ARRAY['owner','fleet_manager','dispatcher','safety_manager'])
+        OR EXISTS (
+          SELECT 1 FROM public.drivers d
+          WHERE d.id = t.driver_id
+            AND d.fleet_id = t.fleet_id
+            AND d.user_id = (SELECT auth.uid())
+        )
+      )
+  )
+);
+
+DROP POLICY IF EXISTS incidents_select_member ON public.incidents;
+CREATE POLICY incidents_select_member
+ON public.incidents
+FOR SELECT
+TO authenticated
+USING (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher','safety_manager'])
+  OR created_by = (SELECT auth.uid())
+  OR EXISTS (
+    SELECT 1 FROM public.drivers d
+    WHERE d.fleet_id = incidents.fleet_id
+      AND d.user_id = (SELECT auth.uid())
+      AND (
+        d.id = incidents.driver_id
+        OR EXISTS (
+          SELECT 1 FROM public.vehicles v
+          WHERE v.id = incidents.vehicle_id
+            AND v.fleet_id = incidents.fleet_id
+            AND v.assigned_driver_id = d.id
+        )
+        OR EXISTS (
+          SELECT 1 FROM public.tasks t
+          WHERE t.fleet_id = incidents.fleet_id
+            AND t.assigned_vehicle_id = incidents.vehicle_id
+            AND t.assigned_driver_id = d.id
+            AND t.status IN ('pending','assigned','in_progress')
+        )
+      )
+  )
+);
+
+DROP POLICY IF EXISTS inspections_select_member ON public.inspections;
+CREATE POLICY inspections_select_member
+ON public.inspections
+FOR SELECT
+TO authenticated
+USING (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher','safety_manager'])
+  OR EXISTS (
+    SELECT 1 FROM public.drivers d
+    WHERE d.id = inspections.driver_id
+      AND d.fleet_id = inspections.fleet_id
+      AND d.user_id = (SELECT auth.uid())
+  )
+);
+
+DROP POLICY IF EXISTS maintenance_select_member ON public.maintenance_records;
+CREATE POLICY maintenance_select_member
+ON public.maintenance_records
+FOR SELECT
+TO authenticated
+USING (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher','safety_manager'])
+  OR EXISTS (
+    SELECT 1 FROM public.drivers d
+    WHERE d.fleet_id = maintenance_records.fleet_id
+      AND d.user_id = (SELECT auth.uid())
+      AND (
+        EXISTS (
+          SELECT 1 FROM public.vehicles v
+          WHERE v.id = maintenance_records.vehicle_id
+            AND v.fleet_id = maintenance_records.fleet_id
+            AND v.assigned_driver_id = d.id
+        )
+        OR EXISTS (
+          SELECT 1 FROM public.tasks t
+          WHERE t.fleet_id = maintenance_records.fleet_id
+            AND t.assigned_vehicle_id = maintenance_records.vehicle_id
+            AND t.assigned_driver_id = d.id
+            AND t.status IN ('pending','assigned','in_progress')
+        )
+      )
+  )
+);
+
+
 
 -- Fleet membership is an authorization boundary, not an ordinary CRUD table.
 -- No client role may directly add, promote, demote, or remove memberships.
