@@ -505,6 +505,18 @@ DROP POLICY IF EXISTS fleets_update_managers ON public.fleets;
 REVOKE UPDATE, DELETE ON public.fleets FROM PUBLIC, anon, authenticated;
 
 
+-- Reject malformed telemetry at the database boundary. These checks validate
+-- coordinate/measurement ranges; they do not authenticate the GPS source.
+ALTER TABLE public.trip_locations
+  ADD CONSTRAINT trip_locations_latitude_range
+    CHECK (latitude BETWEEN -90 AND 90),
+  ADD CONSTRAINT trip_locations_longitude_range
+    CHECK (longitude BETWEEN -180 AND 180),
+  ADD CONSTRAINT trip_locations_speed_nonnegative
+    CHECK (speed_kmh IS NULL OR speed_kmh >= 0),
+  ADD CONSTRAINT trip_locations_heading_range
+    CHECK (heading_degrees IS NULL OR (heading_degrees >= 0 AND heading_degrees < 360));
+
 -- Return one latest GPS point per active trip for the dashboard without N+1
 -- client queries. SECURITY INVOKER preserves the underlying RLS policies.
 CREATE OR REPLACE FUNCTION public.get_latest_trip_locations(p_fleet_id uuid)
