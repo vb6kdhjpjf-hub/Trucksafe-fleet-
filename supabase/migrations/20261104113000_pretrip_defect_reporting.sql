@@ -241,3 +241,153 @@ WITH CHECK (
     )
   )
 );
+
+-- Align vehicle update authorization with task assignment and active-trip ownership.
+-- A driver's vehicle assignment is recorded on the task as well as (optionally)
+-- on the vehicle row. Permit the assigned driver to perform only the trip
+-- lifecycle status changes through the existing row-level policy.
+DROP POLICY IF EXISTS vehicles_update_authorized ON public.vehicles;
+
+CREATE POLICY vehicles_update_authorized
+ON public.vehicles
+FOR UPDATE
+TO authenticated
+USING (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
+  OR EXISTS (
+    SELECT 1
+    FROM public.drivers d
+    WHERE d.id = vehicles.assigned_driver_id
+      AND d.fleet_id = vehicles.fleet_id
+      AND d.user_id = (SELECT auth.uid())
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM public.tasks t
+    JOIN public.drivers d
+      ON d.id = t.assigned_driver_id
+     AND d.fleet_id = t.fleet_id
+    WHERE t.fleet_id = vehicles.fleet_id
+      AND t.assigned_vehicle_id = vehicles.id
+      AND t.status IN ('pending','assigned')
+      AND d.user_id = (SELECT auth.uid())
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM public.trips tr
+    JOIN public.drivers d
+      ON d.id = tr.driver_id
+     AND d.fleet_id = tr.fleet_id
+    WHERE tr.fleet_id = vehicles.fleet_id
+      AND tr.vehicle_id = vehicles.id
+      AND tr.status = 'active'
+      AND d.user_id = (SELECT auth.uid())
+  )
+)
+WITH CHECK (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
+  OR (
+    vehicles.status IN ('on_trip','available','assigned')
+    AND (
+      EXISTS (
+        SELECT 1
+        FROM public.drivers d
+        WHERE d.id = vehicles.assigned_driver_id
+          AND d.fleet_id = vehicles.fleet_id
+          AND d.user_id = (SELECT auth.uid())
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM public.tasks t
+        JOIN public.drivers d
+          ON d.id = t.assigned_driver_id
+         AND d.fleet_id = t.fleet_id
+        WHERE t.fleet_id = vehicles.fleet_id
+          AND t.assigned_vehicle_id = vehicles.id
+          AND t.status IN ('pending','assigned')
+          AND d.user_id = (SELECT auth.uid())
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM public.trips tr
+        JOIN public.drivers d
+          ON d.id = tr.driver_id
+         AND d.fleet_id = tr.fleet_id
+        WHERE tr.fleet_id = vehicles.fleet_id
+          AND tr.vehicle_id = vehicles.id
+          AND tr.status = 'active'
+          AND d.user_id = (SELECT auth.uid())
+      )
+    )
+  )
+);
+
+-- The helper was moved to the private schema by an earlier hardening migration.
+-- Keep this function invoker-secured and qualify the helper explicitly.
+CREATE OR REPLACE FUNCTION public.finish_trip(
+  p_fleet_id uuid,
+  p_trip_id uuid
+)
+RETURNS void
+LANGUAGE plpgsql
+SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_trip public.trips%rowtype;
+  v_driver_user_id uuid;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'יש להתחבר כדי לסיים נסיעה';
+  END IF;
+
+  SELECT * INTO v_trip
+  FROM public.trips
+  WHERE id = p_trip_id AND fleet_id = p_fleet_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'הנסיעה לא נמצאה בצי';
+  END IF;
+  IF v_trip.status <> 'active' THEN
+    RAISE EXCEPTION 'הנסיעה אינה פעילה או שכבר הסתיימה';
+  END IF;
+
+  SELECT d.user_id INTO v_driver_user_id
+  FROM public.drivers d
+  WHERE d.id = v_trip.driver_id AND d.fleet_id = p_fleet_id;
+
+  IF NOT private.has_fleet_role(p_fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
+     AND v_driver_user_id IS DISTINCT FROM auth.uid() THEN
+    RAISE EXCEPTION 'רק מנהל הצי או הנהג המשויך לנסיעה יכולים לסיים אותה';
+  END IF;
+
+  -- Update the vehicle while the trip is still active so the driver's
+  -- vehicle RLS policy can validate ownership through this trip.
+  IF NOT EXISTS (
+    SELECT 1 FROM public.trips
+    WHERE fleet_id = p_fleet_id
+      AND vehicle_id = v_trip.vehicle_id
+      AND status = 'active'
+      AND id <> p_trip_id
+  ) THEN
+    UPDATE public.vehicles
+    SET status = 'available', updated_at = now()
+    WHERE id = v_trip.vehicle_id
+      AND fleet_id = p_fleet_id
+      AND status = 'on_trip';
+  END IF;
+
+  UPDATE public.trips
+  SET status = 'completed', ended_at = now(), updated_at = now()
+  WHERE id = p_trip_id AND fleet_id = p_fleet_id;
+
+  IF v_trip.task_id IS NOT NULL THEN
+    UPDATE public.tasks
+    SET status = 'completed', updated_at = now()
+    WHERE id = v_trip.task_id AND fleet_id = p_fleet_id;
+  END IF;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.finish_trip(uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.finish_trip(uuid, uuid) TO authenticated;
