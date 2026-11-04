@@ -572,3 +572,103 @@ REVOKE ALL ON FUNCTION public.get_latest_trip_locations(uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.get_active_trip_map_data(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_latest_trip_locations(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_active_trip_map_data(uuid) TO authenticated;
+
+
+-- Compute trip distance in PostgreSQL instead of issuing one GPS query per
+-- trip and transferring thousands of raw coordinates to the browser.
+CREATE OR REPLACE FUNCTION public.get_trip_distance_summaries(
+  p_fleet_id uuid,
+  p_trip_ids uuid[]
+)
+RETURNS TABLE (
+  trip_id uuid,
+  distance_km double precision,
+  point_count bigint
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path TO ''
+AS $function$
+  WITH ordered_points AS (
+    SELECT
+      tl.trip_id,
+      tl.latitude,
+      tl.longitude,
+      lag(tl.latitude) OVER (PARTITION BY tl.trip_id ORDER BY tl.recorded_at, tl.id) AS previous_latitude,
+      lag(tl.longitude) OVER (PARTITION BY tl.trip_id ORDER BY tl.recorded_at, tl.id) AS previous_longitude
+    FROM public.trip_locations tl
+    JOIN public.trips t ON t.id = tl.trip_id
+    WHERE t.fleet_id = p_fleet_id
+      AND t.id = ANY(COALESCE(p_trip_ids, ARRAY[]::uuid[]))
+      AND tl.latitude BETWEEN -90 AND 90
+      AND tl.longitude BETWEEN -180 AND 180
+  )
+  SELECT
+    op.trip_id,
+    CASE WHEN count(*) >= 2 THEN
+      sum(
+        6371.0 * 2.0 * asin(sqrt(least(1.0, greatest(0.0,
+          power(sin(radians(op.latitude - op.previous_latitude) / 2.0), 2)
+          + cos(radians(op.previous_latitude)) * cos(radians(op.latitude))
+          * power(sin(radians(op.longitude - op.previous_longitude) / 2.0), 2)
+        ))))
+      ) FILTER (WHERE op.previous_latitude IS NOT NULL AND op.previous_longitude IS NOT NULL)
+    ELSE NULL END,
+    count(*)::bigint
+  FROM ordered_points op
+  GROUP BY op.trip_id;
+$function$;
+
+-- Return a bounded, recent GPS history per trip in one request for the history
+-- screen. Coordinates remain subject to the caller's trips/location RLS.
+CREATE OR REPLACE FUNCTION public.get_trip_history_data(
+  p_fleet_id uuid,
+  p_trip_ids uuid[]
+)
+RETURNS TABLE (
+  trip_id uuid,
+  driver_name text,
+  vehicle_registration text,
+  points jsonb
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path TO ''
+AS $function$
+  SELECT
+    t.id,
+    d.full_name,
+    v.registration_number,
+    COALESCE(history.points, '[]'::jsonb)
+  FROM public.trips t
+  LEFT JOIN public.drivers d
+    ON d.id = t.driver_id AND d.fleet_id = t.fleet_id
+  LEFT JOIN public.vehicles v
+    ON v.id = t.vehicle_id AND v.fleet_id = t.fleet_id
+  LEFT JOIN LATERAL (
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'latitude', sample.latitude,
+        'longitude', sample.longitude,
+        'recorded_at', sample.recorded_at
+      )
+      ORDER BY sample.recorded_at ASC
+    ) AS points
+    FROM (
+      SELECT tl.latitude, tl.longitude, tl.recorded_at
+      FROM public.trip_locations tl
+      WHERE tl.trip_id = t.id
+      ORDER BY tl.recorded_at DESC
+      LIMIT 500
+    ) sample
+  ) history ON true
+  WHERE t.fleet_id = p_fleet_id
+    AND t.id = ANY(COALESCE(p_trip_ids, ARRAY[]::uuid[]));
+$function$;
+
+REVOKE ALL ON FUNCTION public.get_trip_distance_summaries(uuid, uuid[]) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.get_trip_history_data(uuid, uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_trip_distance_summaries(uuid, uuid[]) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_trip_history_data(uuid, uuid[]) TO authenticated;
