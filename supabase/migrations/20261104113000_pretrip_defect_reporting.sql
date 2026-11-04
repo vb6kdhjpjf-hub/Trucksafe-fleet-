@@ -268,17 +268,35 @@ WITH CHECK (
 -- Direct vehicle-row updates are manager-only. Drivers change trip state only
 -- through the narrowly validated SECURITY DEFINER trip RPCs above. This prevents
 -- a driver assigned to one vehicle from editing its registration or compliance data.
+DROP POLICY IF EXISTS vehicles_insert_managers ON public.vehicles;
 DROP POLICY IF EXISTS vehicles_update_authorized ON public.vehicles;
+DROP POLICY IF EXISTS vehicles_delete_managers ON public.vehicles;
+
+CREATE POLICY vehicles_insert_managers
+ON public.vehicles
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager'])
+);
 
 CREATE POLICY vehicles_update_authorized
 ON public.vehicles
 FOR UPDATE
 TO authenticated
 USING (
-  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager'])
 )
 WITH CHECK (
-  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager'])
+);
+
+CREATE POLICY vehicles_delete_managers
+ON public.vehicles
+FOR DELETE
+TO authenticated
+USING (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager'])
 );
 
 -- The helper was moved to the private schema by an earlier hardening migration.
