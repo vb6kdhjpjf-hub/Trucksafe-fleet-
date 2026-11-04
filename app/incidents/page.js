@@ -24,6 +24,8 @@ export default function IncidentsPage() {
   const [gps,setGps] = useState({latitude:null,longitude:null});
   const [gpsBusy,setGpsBusy] = useState(false);
   const [photoFile,setPhotoFile] = useState(null);
+  const [resolvingIncidentId,setResolvingIncidentId] = useState(null);
+  const [resolutionNotes,setResolutionNotes] = useState("");
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למסד הנתונים אינו מוגדר."); setLoading(false); return; }
@@ -57,7 +59,7 @@ export default function IncidentsPage() {
 
   async function loadIncidents(fleetId) {
     const {data,error} = await supabase.from("incidents")
-      .select("id,incident_type,severity,description,location_text,latitude,longitude,status,reported_at,resolved_at,driver_id,vehicle_id,photo_path")
+      .select("id,incident_type,severity,description,location_text,latitude,longitude,status,reported_at,resolved_at,resolution_notes,resolved_by,driver_id,vehicle_id,photo_path")
       .eq("fleet_id",fleetId).order("reported_at",{ascending:false});
     if (error) setMessage("שגיאה בטעינת אירועי הבטיחות: "+error.message);
     else {
@@ -131,11 +133,27 @@ export default function IncidentsPage() {
     if (!fleet || !["owner","fleet_manager","safety_manager"].includes(fleet.role)) {
       setMessage("אין לחשבון שלך הרשאה לסמן אירוע כטופל."); return;
     }
+    if (resolvingIncidentId !== incident.id) {
+      setResolvingIncidentId(incident.id);
+      setResolutionNotes("");
+      setMessage("לפני שחרור נעילת הרכב יש לתעד את פעולות הטיפול והבדיקה שבוצעו.");
+      return;
+    }
+    const notes = resolutionNotes.trim();
+    if (!notes) { setMessage("יש להזין תיעוד טיפול לפני סגירת האירוע."); return; }
     setBusy(true); setMessage("");
-    const {error} = await supabase.from("incidents").update({status:"resolved",resolved_at:new Date().toISOString()}).eq("id",incident.id).eq("fleet_id",fleet.id);
-    if (error) setMessage("לא הצלחנו לעדכן את האירוע: "+error.message);
-    else { await loadIncidents(fleet.id); setMessage("האירוע סומן כטופל."); }
-    setBusy(false);
+    try {
+      const {error} = await supabase.from("incidents")
+        .update({status:"resolved",resolution_notes:notes})
+        .eq("id",incident.id).eq("fleet_id",fleet.id);
+      if (error) setMessage("לא הצלחנו לעדכן את האירוע: "+error.message);
+      else {
+        setResolvingIncidentId(null);
+        setResolutionNotes("");
+        await loadIncidents(fleet.id);
+        setMessage("האירוע סומן כטופל. תיעוד הטיפול נשמר.");
+      }
+    } finally { setBusy(false); }
   }
 
   const canResolveIncidents = ["owner", "fleet_manager", "safety_manager"].includes(fleet?.role);
@@ -180,7 +198,9 @@ export default function IncidentsPage() {
             {item.photo_url&&<div className="task-assignees"><a className="nav-link" href={item.photo_url} target="_blank" rel="noreferrer">צפייה בתמונת האירוע</a></div>}
             {item.driver_id&&<div className="task-assignees"><span>נהג: {drivers.find(d=>d.id===item.driver_id)?.full_name||"לא ידוע"}</span></div>}
             {item.vehicle_id&&<div className="task-assignees"><span>רכב: {vehicles.find(v=>v.id===item.vehicle_id)?.registration_number||"לא ידוע"}</span></div>}
-            {["open","investigating"].includes(item.status)&&canResolveIncidents&&<div className="task-actions"><button className="primary-btn" disabled={busy} onClick={()=>resolveIncident(item)}><CheckCircle2 size={14}/> סימון כטופל</button></div>}
+            {item.resolution_notes&&<div className="incident-resolution"><b>תיעוד טיפול:</b><p>{item.resolution_notes}</p>{item.resolved_at&&<small>נסגר בתאריך {new Date(item.resolved_at).toLocaleString("he-IL")}</small>}</div>}
+            {["open","investigating"].includes(item.status)&&canResolveIncidents&&<div className="task-actions"><button className="primary-btn" disabled={busy} onClick={()=>resolveIncident(item)}><CheckCircle2 size={14}/>{resolvingIncidentId===item.id?"אישור סגירת אירוע":"סימון כטופל"}</button></div>}
+            {resolvingIncidentId===item.id&&<div className="incident-resolution-form"><label>תיעוד פעולות הטיפול והבדיקות שבוצעו *<textarea required rows={3} maxLength={2000} value={resolutionNotes} onChange={e=>setResolutionNotes(e.target.value)} placeholder="לדוגמה: הוחלף רכיב, בוצעה בדיקה חוזרת, הרכב נבדק ואושר לשימוש..."/></label><div className="task-actions"><button type="button" className="secondary-btn" disabled={busy} onClick={()=>{setResolvingIncidentId(null);setResolutionNotes("");}}>ביטול</button></div></div>}
           </article>)}</div>}
       </section>
       <p className="fleet-foot">TruckSafe Fleet V1 · דיווחי הבטיחות נשמרים במסד הנתונים של הצי</p>
