@@ -34,7 +34,7 @@ jobs:
         run: npm run build
       - name: Save audit report and lockfile for review
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dependency-audit-and-lockfile
           path: |
