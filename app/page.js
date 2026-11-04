@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { Truck, ShieldCheck, LogOut, Plus, Users, Navigation, AlertTriangle, ClipboardList, BarChart3, Wrench } from "lucide-react";
 
@@ -8,6 +8,9 @@ export default function Home() {
   const [session,setSession]=useState(null);
   const [fleet,setFleet]=useState(null);
   const [loading,setLoading]=useState(true);
+  const [workspaceChecked,setWorkspaceChecked]=useState(false);
+  const [workspaceError,setWorkspaceError]=useState("");
+  const fleetLoadRef=useRef(0);
   const [busy,setBusy]=useState(false);
   const [mode,setMode]=useState("login");
   const [email,setEmail]=useState("");
@@ -32,12 +35,51 @@ export default function Home() {
   const [assignedDriverId,setAssignedDriverId]=useState("");
 
   async function loadFleet(user) {
-    const {data:membership,error}=await supabase.from("fleet_members").select("fleet_id,role").eq("user_id",user.id).limit(1).maybeSingle();
-    if(error){setMessage("לא הצלחנו לטעון את פרטי הצי: "+error.message);return;}
-    if(!membership){setFleet(null);return;}
-    const {data:current,error:fleetError}=await supabase.from("fleets").select("id,name").eq("id",membership.fleet_id).single();
-    if(fleetError){setMessage("שגיאה בטעינת הצי: "+fleetError.message);return;}
-    setFleet({...current,role:membership.role});
+    const requestId=++fleetLoadRef.current;
+    setWorkspaceChecked(false);
+    setWorkspaceError("");
+    const isCurrent=()=>requestId===fleetLoadRef.current;
+    let membership=null;
+    const membershipResult=await supabase.from("fleet_members").select("fleet_id,role").eq("user_id",user.id).limit(1).maybeSingle();
+    if(!isCurrent())return;
+    membership=membershipResult.data;
+    let current=null;
+    let role=membership?.role||"owner";
+    if(membershipResult.error||!membership){
+      // Recover an existing owner's workspace before ever offering to create a new one.
+      const ownedResult=await supabase.from("fleets").select("id,name").eq("owner_user_id",user.id).limit(1).maybeSingle();
+      if(!isCurrent())return;
+      if(ownedResult.error){
+        setFleet(null);
+        setWorkspaceError("לא הצלחנו לבדוק את הארגון הקיים. לא ניצור ארגון חדש כדי למנוע כפילות. פרטים: "+ownedResult.error.message);
+        setWorkspaceChecked(true);
+        return;
+      }
+      current=ownedResult.data;
+      if(!current&&membershipResult.error){
+        setFleet(null);
+        setWorkspaceError("לא הצלחנו לטעון את החברות בארגון. נסה לטעון מחדש. פרטים: "+membershipResult.error.message);
+        setWorkspaceChecked(true);
+        return;
+      }
+    } else {
+      const fleetResult=await supabase.from("fleets").select("id,name").eq("id",membership.fleet_id).single();
+      if(!isCurrent())return;
+      if(fleetResult.error){
+        setFleet(null);
+        setWorkspaceError("הארגון קיים אך לא הצלחנו לטעון אותו. לא נבקש ליצור ארגון נוסף. פרטים: "+fleetResult.error.message);
+        setWorkspaceChecked(true);
+        return;
+      }
+      current=fleetResult.data;
+    }
+    if(!current){
+      setFleet(null);
+      setWorkspaceChecked(true);
+      return;
+    }
+    setFleet({...current,role});
+    setWorkspaceChecked(true);
     const [v,d,tr,inc,incRows,ta,active,maint]=await Promise.all([
       supabase.from("vehicles").select("id,registration_number,make,model,vehicle_type,status,assigned_driver_id,test_due_at,insurance_due_at,registration_due_at,next_service_at").eq("fleet_id",current.id).order("created_at",{ascending:false}),
       supabase.from("drivers").select("id,full_name,phone,status,license_number,license_class,license_expires_at").eq("fleet_id",current.id).order("created_at",{ascending:false}),
@@ -222,9 +264,18 @@ export default function Home() {
     <small className="secure-note"><ShieldCheck size={14}/> החיבור מאובטח באמצעות Supabase</small>
   </section></main>;
 
+  if(!fleet&&!workspaceChecked)return <main className="auth-wrap"><section className="auth-card">בודק את הארגון וההרשאות שלך...</section></main>;
+
+  if(!fleet&&workspaceError)return <main className="auth-wrap"><section className="auth-card">
+    <div className="auth-brand"><span><Truck size={25}/></span><div><h1>TruckSafe</h1><small>בדיקת סביבת העבודה</small></div></div>
+    <h2>לא ניצור ארגון כפול</h2><p>{workspaceError}</p>
+    <button className="primary-btn" disabled={busy} onClick={()=>loadFleet(session.user)}>בדיקה מחדש</button>
+    <button className="auth-switch" onClick={signOut}>התנתקות</button>
+  </section></main>;
+
   if(!fleet)return <main className="auth-wrap"><section className="auth-card">
     <div className="auth-brand"><span><Truck size={25}/></span><div><h1>TruckSafe</h1><small>הקמת סביבת העבודה</small></div></div>
-    <h2>יוצרים את הצי הראשון שלך</h2><p>תן שם לצי או לחברת ההובלה. החשבון שלך יוגדר כבעלים של הצי.</p>
+    <h2>לא נמצא ארגון בחשבון</h2><p>בדקנו גם חברות בארגון וגם ארגונים שבבעלותך. רק אם זו סביבת עבודה חדשה, אפשר ליצור ארגון.</p>
     <form onSubmit={createFleet} className="auth-form"><label>שם הצי / החברה<input required value={fleetName} onChange={e=>setFleetName(e.target.value)} placeholder="לדוגמה: צי ההובלה שלי"/></label><button className="primary-btn" disabled={busy}>{busy?"יוצר צי...":"יצירת הצי והמשך"}</button></form>
     {message&&<div className="auth-message">{message}</div>}<button className="auth-switch" onClick={signOut}>התנתקות</button>
   </section></main>;
