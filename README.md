@@ -22,7 +22,7 @@
 דרישות: Node.js 24.x ו-npm.
 
 ```bash
-npm ci
+npm install
 npm run dev
 ```
 
