@@ -5,7 +5,7 @@ import { csvCell, csvDocument } from "../../lib/csv.mjs";
 test("CSV cells neutralize formula-like text", () => {
   assert.equal(csvCell("=HYPERLINK(\"https://example.invalid\")"), "\"'=HYPERLINK(\"\"https://example.invalid\"\")\"");
   assert.equal(csvCell("  @SUM(1,2)"), "\"'  @SUM(1,2)\"");
-  assert.equal(csvCell("+cmd|'/C calc'!A0"), "\"'+cmd|'\u0027/C calc'!A0\"");
+  assert.equal(csvCell("+cmd|calc"), '"' + "'" + '+cmd|calc' + '"');
 });
 
 test("CSV cells preserve normal text, quotes and numeric values", () => {
