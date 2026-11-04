@@ -148,7 +148,34 @@ END $$;
 GRANT USAGE ON SCHEMA public, private, auth TO authenticated;
 GRANT SELECT ON public.drivers, public.vehicles, public.trips, public.inspections TO authenticated;
 GRANT INSERT ON public.inspections TO authenticated;
+GRANT UPDATE ON public.vehicles TO authenticated;
 GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated;
+
+-- Assigned drivers must not directly edit vehicle identity or compliance data.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
+DO $
+BEGIN
+  BEGIN
+    UPDATE public.vehicles
+    SET registration_number = 'DRIVER-TAMPER'
+    WHERE id = '30000000-0000-0000-0000-000000000001';
+    IF FOUND THEN
+      RAISE EXCEPTION 'Assigned driver unexpectedly updated vehicle identity';
+    END IF;
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+END $;
+RESET ROLE;
+
+-- Fleet managers retain direct vehicle update access.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000002',false);
+UPDATE public.vehicles
+SET registration_number = 'MANAGER-OK'
+WHERE id = '30000000-0000-0000-0000-000000000001';
+RESET ROLE;
 
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
