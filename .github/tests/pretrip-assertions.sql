@@ -1,3 +1,4 @@
+-- Safety, authorization, lifecycle and privacy assertions for the disposable database.
 -- Exercises driver and manager authorization, lifecycle, safety lockout, and RPC grants.
 DO $test$
 DECLARE
