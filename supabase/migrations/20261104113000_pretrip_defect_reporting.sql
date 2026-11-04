@@ -63,10 +63,10 @@ BEGIN
     RAISE EXCEPTION 'תיאור התקלה אינו תקין';
   END IF;
 
-  v_failed_items := array_to_string(ARRAY(
+  v_failed_items := NULLIF(array_to_string(ARRAY(
     SELECT k FROM unnest(v_expected_keys) AS k
     WHERE p_checklist ->> k = 'false'
-  ), ', ');
+  ), ', '), '');
 
   IF v_failed_items IS NOT NULL AND v_defect_details IS NULL THEN
     RAISE EXCEPTION 'יש לפרט את הליקוי לפני שמירת הבדיקה';
