@@ -9,11 +9,13 @@ CREATE TABLE public.fleet_members (
   PRIMARY KEY (fleet_id, user_id)
 );
 CREATE TABLE public.drivers (
-  id uuid PRIMARY KEY, fleet_id uuid NOT NULL, status text NOT NULL, user_id uuid
+  id uuid PRIMARY KEY, fleet_id uuid NOT NULL, status text NOT NULL, user_id uuid,
+  license_expires_at date
 );
 CREATE TABLE public.vehicles (
   id uuid PRIMARY KEY, fleet_id uuid NOT NULL, registration_number text,
-  status text NOT NULL, assigned_driver_id uuid, updated_at timestamptz DEFAULT now()
+  status text NOT NULL, assigned_driver_id uuid, updated_at timestamptz DEFAULT now(),
+  test_due_at date, insurance_due_at date, registration_due_at date
 );
 CREATE TABLE public.tasks (
   id uuid PRIMARY KEY, fleet_id uuid NOT NULL, assigned_driver_id uuid NOT NULL,
@@ -64,3 +66,48 @@ ON public.vehicles
 FOR SELECT
 TO authenticated
 USING (private.is_fleet_member(fleet_id));
+
+ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tasks_select_member
+ON public.tasks
+FOR SELECT
+TO authenticated
+USING (private.is_fleet_member(fleet_id));
+CREATE POLICY tasks_update_authorized
+ON public.tasks
+FOR UPDATE
+TO authenticated
+USING (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
+  OR EXISTS (
+    SELECT 1 FROM public.drivers d
+    WHERE d.id = tasks.assigned_driver_id
+      AND d.fleet_id = tasks.fleet_id
+      AND d.user_id = (SELECT auth.uid())
+  )
+)
+WITH CHECK (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
+  OR (
+    status IN ('in_progress','completed')
+    AND EXISTS (
+      SELECT 1 FROM public.drivers d
+      WHERE d.id = tasks.assigned_driver_id
+        AND d.fleet_id = tasks.fleet_id
+        AND d.user_id = (SELECT auth.uid())
+    )
+  )
+);
+
+ALTER TABLE public.incidents ENABLE ROW LEVEL SECURITY;
+CREATE POLICY incidents_insert_member
+ON public.incidents
+FOR INSERT
+TO authenticated
+WITH CHECK (private.is_fleet_member(fleet_id));
+
+
+-- Simulate Supabase's normal authenticated table grants before the migration
+-- so the migration's explicit revocations are exercised by the tests.
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.trips, public.inspections,
+  public.tasks, public.vehicles, public.incidents TO authenticated;
