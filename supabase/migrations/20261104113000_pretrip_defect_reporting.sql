@@ -427,20 +427,37 @@ REVOKE INSERT, UPDATE, DELETE ON public.trips FROM PUBLIC, anon, authenticated;
 DROP POLICY IF EXISTS inspections_insert_authorized ON public.inspections;
 REVOKE INSERT, UPDATE, DELETE ON public.inspections FROM PUBLIC, anon, authenticated;
 
--- Drivers must not mark tasks complete directly. start_trip_with_inspection
--- and finish_trip update task state atomically as their owner; managers retain
--- the ordinary task-management path.
+-- Task lifecycle states are controlled by the trip RPCs. Managers and
+-- dispatchers may assign, reassign, or cancel work before a trip starts, but
+-- cannot manually set in_progress/completed or erase task history.
+DROP POLICY IF EXISTS tasks_insert_managers ON public.tasks;
 DROP POLICY IF EXISTS tasks_update_authorized ON public.tasks;
+DROP POLICY IF EXISTS tasks_delete_managers ON public.tasks;
+CREATE POLICY tasks_insert_managers
+ON public.tasks
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
+  AND status IN ('pending','assigned')
+);
 CREATE POLICY tasks_update_authorized
 ON public.tasks
 FOR UPDATE
 TO authenticated
 USING (
   private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
+  AND status IN ('pending','assigned','cancelled')
 )
 WITH CHECK (
   private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher'])
+  AND status IN ('pending','assigned','cancelled')
+  AND NOT EXISTS (
+    SELECT 1 FROM public.trips t
+    WHERE t.task_id = tasks.id AND t.status = 'active'
+  )
 );
+REVOKE DELETE ON public.tasks FROM PUBLIC, anon, authenticated;
 
 -- Incident reports may be created by any authenticated fleet member, but the
 -- reporter must identify themselves and a new report cannot be inserted as
