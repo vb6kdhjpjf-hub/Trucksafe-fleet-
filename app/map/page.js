@@ -32,7 +32,7 @@ export default function FleetMapPage() {
         const [latest, historyResult, driverResult, vehicleResult] = await Promise.all([
           supabase.from("trip_locations").select("id,latitude,longitude,speed_kmh,recorded_at")
             .eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(1).maybeSingle(),
-          supabase.from("trip_locations").select("latitude,longitude,recorded_at").eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(3000),
+          supabase.from("trip_locations").select("latitude,longitude,recorded_at").eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(500),
           supabase.from("drivers").select("full_name").eq("id", trip.driver_id).maybeSingle(),
           supabase.from("vehicles").select("registration_number").eq("id", trip.vehicle_id).maybeSingle()
         ]);
