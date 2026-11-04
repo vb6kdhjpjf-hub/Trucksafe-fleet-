@@ -10,7 +10,7 @@ const blank = { vehicle_id: "", incident_id: "", maintenance_type: "טיפול �
 export default function MaintenancePage() {
   const router = useRouter();
   const [loading,setLoading]=useState(true), [busy,setBusy]=useState(false);
-  const [fleet,setFleet]=useState(null), [vehicles,setVehicles]=useState([]), [records,setRecords]=useState([]), [incidents,setIncidents]=useState([]);
+  const [fleet,setFleet]=useState(null), [role,setRole]=useState(""), [vehicles,setVehicles]=useState([]), [records,setRecords]=useState([]), [incidents,setIncidents]=useState([]);
   const [form,setForm]=useState(blank), [showForm,setShowForm]=useState(false), [message,setMessage]=useState("");
   const [compliance,setCompliance]=useState({});
 
@@ -24,7 +24,7 @@ export default function MaintenancePage() {
       if(me || !member){setMessage(me?.message || "לא נמצא שיוך לצי.");setLoading(false);return;}
       const {data:current,error:fe}=await supabase.from("fleets").select("id,name").eq("id",member.fleet_id).single();
       if(fe){setMessage(fe.message);setLoading(false);return;}
-      setFleet(current); await load(current.id); if(alive)setLoading(false);
+      setRole(member.role);setFleet(current); await load(current.id); if(alive)setLoading(false);
     });
     const {data:{subscription}}=supabase.auth.onAuthStateChange((_e,s)=>{if(!s)router.replace("/");});
     return ()=>{alive=false;subscription.unsubscribe();};
@@ -56,6 +56,7 @@ export default function MaintenancePage() {
   }
   async function saveCompliance(vehicle){
     if(!fleet||!vehicle?.id)return;
+    if(!["owner","fleet_manager","dispatcher"].includes(role)){setMessage("רק מנהל צי מורשה לעדכן תאריכי רכב.");return;}
     setBusy(true);setMessage("");
     try{
       const values=compliance[vehicle.id]||{};
@@ -92,6 +93,7 @@ export default function MaintenancePage() {
     }catch(error){setMessage("עדכון הטיפול נכשל: "+(error?.message||"שגיאה לא ידועה"));}
     finally{setBusy(false);}
   }
+  const canManageVehicles=["owner","fleet_manager","dispatcher"].includes(role);
   const today=new Date().toISOString().slice(0,10);
   const pending=records.filter(r=>r.status!=="completed");
   const overdue=pending.filter(r=>r.scheduled_at && r.scheduled_at<today);
@@ -136,7 +138,7 @@ export default function MaintenancePage() {
         <label>סטטוס<select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option value="scheduled">מתוכנן</option><option value="completed">הושלם</option><option value="in_progress">בתהליך</option></select></label>
         <div className="form-actions"><button className="primary-button" disabled={busy||!form.vehicle_id}>{busy?"שומר...":"שמירת טיפול"}</button><button type="button" className="secondary-button" onClick={()=>setShowForm(false)}>ביטול</button></div>
       </form>}
-      <section className="data-card"><h3>מסמכים ותוקף רכב</h3><p>הזן את מועדי הטסט, הביטוח ורישיון הרכב. TruckSafe תציג התראה כאשר מועד מתקרב או עבר.</p>{vehicles.map(v=>{const x=compliance[v.id]||{};const dates=[["test_due_at","טסט"],["insurance_due_at","ביטוח"],["registration_due_at","רישיון רכב"]];return <div className="compliance-vehicle" key={v.id}><strong>{v.registration_number} · {[v.make,v.model].filter(Boolean).join(" ")}</strong><div className="form-grid">{dates.map(([key,label])=><label key={key}>{label}<input type="date" value={x[key]||""} onChange={e=>setCompliance(old=>({...old,[v.id]:{...(old[v.id]||{}),[key]:e.target.value}}))}/></label>)}</div><div className="row-actions">{dates.map(([key,label])=>{const value=x[key];if(!value)return <span key={key} className="status-pending">{label}: לא הוזן</span>;const diff=Math.ceil((new Date(value+"T00:00:00")-new Date(today+"T00:00:00"))/86400000);return <span key={key} className={diff<0?"status-late":diff<=30?"status-pending":"status-done"}>{label}: {diff<0?"באיחור":diff<=30?"מתקרב":"בתוקף"} · {date(value)}</span>;})}</div><button className="primary-button" disabled={busy} onClick={()=>saveCompliance(v)}>שמירת תאריכים</button></div>;})}{!vehicles.length&&<p>אין כלי רכב להצגה.</p>}</section>
+      <section className="data-card"><h3>מסמכים ותוקף רכב</h3><p>הזן את מועדי הטסט, הביטוח ורישיון הרכב. TruckSafe תציג התראה כאשר מועד מתקרב או עבר.</p>{vehicles.map(v=>{const x=compliance[v.id]||{};const dates=[["test_due_at","טסט"],["insurance_due_at","ביטוח"],["registration_due_at","רישיון רכב"]];return <div className="compliance-vehicle" key={v.id}><strong>{v.registration_number} · {[v.make,v.model].filter(Boolean).join(" ")}</strong><div className="form-grid">{dates.map(([key,label])=><label key={key}>{label}<input type="date" disabled={!canManageVehicles} value={x[key]||""} onChange={e=>setCompliance(old=>({...old,[v.id]:{...(old[v.id]||{}),[key]:e.target.value}}))}/></label>)}</div><div className="row-actions">{dates.map(([key,label])=>{const value=x[key];if(!value)return <span key={key} className="status-pending">{label}: לא הוזן</span>;const diff=Math.ceil((new Date(value+"T00:00:00")-new Date(today+"T00:00:00"))/86400000);return <span key={key} className={diff<0?"status-late":diff<=30?"status-pending":"status-done"}>{label}: {diff<0?"באיחור":diff<=30?"מתקרב":"בתוקף"} · {date(value)}</span>;})}</div>{canManageVehicles&&<button className="primary-button" disabled={busy} onClick={()=>saveCompliance(v)}>שמירת תאריכים</button>}</div>;})}{!vehicles.length&&<p>אין כלי רכב להצגה.</p>}</section>
       {vehicleDue.length>0&&<section className="data-card"><h3>תזכורות לפי מועד הטיפול הבא ברכב</h3>{vehicleDue.map(v=><div className="data-row" key={v.id}><div><strong>{v.registration_number} · {[v.make,v.model].filter(Boolean).join(" ")}</strong><p>מועד טיפול הבא שהוגדר ברכב: {date(v.next_service_at)}</p></div><span className={v.next_service_at<today?"status-late":"status-pending"}>{v.next_service_at<today?"עבר מועד הטיפול":"מתקרב"}</span></div>)}</section>}<section className="data-card"><div className="section-heading"><h3>עלויות תחזוקה</h3><button className="secondary-button" onClick={exportMaintenanceCosts} disabled={!completedRecords.length}>ייצוא לאקסל (CSV)</button></div><p>סיכום עלויות של טיפולים שהושלמו.</p><div className="stats-grid"><article className="stat-card"><Wrench/><small>עלות מצטברת</small><strong>{money(totalMaintenanceCost)}</strong></article><article className="stat-card"><CalendarDays/><small>טיפולים עם עלות</small><strong>{completedRecords.length}</strong></article></div><h4>עלות לפי חודש</h4>{monthlyCosts.map(m=><div className="data-row" key={m.key}><strong>{m.label}</strong><strong>{money(m.amount)}</strong></div>)}<h4>עלות לפי רכב</h4>{costByVehicle.length?costByVehicle.map(x=><div className="data-row" key={x.vehicle.id}><div><strong>{x.vehicle.registration_number} · {[x.vehicle.make,x.vehicle.model].filter(Boolean).join(" ")}</strong><p>{x.count} טיפולים</p></div><strong>{money(x.total)}</strong></div>):<p>אין עדיין טיפולים שהושלמו עם עלות רשומה.</p>}</section><section className="data-card"><div className="section-heading"><h3>רשימת טיפולים</h3><button className="secondary-button" onClick={()=>load(fleet.id)}><RefreshCw size={15}/> רענון</button></div>
         {!records.length?<p>אין עדיין רישומי תחזוקה.</p>:records.map(r=>{const vehicle=vehicles.find(v=>v.id===r.vehicle_id);const late=r.status!=="completed"&&r.scheduled_at&&r.scheduled_at<today;return <article className="data-row" key={r.id}><div><strong>{vehicle?.registration_number||"רכב לא ידוע"} · {r.maintenance_type}</strong><p>{r.description||"ללא תיאור"} · מועד: {date(r.scheduled_at)} · עלות: {money(r.cost)} · ק״מ: {r.odometer_km??"—"}</p>{r.incident_id&&<small>קשור לתקלה: {incidents.find(x=>x.id===r.incident_id)?.incident_type||"תקלה שנסגרה או לא זמינה"}</small>}</div><div className="row-actions"><span className={r.status==="completed"?"status-done":late?"status-late":"status-pending"}>{r.status==="completed"?"הושלם":late?"באיחור":r.status==="in_progress"?"בתהליך":"מתוכנן"}</span>{r.status!=="completed"&&<>{r.status!=="in_progress"&&<button className="secondary-button" disabled={busy} onClick={()=>markInProgress(r)}>התחל טיפול</button>}<button className="secondary-button" disabled={busy} onClick={()=>markDone(r)}>סמן כהושלם</button></>}</div></article>;})}
       </section>
