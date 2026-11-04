@@ -155,6 +155,8 @@ export default function IncidentsPage() {
         await loadIncidents(fleet.id);
         setMessage("האירוע סומן כטופל. תיעוד הטיפול נשמר.");
       }
+    } catch (error) {
+      setMessage("עדכון האירוע נכשל: " + (error?.message || "שגיאה לא ידועה"));
     } finally { setBusy(false); }
   }
 
