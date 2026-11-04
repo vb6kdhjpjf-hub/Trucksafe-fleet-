@@ -112,7 +112,7 @@ export default function DriversPage() {
     } finally { setBusy(false); }
   }
 
-  const canManageDrivers = ["owner", "fleet_manager", "dispatcher"].includes(fleet?.role);
+  const canManageDrivers = ["owner", "fleet_manager"].includes(fleet?.role);
   const today = new Date(); today.setHours(0,0,0,0);
   const licenseAlerts = drivers.map(driver=>({
     ...driver,
