@@ -3,13 +3,13 @@ name: Pre-trip SQL integration test
 on:
   workflow_dispatch:
   pull_request:
-    paths:
-      - "supabase/migrations/**"
-      - ".github/tests/**"
-      - ".github/workflows/pretrip-sql-test.yml"
 
 permissions:
   contents: read
+
+concurrency:
+  group: pretrip-sql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   pretrip-sql:
