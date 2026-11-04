@@ -120,7 +120,7 @@ export default function Home() {
     try {
       const cleanEmail=email.trim().toLowerCase();
       const result=mode==="signup"
-        ? await supabase.auth.signUp({email:cleanEmail,password,options:{data:{full_name:name.trim()}}})
+        ? await supabase.auth.signUp({email:cleanEmail,password,options:{data:{full_name:name.trim()},emailRedirectTo:"https://trucksafe-fleet-v1.vercel.app/"}})
         : await supabase.auth.signInWithPassword({email:cleanEmail,password});
       if(result.error){
         const msg=result.error.message||"Unknown authentication error";
@@ -130,7 +130,16 @@ export default function Home() {
         else if(lower.includes("too many requests")) setMessage("בוצעו יותר מדי ניסיונות. המתן מעט ונסה שוב.");
         else setMessage("ההתחברות נכשלה: "+msg);
       } else if(mode==="signup"&&!result.data.session){
-        setMessage("נשלח אליך מייל לאימות החשבון. אשר אותו ואז התחבר.");
+        const existingUser=result.data.user;
+        if(existingUser?.email_confirmed_at||existingUser?.confirmed_at){
+          setMode("login");
+          setMessage("החשבון הזה כבר קיים ומאומת. אין צורך להירשם שוב — עבור להתחברות והזן את הסיסמה הקיימת.");
+        } else if(Array.isArray(existingUser?.identities)&&existingUser.identities.length===0){
+          setMode("login");
+          setMessage("כבר קיים חשבון עם כתובת המייל הזו, אך הוא עדיין לא אומת. שליחת המיילים מוגבלת כרגע; נסה שוב מאוחר יותר או השתמש בחשבון המאומת.");
+        } else {
+          setMessage("בקשת ההרשמה התקבלה. אם כתובת המייל עדיין לא אומתה, בדוק את תיבת הדואר ואת תיקיית הספאם.");
+        }
       } else {
         setMessage(mode==="signup"?"החשבון נוצר בהצלחה.":"התחברת בהצלחה.");
         if(result.data.session){setSession(result.data.session);await loadFleet(result.data.session.user);}
@@ -146,7 +155,7 @@ export default function Home() {
     if(!email.trim()){setMessage("יש להזין תחילה את כתובת המייל.");return;}
     setBusy(true);setMessage("");
     try {
-      const {error}=await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(),{redirectTo:window.location.origin+"/?reset=1"});
+      const {error}=await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(),{redirectTo:"https://trucksafe-fleet-v1.vercel.app/?reset=1"});
       if(error)setMessage("לא הצלחנו לשלוח קישור לאיפוס סיסמה: "+error.message);
       else setMessage("אם קיימת כתובת כזו במערכת, נשלח אליה קישור לאיפוס סיסמה. בדוק גם בתיקיית הספאם.");
     } catch(error) {
