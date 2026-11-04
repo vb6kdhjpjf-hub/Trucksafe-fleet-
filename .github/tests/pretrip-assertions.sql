@@ -85,4 +85,12 @@ BEGIN
      OR has_function_privilege('anon','public.finish_trip(uuid,uuid)','EXECUTE') THEN
     RAISE EXCEPTION 'anon can execute privileged RPC';
   END IF;
+  IF NOT has_function_privilege('authenticated','public.start_trip_with_inspection(uuid,uuid,uuid,uuid,text,text,jsonb)','EXECUTE')
+     OR NOT has_function_privilege('authenticated','public.finish_trip(uuid,uuid)','EXECUTE') THEN
+    RAISE EXCEPTION 'authenticated cannot execute the trip lifecycle RPCs';
+  END IF;
+  IF NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.start_trip_with_inspection(uuid,uuid,uuid,uuid,text,text,jsonb)'::regprocedure) @> ARRAY['search_path=""'])
+     OR NOT ((SELECT proconfig FROM pg_proc WHERE oid='public.finish_trip(uuid,uuid)'::regprocedure) @> ARRAY['search_path=""']) THEN
+    RAISE EXCEPTION 'privileged RPC search_path is not empty';
+  END IF;
 END $$;
