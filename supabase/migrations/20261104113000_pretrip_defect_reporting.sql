@@ -100,10 +100,12 @@ BEGIN
     RAISE EXCEPTION 'הנהג אינו פעיל או שאינו שייך לצי';
   END IF;
 
-  -- Do not rely only on the driver's self-attested checklist when the fleet
-  -- has a recorded licence expiry date.
-  IF v_driver.license_expires_at IS NOT NULL
-     AND v_driver.license_expires_at::date < current_date THEN
+  -- Do not rely only on the driver's self-attested checklist. The fleet
+  -- must have a recorded licence expiry date and it must still be valid.
+  IF v_driver.license_expires_at IS NULL THEN
+    RAISE EXCEPTION 'חסר תאריך תוקף לרישיון הנהיגה. יש להשלים את פרטי הנהג לפני פתיחת נסיעה';
+  END IF;
+  IF v_driver.license_expires_at::date < current_date THEN
     RAISE EXCEPTION 'רישיון הנהיגה של הנהג פג תוקף. יש לעדכן את המסמכים לפני פתיחת נסיעה';
   END IF;
 
@@ -119,11 +121,16 @@ BEGIN
     RAISE EXCEPTION 'הרכב אינו זמין לנסיעה או שאינו שייך לצי';
   END IF;
 
-  -- A recorded expired vehicle document is a hard stop, independent of the
-  -- driver's checklist response.
-  IF (v_vehicle.test_due_at IS NOT NULL AND v_vehicle.test_due_at::date < current_date)
-     OR (v_vehicle.insurance_due_at IS NOT NULL AND v_vehicle.insurance_due_at::date < current_date)
-     OR (v_vehicle.registration_due_at IS NOT NULL AND v_vehicle.registration_due_at::date < current_date) THEN
+  -- Missing compliance dates are unknown, not proof of validity. Require all
+  -- three legal vehicle-document dates before allowing a trip.
+  IF v_vehicle.test_due_at IS NULL
+     OR v_vehicle.insurance_due_at IS NULL
+     OR v_vehicle.registration_due_at IS NULL THEN
+    RAISE EXCEPTION 'חסרים תאריכי תוקף למסמכי הרכב. יש להשלים טסט, ביטוח ורישיון רכב לפני פתיחת נסיעה';
+  END IF;
+  IF v_vehicle.test_due_at::date < current_date
+     OR v_vehicle.insurance_due_at::date < current_date
+     OR v_vehicle.registration_due_at::date < current_date THEN
     RAISE EXCEPTION 'אחד ממסמכי הרכב פג תוקף. יש לעדכן את הטסט, הביטוח או רישיון הרכב לפני פתיחת נסיעה';
   END IF;
 
