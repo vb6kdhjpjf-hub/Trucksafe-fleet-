@@ -309,7 +309,7 @@ export default function Home() {
 
   async function signOut(){await supabase.auth.signOut();setMessage("התנתקת מהמערכת.");}
 
-  const canManageVehicles=["owner","fleet_manager","dispatcher"].includes(fleet?.role);
+  const canManageVehicles=["owner","fleet_manager"].includes(fleet?.role);
 
   if(!isSupabaseConfigured)return <main className="auth-wrap"><section className="auth-card"><Truck size={36}/><h1>TruckSafe Fleet</h1><p>החיבור למסד הנתונים עדיין לא הוגדר. יש לבדוק את משתני הסביבה ב-Vercel.</p></section></main>;
   if(loading)return <main className="auth-wrap"><section className="auth-card">טוען את סביבת TruckSafe...</section></main>;
