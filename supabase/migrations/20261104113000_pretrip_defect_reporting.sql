@@ -277,7 +277,7 @@ WITH CHECK (
 );
 
 -- The helper was moved to the private schema by an earlier hardening migration.
--- Keep this function invoker-secured and qualify the helper explicitly.
+-- This narrowly validated RPC runs as its owner; keep all authorization checks explicit.
 CREATE OR REPLACE FUNCTION public.finish_trip(
   p_fleet_id uuid,
   p_trip_id uuid
@@ -316,8 +316,17 @@ BEGIN
     RAISE EXCEPTION 'רק מנהל הצי או הנהג המשויך לנסיעה יכולים לסיים אותה';
   END IF;
 
-  -- Update the vehicle while the trip is still active so the driver's
-  -- vehicle RLS policy can validate ownership through this trip.
+  -- Serialize completion of trips sharing one vehicle. Without this row lock,
+  -- two concurrent finish calls could both observe the other's trip as active,
+  -- skip releasing the vehicle, and leave it stuck in on_trip after both commit.
+  PERFORM 1
+  FROM public.vehicles
+  WHERE id = v_trip.vehicle_id AND fleet_id = p_fleet_id
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'הרכב של הנסיעה לא נמצא בצי';
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1 FROM public.trips
     WHERE fleet_id = p_fleet_id
