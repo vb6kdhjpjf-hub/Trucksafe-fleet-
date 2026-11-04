@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
-import { csvDocument } from "../../lib/csv";
+import { csvDocument } from "../../lib/csv.mjs";
 import { ArrowRight, BarChart3, Download, RefreshCw, Route, Truck, Users } from "lucide-react";
 
   const rad = n => n * Math.PI / 180;
