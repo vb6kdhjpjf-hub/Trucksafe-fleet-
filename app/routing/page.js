@@ -73,7 +73,9 @@ export default function TruckRoutingPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
-  const [message, setMessage] = useState("");\n  const [mapMessage, setMapMessage] = useState("");\n  const [providerReady, setProviderReady] = useState(false);
+  const [message, setMessage] = useState("");
+  const [mapMessage, setMapMessage] = useState("");
+  const [providerReady, setProviderReady] = useState(false);
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למערכת אינו מוגדר."); setLoading(false); return; }
@@ -82,6 +84,11 @@ export default function TruckRoutingPage() {
       if (!alive) return;
       if (error || !data.session) { router.replace("/"); return; }
       setLoading(false);
+      fetch("/api/truck-route").then(response => response.json()).then(status => {
+        if (!alive) return;
+        setProviderReady(Boolean(status.configured));
+        if (!status.configured) setMessage("מנוע ניתוב המשאיות מוכן בקוד, אך עדיין חסר מפתח HERE_API_KEY ב-Vercel.");
+      }).catch(() => { if (alive) setMessage("לא ניתן לבדוק את זמינות שירות הניווט."); });
     }).catch(() => { if (alive) { setMessage("לא ניתן לאמת את ההתחברות."); setLoading(false); } });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session) router.replace("/");
@@ -137,6 +144,7 @@ export default function TruckRoutingPage() {
 
   async function calculate(event) {
     event.preventDefault();
+    if (!providerReady) { setMessage("שירות הניווט עדיין לא חובר. יש להגדיר HERE_API_KEY ב-Vercel."); return; }
     setBusy(true);
     setMessage("");
     setResult(null);
@@ -223,7 +231,8 @@ export default function TruckRoutingPage() {
         {result.notices.filter(n => n.severity.toLowerCase() !== "critical").length > 0 && <div style={{ background: "#fff8e8", border: "1px solid #f0d9a8", borderRadius: 12, padding: 14 }}><b>הודעות ספק הניווט</b><ul>{result.notices.filter(n => n.severity.toLowerCase() !== "critical").map((n,i)=><li key={i}>{n.title}</li>)}</ul></div>}
         <div style={{ background: "white", border: "1px solid #e5eaf1", borderRadius: 14, padding: 12 }}>
           <h3 style={{ margin: "4px 4px 10px", fontSize: 16 }}>מפת המסלול למשאית</h3>
-          <div ref={mapElement} style={{ height: 360, minHeight: 280, borderRadius: 10, zIndex: 0, background: "#edf1f6" }}/>\n          {mapMessage && <p role="status" style={{ color: "#9b5b16", fontSize: 12 }}>{mapMessage}</p>}
+          <div ref={mapElement} style={{ height: 360, minHeight: 280, borderRadius: 10, zIndex: 0, background: "#edf1f6" }}/>
+          {mapMessage && <p role="status" style={{ color: "#9b5b16", fontSize: 12 }}>{mapMessage}</p>}
         </div>
         {result.actions.length > 0 && <div style={{ background: "white", border: "1px solid #e5eaf1", borderRadius: 14, padding: 16 }}>
           <h3 style={{ marginTop: 0 }}>הוראות נסיעה</h3>
