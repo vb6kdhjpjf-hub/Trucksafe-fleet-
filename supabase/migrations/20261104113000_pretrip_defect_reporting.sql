@@ -475,6 +475,36 @@ WITH CHECK (
   AND status = 'open'
 );
 
+-- Harden existing trigger functions too: SECURITY DEFINER code must not
+-- inherit a writable schema search_path. All relations are explicitly qualified.
+CREATE OR REPLACE FUNCTION public.add_fleet_owner_membership()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $function$
+BEGIN
+  INSERT INTO public.fleet_members (fleet_id, user_id, role)
+  VALUES (NEW.id, NEW.owner_user_id, 'owner')
+  ON CONFLICT (fleet_id, user_id) DO UPDATE SET role = 'owner';
+  RETURN NEW;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $function$
+BEGIN
+  INSERT INTO public.profiles (id, full_name)
+  VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name'))
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$function$;
+
 -- Harden the private membership helpers against search_path object shadowing.
 CREATE OR REPLACE FUNCTION private.has_fleet_role(target_fleet uuid, allowed_roles text[])
 RETURNS boolean
