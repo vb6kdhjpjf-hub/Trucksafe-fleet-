@@ -531,10 +531,31 @@ DROP POLICY IF EXISTS fleets_update_managers ON public.fleets;
 REVOKE UPDATE, DELETE ON public.fleets FROM PUBLIC, anon, authenticated;
 
 
--- GPS telemetry is append-only. Clients may submit a point for an authorized
--- active trip, but cannot rewrite or erase previously recorded evidence.
-REVOKE INSERT, UPDATE, DELETE ON public.trip_locations FROM PUBLIC, anon;
-REVOKE UPDATE, DELETE ON public.trip_locations FROM authenticated;
+-- GPS telemetry is append-only and driver-originated. A client may submit
+-- only its assigned driver's point for an active trip; managers cannot spoof
+-- driver locations, and clients cannot supply IDs or timestamps.
+DROP POLICY IF EXISTS trip_locations_insert_authorized ON public.trip_locations;
+CREATE POLICY trip_locations_insert_authorized
+ON public.trip_locations
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  EXISTS (
+    SELECT 1
+    FROM public.trips t
+    JOIN public.drivers d
+      ON d.id = t.driver_id AND d.fleet_id = t.fleet_id
+    WHERE t.id = trip_locations.trip_id
+      AND t.status = 'active'
+      AND t.driver_id = trip_locations.driver_id
+      AND d.user_id = (SELECT auth.uid())
+      AND d.status = 'active'
+      AND private.is_fleet_member(t.fleet_id)
+  )
+);
+REVOKE INSERT, UPDATE, DELETE ON public.trip_locations FROM PUBLIC, anon, authenticated;
+GRANT INSERT (trip_id, driver_id, latitude, longitude, speed_kmh, heading_degrees)
+  ON public.trip_locations TO authenticated;
 
 -- Reject malformed telemetry at the database boundary. These checks validate
 -- coordinate/measurement ranges; they do not authenticate the GPS source.
