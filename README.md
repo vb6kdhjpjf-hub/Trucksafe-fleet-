@@ -48,3 +48,6 @@ GitHub Actions מריץ בדיקות אבטחה קלות לייצוא CSV, build
 
 ## סטטוס שחרור
 העבודה הנוכחית נמצאת בענף פיתוח וב-PR טיוטה. אין להחיל מיגרציות על מסד הייצור או לפרוס לייצור לפני גיבוי מאומת, בדיקות מלאות, סקירה ואישור שחרור מפורש.
+
+
+> CI intentionally pins Supabase CLI to `v2.stable`. Supabase CLI v3 became the default on 2 November 2026 and changes hosted database commands to require explicit `--remote` targeting and confirmation handling. Do not remove the v2 pin until the backup and migration workflows are deliberately migrated and tested.
