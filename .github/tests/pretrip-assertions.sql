@@ -114,11 +114,19 @@ BEGIN
     IF SQLERRM = 'Incomplete checklist was accepted' THEN RAISE; END IF;
   END;
 
-  -- A recorded expired vehicle test must block a trip even when the driver
-  -- checks every item as valid.
-  UPDATE public.vehicles SET test_due_at = current_date - 1 WHERE id = v_unauthorized;
+  -- Complete all checklist items, then verify that missing and expired
+  -- compliance data independently blocks a trip.
   checklist := jsonb_set(checklist - '_defect_details',
     '{"בלמים ובלם חניה תקינים"}','true'::jsonb);
+  UPDATE public.vehicles SET test_due_at = NULL WHERE id = v_unauthorized;
+  BEGIN
+    PERFORM public.start_trip_with_inspection(f,t_unauthorized,d,v_unauthorized,'Origin','Destination',checklist);
+    RAISE EXCEPTION 'Missing vehicle document date was accepted';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'Missing vehicle document date was accepted' THEN RAISE; END IF;
+    IF SQLERRM NOT LIKE '%חסרים תאריכי תוקף%' THEN RAISE; END IF;
+  END;
+  UPDATE public.vehicles SET test_due_at = current_date - 1 WHERE id = v_unauthorized;
   BEGIN
     PERFORM public.start_trip_with_inspection(f,t_unauthorized,d,v_unauthorized,'Origin','Destination',checklist);
     RAISE EXCEPTION 'Expired vehicle document was accepted';
@@ -128,6 +136,26 @@ BEGIN
   END;
   IF EXISTS (SELECT 1 FROM public.trips WHERE task_id=t_unauthorized AND status='active') THEN
     RAISE EXCEPTION 'Trip was created for a vehicle with expired documents';
+  END IF;
+  UPDATE public.vehicles SET test_due_at = current_date + 365 WHERE id = v_unauthorized;
+  UPDATE public.drivers SET license_expires_at = NULL WHERE id = d;
+  BEGIN
+    PERFORM public.start_trip_with_inspection(f,t_unauthorized,d,v_unauthorized,'Origin','Destination',checklist);
+    RAISE EXCEPTION 'Missing driver licence expiry was accepted';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'Missing driver licence expiry was accepted' THEN RAISE; END IF;
+    IF SQLERRM NOT LIKE '%חסר תאריך תוקף לרישיון%' THEN RAISE; END IF;
+  END;
+  UPDATE public.drivers SET license_expires_at = current_date - 1 WHERE id = d;
+  BEGIN
+    PERFORM public.start_trip_with_inspection(f,t_unauthorized,d,v_unauthorized,'Origin','Destination',checklist);
+    RAISE EXCEPTION 'Expired driver licence was accepted';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'Expired driver licence was accepted' THEN RAISE; END IF;
+    IF SQLERRM NOT LIKE '%רישיון הנהיגה%' THEN RAISE; END IF;
+  END;
+  IF EXISTS (SELECT 1 FROM public.trips WHERE task_id=t_unauthorized AND status='active') THEN
+    RAISE EXCEPTION 'Trip was created for a driver with an expired licence';
   END IF;
 END $;
 
@@ -163,7 +191,6 @@ END $$;
 -- the SECURITY DEFINER RPC's catalog metadata.
 GRANT USAGE ON SCHEMA public, private, auth TO authenticated;
 GRANT SELECT ON public.drivers, public.vehicles, public.trips, public.inspections TO authenticated;
-GRANT INSERT ON public.inspections TO authenticated;
 GRANT UPDATE ON public.vehicles TO authenticated;
 GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated;
 
