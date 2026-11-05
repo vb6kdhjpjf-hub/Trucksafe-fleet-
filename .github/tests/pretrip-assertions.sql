@@ -718,13 +718,13 @@ BEGIN
     SELECT 1 FROM public.incidents
     WHERE description='Assigned driver visibility test'
   ) THEN
-    RAISE EXCEPTION 'Unassigned driver could read another driver's incident';
+    RAISE EXCEPTION 'Unassigned driver could read an incident assigned to another driver';
   END IF;
   IF EXISTS (
     SELECT 1 FROM storage.objects
     WHERE name='10000000-0000-0000-0000-000000000001/incidents/assigned-driver-photo.jpg'
   ) THEN
-    RAISE EXCEPTION 'Unassigned driver could read another driver's incident photo';
+    RAISE EXCEPTION 'Unassigned driver could read a photo assigned to another driver';
   END IF;
 END $test$;
 RESET ROLE;
