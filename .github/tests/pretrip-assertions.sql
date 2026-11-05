@@ -437,7 +437,7 @@ BEGIN
   SELECT count(*) INTO vehicle_count FROM public.vehicles WHERE fleet_id=f;
   SELECT count(*) INTO task_count FROM public.tasks WHERE fleet_id=f;
   SELECT count(*) INTO membership_count FROM public.fleet_members WHERE fleet_id=f;
-  IF driver_count <> 2 OR vehicle_count <> 6 OR task_count <> 6 OR membership_count <> 1 THEN
+  IF driver_count <> 2 OR vehicle_count <> 7 OR task_count <> 7 OR membership_count <> 1 THEN
     RAISE EXCEPTION 'Dispatcher visibility mismatch: drivers=%, vehicles=%, tasks=%, memberships=%',
       driver_count, vehicle_count, task_count, membership_count;
   END IF;
