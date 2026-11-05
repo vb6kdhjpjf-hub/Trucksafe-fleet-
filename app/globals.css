@@ -203,3 +203,193 @@ button, a { -webkit-tap-highlight-color: transparent; }
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+
+/* Unified design layer for operational utility screens (map, routing, reports). */
+.truck-safe-tool-page {
+  width: 100%;
+  min-height: 100vh !important;
+  max-width: 1440px !important;
+  margin-inline: auto !important;
+  padding: clamp(14px, 2.4vw, 30px) !important;
+  background: var(--ts-bg) !important;
+  color: var(--ts-ink) !important;
+  font-family: Heebo, Arial, sans-serif !important;
+}
+.truck-safe-tool-page > div {
+  width: 100%;
+  max-width: 1200px;
+  margin-inline: auto;
+}
+.truck-safe-tool-page header {
+  gap: 14px;
+  align-items: center;
+}
+.truck-safe-tool-page header h1 {
+  color: var(--ts-ink);
+  font-size: clamp(22px, 2.2vw, 30px) !important;
+  font-weight: 800;
+  letter-spacing: -.02em;
+}
+.truck-safe-tool-page header p {
+  color: var(--ts-muted) !important;
+  line-height: 1.65;
+}
+.truck-safe-tool-page h2,
+.truck-safe-tool-page h3 {
+  color: var(--ts-ink);
+  font-weight: 750;
+  letter-spacing: -.01em;
+}
+.truck-safe-tool-page section,
+.truck-safe-tool-page form {
+  border-radius: 16px !important;
+  box-shadow: 0 5px 22px rgba(22,42,72,.045);
+}
+.truck-safe-tool-page input,
+.truck-safe-tool-page select,
+.truck-safe-tool-page textarea {
+  min-height: 44px !important;
+  border: 1px solid #dce4ef !important;
+  border-radius: 10px !important;
+  padding: 10px 12px !important;
+  color: var(--ts-ink) !important;
+  background: #fff !important;
+  font: inherit !important;
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+.truck-safe-tool-page input:focus,
+.truck-safe-tool-page select:focus,
+.truck-safe-tool-page textarea:focus {
+  border-color: #6f96e8 !important;
+  box-shadow: 0 0 0 3px rgba(76,124,213,.12) !important;
+  outline: none;
+}
+.truck-safe-tool-page button {
+  min-height: 40px;
+  border-radius: 10px !important;
+  font-weight: 600;
+  transition: background .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+.truck-safe-tool-page button:disabled {
+  cursor: not-allowed;
+  opacity: .58;
+  transform: none !important;
+}
+.truck-safe-tool-page a {
+  text-underline-offset: 3px;
+}
+@media (max-width: 700px) {
+  .truck-safe-tool-page {
+    padding: 14px !important;
+  }
+  .truck-safe-tool-page header {
+    align-items: stretch !important;
+  }
+  .truck-safe-tool-page header button {
+    min-height: 44px;
+  }
+  .truck-safe-tool-page section,
+  .truck-safe-tool-page form {
+    padding: 14px !important;
+  }
+}
+
+
+/* Compliance data is a required part of the vehicle setup workflow. */
+.vehicle-form {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  align-items: end;
+  gap: 14px;
+}
+.vehicle-form-title,
+.vehicle-form-note,
+.vehicle-form-actions {
+  grid-column: 1 / -1;
+}
+.vehicle-form-title {
+  margin: 0;
+  color: var(--ts-ink);
+  font-size: 17px;
+  font-weight: 800;
+}
+.vehicle-form-note {
+  margin: -6px 0 2px;
+  color: #8a5700;
+  background: #fff8e8;
+  border: 1px solid #f0d9a8;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.vehicle-form label { min-width: 0; }
+.vehicle-form input[type="date"] { min-width: 0; }
+.vehicle-form-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.vehicle-compliance-line {
+  color: #526078 !important;
+  font-size: 11px !important;
+  line-height: 1.6;
+}
+
+
+.incident-resolution,
+.incident-resolution-form {
+  margin-top: 12px;
+  border: 1px solid #dbe4ee;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 12px 14px;
+}
+.incident-resolution b {
+  color: #1f3b56;
+  font-size: 13px;
+}
+.incident-resolution p {
+  margin: 6px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.incident-resolution small {
+  color: #64748b;
+  font-size: 11px;
+}
+.incident-resolution-form label {
+  display: grid;
+  gap: 8px;
+  color: #24364b;
+  font-size: 13px;
+  font-weight: 700;
+}
+.incident-resolution-form textarea {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  font-weight: 400;
+  line-height: 1.6;
+  background: #fff;
+}
+
+.form-warning {
+  display: block;
+  grid-column: 1 / -1;
+  color: #9b1c1c;
+  background: #fff0f0;
+  border: 1px solid #f2c5c5;
+  border-radius: 9px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.55;
+}
