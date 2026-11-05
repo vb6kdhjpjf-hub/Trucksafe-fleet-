@@ -82,7 +82,25 @@ jobs:
         run: |
           set -euo pipefail
           DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/trucksafe-restore/roles.sql
+
+          # Supabase local pre-provisions protected platform roles (for example,
+          # supabase_admin). Keep those platform roles intact while restoring
+          # custom roles and memberships from the backup.
+          psql "$DB_URL" -Atc "SELECT rolname FROM pg_roles" > /tmp/trucksafe-existing-roles.txt
+          awk '
+            NR == FNR { existing[$1] = 1; next }
+            /^CREATE ROLE / || /^ALTER ROLE / {
+              role = $3
+              if (role in existing) {
+                print "-- Skipped platform/pre-existing role statement for " role
+                next
+              }
+            }
+            { print }
+          ' /tmp/trucksafe-existing-roles.txt /tmp/trucksafe-restore/roles.sql \
+            > /tmp/trucksafe-restore/roles.restore.sql
+
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/trucksafe-restore/roles.restore.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/trucksafe-restore/schema.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/trucksafe-restore/data.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -Atc \
