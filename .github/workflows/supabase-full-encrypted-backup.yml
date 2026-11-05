@@ -50,7 +50,7 @@ jobs:
           set -euo pipefail
           umask 077
           mkdir -p backup-tmp
-          trap 'rm -rf backup-tmp' EXIT
+          trap 'rm -rf backup-tmp trucksafe-full-backup.tar.gz' EXIT
           supabase db dump --db-url="$SUPABASE_DB_URL" --file=backup-tmp/roles.sql --role-only
           supabase db dump --db-url="$SUPABASE_DB_URL" --file=backup-tmp/schema.sql
           supabase db dump --db-url="$SUPABASE_DB_URL" --file=backup-tmp/data.sql --use-copy --data-only \
@@ -62,9 +62,9 @@ jobs:
             cd backup-tmp
             sha256sum roles.sql schema.sql data.sql > SHA256SUMS
           )
-          tar -C backup-tmp -czf backup-tmp/trucksafe-full-backup.tar.gz roles.sql schema.sql data.sql SHA256SUMS
+          tar -czf trucksafe-full-backup.tar.gz -C backup-tmp roles.sql schema.sql data.sql SHA256SUMS
           openssl enc -aes-256-cbc -pbkdf2 -salt \
-            -in backup-tmp/trucksafe-full-backup.tar.gz \
+            -in trucksafe-full-backup.tar.gz \
             -out trucksafe-full-backup.tar.gz.enc \
             -pass env:BACKUP_ENCRYPTION_KEY
           test -s trucksafe-full-backup.tar.gz.enc
