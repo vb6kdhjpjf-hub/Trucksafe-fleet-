@@ -524,12 +524,20 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN
     NULL;
   END;
-  UPDATE public.drivers SET license_expires_at=current_date+500
-  WHERE id='20000000-0000-0000-0000-000000000001';
-  IF FOUND THEN RAISE EXCEPTION 'Dispatcher directly updated a driver licence'; END IF;
-  DELETE FROM public.drivers
-  WHERE id='20000000-0000-0000-0000-000000000001';
-  IF FOUND THEN RAISE EXCEPTION 'Dispatcher directly deleted a driver'; END IF;
+  BEGIN
+    UPDATE public.drivers SET license_expires_at=current_date+500
+    WHERE id='20000000-0000-0000-0000-000000000001';
+    IF FOUND THEN RAISE EXCEPTION 'Dispatcher directly updated a driver licence'; END IF;
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+  BEGIN
+    DELETE FROM public.drivers
+    WHERE id='20000000-0000-0000-0000-000000000001';
+    IF FOUND THEN RAISE EXCEPTION 'Dispatcher directly deleted a driver'; END IF;
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
 END $test$;
 RESET ROLE;
 
