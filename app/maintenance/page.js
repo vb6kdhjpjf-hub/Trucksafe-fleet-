@@ -58,7 +58,7 @@ export default function MaintenancePage() {
   }
   async function saveCompliance(vehicle){
     if(!fleet||!vehicle?.id)return;
-    if(!["owner","fleet_manager","dispatcher"].includes(role)){setMessage("רק מנהל צי מורשה לעדכן תאריכי רכב.");return;}
+    if(!["owner","fleet_manager"].includes(role)){setMessage("רק בעלים או מנהל צי מורשים לעדכן תאריכי רכב.");return;}
     setBusy(true);setMessage("");
     try{
       const values=compliance[vehicle.id]||{};
