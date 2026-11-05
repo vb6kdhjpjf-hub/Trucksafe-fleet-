@@ -1,0 +1,80 @@
+name: Supabase encrypted full backup
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-encrypted-backup
+  cancel-in-progress: false
+
+jobs:
+  full-backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: v2.stable
+
+      - name: Validate protected secrets
+        shell: bash
+        run: |
+          set +x
+          if [ -z "${SUPABASE_DB_URL:-}" ]; then
+            echo "::error::Repository secret SUPABASE_DB_URL is missing."
+            exit 1
+          fi
+          if [ -z "${BACKUP_ENCRYPTION_KEY:-}" ] || [ "${#BACKUP_ENCRYPTION_KEY}" -lt 32 ]; then
+            echo "::error::Repository secret BACKUP_ENCRYPTION_KEY is missing or shorter than 32 characters."
+            exit 1
+          fi
+          command -v openssl >/dev/null
+          command -v sha256sum >/dev/null
+
+      - name: Export roles, schema and data to temporary files
+        shell: bash
+        run: |
+          set +x
+          set -euo pipefail
+          umask 077
+          mkdir -p backup-tmp
+          trap 'rm -rf backup-tmp' EXIT
+          supabase db dump --db-url="$SUPABASE_DB_URL" --file=backup-tmp/roles.sql --role-only
+          supabase db dump --db-url="$SUPABASE_DB_URL" --file=backup-tmp/schema.sql
+          supabase db dump --db-url="$SUPABASE_DB_URL" --file=backup-tmp/data.sql --use-copy --data-only \
+            -x "storage.buckets_vectors" -x "storage.vector_indexes"
+          test -s backup-tmp/roles.sql
+          test -s backup-tmp/schema.sql
+          test -s backup-tmp/data.sql
+          (
+            cd backup-tmp
+            sha256sum roles.sql schema.sql data.sql > SHA256SUMS
+          )
+          tar -C backup-tmp -czf backup-tmp/trucksafe-full-backup.tar.gz roles.sql schema.sql data.sql SHA256SUMS
+          openssl enc -aes-256-cbc -pbkdf2 -salt \
+            -in backup-tmp/trucksafe-full-backup.tar.gz \
+            -out trucksafe-full-backup.tar.gz.enc \
+            -pass env:BACKUP_ENCRYPTION_KEY
+          test -s trucksafe-full-backup.tar.gz.enc
+          echo "Encrypted backup created. Plaintext exports remain on the ephemeral runner only and are removed when this step exits."
+          rm -rf backup-tmp
+
+      - name: Upload encrypted backup only
+        uses: actions/upload-artifact@v4
+        with:
+          name: trucksafe-encrypted-full-backup
+          path: trucksafe-full-backup.tar.gz.enc
+          if-no-files-found: error
+          retention-days: 1
