@@ -91,6 +91,7 @@ jobs:
             NR == FNR { existing[$1] = 1; next }
             /^CREATE ROLE / || /^ALTER ROLE / {
               role = $3
+              gsub(/[";]/, "", role)
               if (role in existing) {
                 print "-- Skipped platform/pre-existing role statement for " role
                 next
