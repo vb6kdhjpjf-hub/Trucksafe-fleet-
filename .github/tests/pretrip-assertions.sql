@@ -20,6 +20,8 @@ DECLARE
   other_driver_id uuid := '20000000-0000-0000-0000-000000000002';
   other_vehicle_id uuid := '30000000-0000-0000-0000-000000000007';
   other_task_id uuid := '40000000-0000-0000-0000-000000000006';
+  revoked_vehicle uuid := '30000000-0000-0000-0000-000000000008';
+  revoked_task uuid := '40000000-0000-0000-0000-000000000008';
   outsider_user uuid := '50000000-0000-0000-0000-000000000003';
   v_trip_id uuid;
   checklist jsonb := jsonb_build_object(
@@ -40,11 +42,13 @@ BEGIN
   INSERT INTO public.vehicles(id,fleet_id,status,assigned_driver_id) VALUES
     (v_ok,f,'available',d),(v_bad,f,'available',d),
     (v_manager,f,'available',d),(v_unauthorized,f,'available',d),
-    (other_vehicle_id,f,'available',other_driver_id);
+    (other_vehicle_id,f,'available',other_driver_id),
+    (revoked_vehicle,f,'available',d);
   INSERT INTO public.tasks(id,fleet_id,assigned_driver_id,assigned_vehicle_id,status) VALUES
     (t_ok,f,d,v_ok,'assigned'),(t_bad,f,d,v_bad,'assigned'),
     (t_manager,f,d,v_manager,'assigned'),(t_unauthorized,f,d,v_unauthorized,'assigned'),
-    (other_task_id,f,other_driver_id,other_vehicle_id,'assigned');
+    (other_task_id,f,other_driver_id,other_vehicle_id,'assigned'),
+    (revoked_task,f,d,revoked_vehicle,'assigned');
 
   -- Assigned driver can start and finish their own trip.
   PERFORM set_config('request.jwt.claim.sub', driver_user::text, true);
@@ -73,6 +77,37 @@ BEGIN
   IF EXISTS (SELECT 1 FROM public.trips WHERE task_id=t_unauthorized AND status='active') THEN
     RAISE EXCEPTION 'Unauthorized trip was created';
   END IF;
+
+  -- Membership revocation must immediately disable both privileged trip RPCs,
+  -- even when the user's driver record still points to their auth user.
+  DELETE FROM public.fleet_members WHERE fleet_id=f AND user_id=driver_user;
+  PERFORM set_config('request.jwt.claim.sub', driver_user::text, true);
+  BEGIN
+    PERFORM public.start_trip_with_inspection(f,revoked_task,d,revoked_vehicle,'Origin','Destination',checklist);
+    RAISE EXCEPTION 'Driver without fleet membership unexpectedly started a trip';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'Driver without fleet membership unexpectedly started a trip' THEN RAISE; END IF;
+    IF SQLERRM NOT LIKE '%חבר צי%' THEN RAISE; END IF;
+  END;
+  IF EXISTS (SELECT 1 FROM public.trips WHERE task_id=revoked_task AND status='active') THEN
+    RAISE EXCEPTION 'Trip was created after driver membership was revoked';
+  END IF;
+  INSERT INTO public.fleet_members VALUES (f,driver_user,'driver');
+  v_trip_id := public.start_trip_with_inspection(f,revoked_task,d,revoked_vehicle,'Origin','Destination',checklist);
+  IF v_trip_id IS NULL THEN RAISE EXCEPTION 'Driver could not start trip after membership was restored'; END IF;
+  DELETE FROM public.fleet_members WHERE fleet_id=f AND user_id=driver_user;
+  BEGIN
+    PERFORM public.finish_trip(f,v_trip_id);
+    RAISE EXCEPTION 'Driver without fleet membership unexpectedly finished a trip';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'Driver without fleet membership unexpectedly finished a trip' THEN RAISE; END IF;
+    IF SQLERRM NOT LIKE '%חבר צי%' THEN RAISE; END IF;
+  END;
+  IF (SELECT status FROM public.trips WHERE id=v_trip_id) <> 'active' THEN
+    RAISE EXCEPTION 'Trip changed after driver membership was revoked';
+  END IF;
+  INSERT INTO public.fleet_members VALUES (f,driver_user,'driver');
+  PERFORM public.finish_trip(f,v_trip_id);
 
   -- A fleet manager can act for a driver in their fleet.
   PERFORM set_config('request.jwt.claim.sub', manager_user::text, true);
