@@ -34,8 +34,9 @@ async function geocode(address, apiKey) {
 }
 
 export async function GET() {
-  const providerEnabled = process.env.TRUCK_ROUTING_PROVIDER === "here";
-  return response({ configured: providerEnabled && Boolean(process.env.HERE_API_KEY) });
+  // Use the exact same three-part readiness gate as POST. Otherwise the UI
+  // could enable routing while the explicit safety switch is still disabled.
+  return response({ configured: getTruckRoutingConfig().configured });
 }
 
 export async function POST(request) {
