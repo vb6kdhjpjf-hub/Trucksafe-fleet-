@@ -89,15 +89,20 @@ jobs:
           psql "$DB_URL" -Atc "SELECT rolname FROM pg_roles" > /tmp/trucksafe-existing-roles.txt
           awk '
             NR == FNR { existing[$1] = 1; next }
-            /^CREATE ROLE / || /^ALTER ROLE / {
-              role = $3
-              gsub(/[";]/, "", role)
-              if (role in existing || role ~ /^supabase_/) {
-                print "-- Skipped platform/pre-existing role statement for " role
-                next
+            {
+              line = $0
+              if (line ~ /^[[:space:]]*(CREATE|ALTER) ROLE[[:space:]]+/) {
+                role = line
+                sub(/^[[:space:]]*(CREATE|ALTER) ROLE[[:space:]]+/, "", role)
+                sub(/[[:space:]].*$/, "", role)
+                gsub(/[";]/, "", role)
+                if (role in existing || role ~ /^supabase_/) {
+                  print "-- Skipped platform/pre-existing role statement for " role
+                  next
+                }
               }
+              print
             }
-            { print }
           ' /tmp/trucksafe-existing-roles.txt /tmp/trucksafe-restore/roles.sql \
             > /tmp/trucksafe-restore/roles.restore.sql
 
