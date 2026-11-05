@@ -584,7 +584,7 @@ FOR SELECT
 TO authenticated
 USING (
   private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher','safety_manager'])
-  OR user_id = (SELECT auth.uid())
+  OR (private.is_fleet_member(fleet_id) AND user_id = (SELECT auth.uid()))
 );
 
 DROP POLICY IF EXISTS vehicles_select_member ON public.vehicles;
@@ -594,7 +594,7 @@ FOR SELECT
 TO authenticated
 USING (
   private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher','safety_manager'])
-  OR EXISTS (
+  OR (private.is_fleet_member(fleet_id) AND EXISTS (
     SELECT 1
     FROM public.drivers d
     WHERE d.fleet_id = vehicles.fleet_id
@@ -609,7 +609,7 @@ USING (
             AND t.status IN ('pending','assigned','in_progress')
         )
       )
-  )
+  ))
 );
 
 DROP POLICY IF EXISTS tasks_select_member ON public.tasks;
@@ -619,12 +619,12 @@ FOR SELECT
 TO authenticated
 USING (
   private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher','safety_manager'])
-  OR EXISTS (
+  OR (private.is_fleet_member(fleet_id) AND EXISTS (
     SELECT 1 FROM public.drivers d
     WHERE d.id = tasks.assigned_driver_id
       AND d.fleet_id = tasks.fleet_id
       AND d.user_id = (SELECT auth.uid())
-  )
+  ))
 );
 
 DROP POLICY IF EXISTS trips_select_member ON public.trips;
@@ -634,12 +634,12 @@ FOR SELECT
 TO authenticated
 USING (
   private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher','safety_manager'])
-  OR EXISTS (
+  OR (private.is_fleet_member(fleet_id) AND EXISTS (
     SELECT 1 FROM public.drivers d
     WHERE d.id = trips.driver_id
       AND d.fleet_id = trips.fleet_id
       AND d.user_id = (SELECT auth.uid())
-  )
+  ))
 );
 
 DROP POLICY IF EXISTS trip_locations_select_member ON public.trip_locations;
@@ -653,12 +653,12 @@ USING (
     WHERE t.id = trip_locations.trip_id
       AND (
         private.has_fleet_role(t.fleet_id, ARRAY['owner','fleet_manager','dispatcher','safety_manager'])
-        OR EXISTS (
+        OR (private.is_fleet_member(t.fleet_id) AND EXISTS (
           SELECT 1 FROM public.drivers d
           WHERE d.id = t.driver_id
             AND d.fleet_id = t.fleet_id
             AND d.user_id = (SELECT auth.uid())
-        )
+        ))
       )
   )
 );
@@ -670,8 +670,8 @@ FOR SELECT
 TO authenticated
 USING (
   private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher','safety_manager'])
-  OR created_by = (SELECT auth.uid())
-  OR EXISTS (
+  OR (private.is_fleet_member(fleet_id) AND created_by = (SELECT auth.uid()))
+  OR (private.is_fleet_member(fleet_id) AND EXISTS (
     SELECT 1 FROM public.drivers d
     WHERE d.fleet_id = incidents.fleet_id
       AND d.user_id = (SELECT auth.uid())
@@ -691,7 +691,7 @@ USING (
             AND t.status IN ('pending','assigned','in_progress')
         )
       )
-  )
+  ))
 );
 
 -- Incident photo reads inherit the exact incident-row visibility rules.
@@ -717,12 +717,12 @@ FOR SELECT
 TO authenticated
 USING (
   private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher','safety_manager'])
-  OR EXISTS (
+  OR (private.is_fleet_member(fleet_id) AND EXISTS (
     SELECT 1 FROM public.drivers d
     WHERE d.id = inspections.driver_id
       AND d.fleet_id = inspections.fleet_id
       AND d.user_id = (SELECT auth.uid())
-  )
+  ))
 );
 
 DROP POLICY IF EXISTS maintenance_select_member ON public.maintenance_records;
@@ -732,7 +732,7 @@ FOR SELECT
 TO authenticated
 USING (
   private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher','safety_manager'])
-  OR EXISTS (
+  OR (private.is_fleet_member(fleet_id) AND EXISTS (
     SELECT 1 FROM public.drivers d
     WHERE d.fleet_id = maintenance_records.fleet_id
       AND d.user_id = (SELECT auth.uid())
@@ -751,7 +751,7 @@ USING (
             AND t.status IN ('pending','assigned','in_progress')
         )
       )
-  )
+  ))
 );
 
 
