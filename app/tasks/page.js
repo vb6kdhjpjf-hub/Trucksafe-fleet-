@@ -17,6 +17,8 @@ export default function TasksPage() {
   const [inspections, setInspections] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
+  const [lockedVehicleIds, setLockedVehicleIds] = useState([]);
+  const [lockStatusAvailable, setLockStatusAvailable] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -54,15 +56,24 @@ export default function TasksPage() {
     const { data: current, error: fleetError } = await supabase.from("fleets").select("id,name").eq("id", membership.fleet_id).single();
     if (fleetError) { setMessage("שגיאה בטעינת הצי: " + fleetError.message); return; }
     setFleet({ ...current, role: membership.role });
-    const [t, d, v, tr] = await Promise.all([
+    const [t, d, v, tr, lockRows] = await Promise.all([
       supabase.from("tasks").select("id,reference_code,title,description,pickup_address,delivery_address,scheduled_at,assigned_driver_id,assigned_vehicle_id,status,created_at").eq("fleet_id", current.id).order("created_at", { ascending: false }),
       supabase.from("drivers").select("id,full_name,status").eq("fleet_id", current.id).order("created_at", { ascending: false }),
       supabase.from("vehicles").select("id,registration_number,make,vehicle_type,status").eq("fleet_id", current.id).order("created_at", { ascending: false }),
-      supabase.from("trips").select("id,task_id,driver_id,vehicle_id,status,origin_address,destination_address,started_at,ended_at").eq("fleet_id", current.id).order("created_at", { ascending: false }).limit(50)
+      supabase.from("trips").select("id,task_id,driver_id,vehicle_id,status,origin_address,destination_address,started_at,ended_at").eq("fleet_id", current.id).order("created_at", { ascending: false }).limit(50),
+      supabase.from("incidents").select("vehicle_id").eq("fleet_id", current.id).in("status", ["open","investigating"])
     ]);
     if (t.error) setMessage("שגיאה בטעינת המשימות: " + t.error.message); else setTasks(t.data || []);
     if (d.error) setMessage("שגיאה בטעינת הנהגים: " + d.error.message); else setDrivers(d.data || []);
     if (v.error) setMessage("שגיאה בטעינת כלי הרכב: " + v.error.message); else setVehicles(v.data || []);
+    if (lockRows.error) {
+      setLockStatusAvailable(false);
+      setLockedVehicleIds((v.data || []).map(vehicle => vehicle.id));
+      setMessage("לא ניתן לאמת נעילות בטיחות. עד לאימות מחדש לא ניתן לשייך רכב או לפתוח נסיעה: " + lockRows.error.message);
+    } else {
+      setLockStatusAvailable(true);
+      setLockedVehicleIds([...new Set((lockRows.data || []).map(row => row.vehicle_id).filter(Boolean))]);
+    }
     if (tr.error) setMessage("שגיאה בטעינת הנסיעות: " + tr.error.message); else setTrips(tr.data || []);
     const { data: inspectionRows, error: inspectionError } = await supabase.from("inspections").select("id,trip_id,vehicle_id,driver_id,inspection_type,checklist,defects,passed,inspected_at").eq("fleet_id", current.id).order("inspected_at", { ascending: false }).limit(30);
     if (inspectionError) setMessage("שגיאה בטעינת היסטוריית בדיקות הרכב: " + inspectionError.message); else setInspections(inspectionRows || []);
@@ -91,40 +102,65 @@ export default function TasksPage() {
   }
 
   async function updateStatus(task, status) {
+    if (!canManageTasks) { setMessage("אין הרשאה לשנות את סטטוס המשימה."); return; }
+    if (!["pending","assigned","cancelled"].includes(status)) {
+      setMessage("סטטוס בתהליך או הושלמה מתעדכן רק דרך תהליך הנסיעה המאובטח.");
+      return;
+    }
     setBusy(true); setMessage("");
-    const { error } = await supabase.from("tasks").update({ status }).eq("id", task.id).eq("fleet_id", fleet.id);
-    if (error) setMessage("לא הצלחנו לעדכן סטטוס: " + error.message);
-    else { await loadWorkspace(session.user); setMessage("סטטוס המשימה עודכן."); }
-    setBusy(false);
+    try {
+      const { data, error } = await supabase.from("tasks").update({ status })
+        .eq("id", task.id).eq("fleet_id", fleet.id).select("id").maybeSingle();
+      if (error) setMessage("לא הצלחנו לעדכן סטטוס: " + error.message);
+      else if (!data) setMessage("המשימה לא נמצאה או שלא ניתן לשנות את הסטטוס שלה.");
+      else { await loadWorkspace(session.user); setMessage("סטטוס המשימה עודכן."); }
+    } catch (error) {
+      setMessage("עדכון הסטטוס נכשל: " + (error?.message || "שגיאה לא ידועה"));
+    } finally { setBusy(false); }
   }
 
   async function startTrip(task) {
     if (!task.assigned_driver_id || !task.assigned_vehicle_id) { setMessage("כדי להתחיל נסיעה יש לשייך למשימה גם נהג וגם רכב."); return; }
-    setPreTripTask(task); setPreTripChecks({}); setMessage("");
+    if (!lockStatusAvailable || lockedVehicleIds.includes(task.assigned_vehicle_id)) {
+      setMessage("לא ניתן לפתוח נסיעה: מצב נעילת הרכב אינו מאומת או שקיים אירוע בטיחות פתוח. רענן את המסך ובדוק את האירוע.");
+      return;
+    }
+    setPreTripTask(task); setPreTripChecks({}); setPreTripDefectDetails(""); setMessage("");
   }
 
   async function confirmPreTrip() {
     const task = preTripTask;
     if (!task || !fleet || !session?.user) return;
-    if (!preTripItems.every((_, i) => preTripChecks[i])) {
-      setMessage("יש לאשר את כל סעיפי בדיקת הרכב לפני פתיחת הנסיעה.");
+    if (!preTripItems.every((_, i) => typeof preTripChecks[i] === "boolean")) {
+      setMessage("יש לבחור תקין או נמצאה תקלה בכל אחד משבעת סעיפי הבדיקה.");
+      return;
+    }
+    const hasDefect = preTripItems.some((_, i) => preTripChecks[i] === false);
+    if (hasDefect && !preTripDefectDetails.trim()) {
+      setMessage("נמצאה תקלה. יש לפרט בקצרה את הליקוי לפני שמירת הבדיקה.");
       return;
     }
     setBusy(true); setMessage("");
-    const checklist = Object.fromEntries(preTripItems.map((item, i) => [item, Boolean(preTripChecks[i])]));
+    const checklist = Object.fromEntries(preTripItems.map((item, i) => [item, preTripChecks[i]]));
+    if (hasDefect) checklist._defect_details = preTripDefectDetails.trim().slice(0, 1000);
     try {
-      const { error } = await supabase.rpc("start_trip_with_inspection", {
+      const { data: tripId, error } = await supabase.rpc("start_trip_with_inspection", {
         p_fleet_id: fleet.id, p_task_id: task.id, p_driver_id: task.assigned_driver_id,
         p_vehicle_id: task.assigned_vehicle_id, p_origin_address: task.pickup_address,
         p_destination_address: task.delivery_address, p_checklist: checklist
       });
       if (error) {
-        setMessage("לא ניתן לפתוח נסיעה או לשמור בדיקת רכב: " + error.message);
+        setMessage("לא ניתן לשמור את בדיקת הרכב: " + error.message);
         return;
       }
       setPreTripTask(null);
+      setPreTripDefectDetails("");
       await loadWorkspace(session.user);
-      setMessage("בדיקת הרכב נשמרה והנסיעה נפתחה בהצלחה.");
+      if (!tripId) {
+        setMessage("הבדיקה נשמרה ונפתח אירוע בטיחות. הנסיעה לא נפתחה. יש לטפל בתקלה, שמנהל הבטיחות יאשר את הטיפול, ורק לאחר מכן לבצע בדיקה חדשה.");
+        return;
+      }
+      setMessage("בדיקת הרכב עברה בהצלחה והנסיעה נפתחה.");
     } catch (error) {
       setMessage("אירעה שגיאה בפתיחת הנסיעה: " + (error?.message || "שגיאה לא ידועה"));
     } finally {
@@ -232,8 +268,8 @@ export default function TasksPage() {
         </article>)}</div>}
       </section>
       <section className="fleet-panel">
-        <div className="fleet-panel-head"><div><h3>משימות הצי</h3><p>יצירת משימות, שיוך נהגים וכלי רכב ומעקב סטטוס</p></div><button className="primary-btn" onClick={() => { setShowForm(!showForm); setMessage(""); }}><Plus size={16}/> משימה חדשה</button></div>
-        {showForm && <form className="task-form" onSubmit={saveTask}>
+        <div className="fleet-panel-head"><div><h3>משימות הצי</h3><p>יצירת משימות, שיוך נהגים וכלי רכב ומעקב סטטוס</p></div>{canManageTasks && <button className="primary-btn" onClick={() => { setShowForm(!showForm); setMessage(""); }}><Plus size={16}/> משימה חדשה</button>}</div>
+        {showForm && canManageTasks && <form className="task-form" onSubmit={saveTask}>
           <div className="driver-form-title">פרטי המשימה</div>
           <div className="task-form-grid">
             <label>כותרת המשימה *<input required value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="לדוגמה: הובלת מטען ללקוח"/></label>
@@ -241,7 +277,7 @@ export default function TasksPage() {
             <label>כתובת יעד<input value={form.delivery_address} onChange={e=>setForm({...form,delivery_address:e.target.value})} placeholder="כתובת היעד"/></label>
             <label>מועד מתוכנן<input type="datetime-local" value={form.scheduled_at} onChange={e=>setForm({...form,scheduled_at:e.target.value})}/></label>
             <label>שיוך נהג<select value={form.assigned_driver_id} onChange={e=>setForm({...form,assigned_driver_id:e.target.value})}><option value="">ללא נהג</option>{drivers.filter(d=>d.status==="active").map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label>
-            <label>שיוך רכב<select value={form.assigned_vehicle_id} onChange={e=>setForm({...form,assigned_vehicle_id:e.target.value})}><option value="">ללא רכב</option>{vehicles.filter(v=>v.status==="available" || v.status==="assigned").map(v=><option key={v.id} value={v.id}>{v.registration_number} · {v.make || v.vehicle_type}</option>)}</select></label>
+            <label>שיוך רכב<select value={form.assigned_vehicle_id} onChange={e=>setForm({...form,assigned_vehicle_id:e.target.value})}><option value="">ללא רכב</option>{vehicles.filter(v=>(v.status==="available" || v.status==="assigned")&&lockStatusAvailable&&!lockedVehicleIds.includes(v.id)).map(v=><option key={v.id} value={v.id}>{v.registration_number} · {v.make || v.vehicle_type}</option>)}</select></label>{!lockStatusAvailable&&<small className="form-warning">לא ניתן לאמת כרגע נעילות בטיחות. יש לרענן את המסך לפני שיוך רכב.</small>}{lockedVehicleIds.length>0&&<small className="form-warning">{lockedVehicleIds.length} כלי רכב נעולים עקב אירוע בטיחות פתוח ואינם זמינים לשיבוץ.</small>}
             <label className="task-wide">הערות / תיאור<textarea rows="3" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="פרטים נוספים לנהג או למנהל הצי"/></label>
           </div>
           <div className="driver-form-actions"><button className="primary-btn" disabled={busy}>{busy ? "שומר..." : "שמירת משימה"}</button><button type="button" className="secondary-btn" onClick={()=>{setShowForm(false);setForm(emptyForm);}}>ביטול</button></div>
