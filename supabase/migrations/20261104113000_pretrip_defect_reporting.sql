@@ -1026,6 +1026,9 @@ BEGIN
       IF NULLIF(btrim(NEW.resolution_notes), '') IS NULL THEN
         RAISE EXCEPTION 'יש להזין תיעוד טיפול לפני סגירת אירוע בטיחות';
       END IF;
+      IF length(NEW.resolution_notes) > 1000 THEN
+        RAISE EXCEPTION 'תיעוד הטיפול מוגבל ל-1,000 תווים';
+      END IF;
       NEW.resolved_at := now();
       NEW.resolved_by := auth.uid();
     ELSE
