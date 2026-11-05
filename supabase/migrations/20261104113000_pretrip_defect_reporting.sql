@@ -778,11 +778,9 @@ GRANT INSERT (trip_id, driver_id, latitude, longitude, speed_kmh, heading_degree
 
 -- Reject malformed telemetry at the database boundary. These checks validate
 -- coordinate/measurement ranges; they do not authenticate the GPS source.
+-- Latitude and longitude already have equivalent CHECK constraints in the
+-- live schema. Avoid duplicate constraints and enforce only the missing ranges.
 ALTER TABLE public.trip_locations
-  ADD CONSTRAINT trip_locations_latitude_range
-    CHECK (latitude BETWEEN -90 AND 90),
-  ADD CONSTRAINT trip_locations_longitude_range
-    CHECK (longitude BETWEEN -180 AND 180),
   ADD CONSTRAINT trip_locations_speed_nonnegative
     CHECK (speed_kmh IS NULL OR speed_kmh >= 0),
   ADD CONSTRAINT trip_locations_heading_range
@@ -1041,6 +1039,9 @@ BEGIN
   IF NEW.status IN ('resolved','closed') THEN
     IF NULLIF(btrim(NEW.resolution_notes), '') IS NULL THEN
       RAISE EXCEPTION 'יש להזין תיעוד טיפול לפני סגירת אירוע בטיחות';
+    END IF;
+    IF length(NEW.resolution_notes) > 1000 THEN
+      RAISE EXCEPTION 'תיעוד הטיפול מוגבל ל-1,000 תווים';
     END IF;
     IF OLD.status NOT IN ('resolved','closed') THEN
       NEW.resolved_at := now();
