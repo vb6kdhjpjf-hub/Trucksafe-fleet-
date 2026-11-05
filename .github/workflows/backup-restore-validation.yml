@@ -83,41 +83,22 @@ jobs:
           set -euo pipefail
           DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
 
-          # Supabase local pre-provisions protected platform roles (for example,
-          # supabase_admin). Keep those platform roles intact while restoring
-          # custom roles and memberships from the backup.
-          psql "$DB_URL" -Atc "SELECT rolname FROM pg_roles" > /tmp/trucksafe-existing-roles.txt
+          # The production backup contains only Supabase-managed roles; these
+          # already exist in the isolated local stack. Restore membership GRANTs,
+          # but never replay CREATE/ALTER ROLE statements: globals dumps can
+          # contain protected per-role GUCs (for example log_min_messages).
           awk '
-            NR == FNR { existing[$1] = 1; next }
-            {
-              line = $0
-              # Global dumps include session-level SET commands and role-level
-              # GUC overrides. They are not required to recreate role identities
-              # or memberships and may require superuser-only privileges locally.
-              if (line ~ /^[[:space:]]*SET[[:space:]]/ ||
-                  line ~ /^[[:space:]]*SELECT[[:space:]]+pg_catalog\.set_config/) {
-                print "-- Skipped session configuration from globals dump"
-                next
-              }
-              if (line ~ /^[[:space:]]*ALTER ROLE[[:space:]]+/ &&
-                  line ~ /[[:space:]]SET[[:space:]]/) {
-                print "-- Skipped role-level configuration from globals dump"
-                next
-              }
-              if (line ~ /^[[:space:]]*(CREATE|ALTER) ROLE[[:space:]]+/) {
-                role = line
-                sub(/^[[:space:]]*(CREATE|ALTER) ROLE[[:space:]]+/, "", role)
-                sub(/[[:space:]].*$/, "", role)
-                gsub(/[";]/, "", role)
-                if (role in existing || role ~ /^supabase_/) {
-                  print "-- Skipped platform/pre-existing role statement for " role
-                  next
-                }
-              }
-              print
+            /^[[:space:]]*(CREATE|ALTER)[[:space:]]+ROLE[[:space:]]/ {
+              print "-- Skipped Supabase-managed role definition/configuration"
+              next
             }
-          ' /tmp/trucksafe-existing-roles.txt /tmp/trucksafe-restore/roles.sql \
-            > /tmp/trucksafe-restore/roles.restore.sql
+            /^[[:space:]]*SET[[:space:]]/ ||
+            /^[[:space:]]*SELECT[[:space:]]+pg_catalog\.set_config/ {
+              print "-- Skipped session configuration from globals dump"
+              next
+            }
+            { print }
+          ' /tmp/trucksafe-restore/roles.sql > /tmp/trucksafe-restore/roles.restore.sql
 
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/trucksafe-restore/roles.restore.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/trucksafe-restore/schema.sql
