@@ -323,11 +323,17 @@ BEGIN
   SELECT t.id,t.driver_id,31.7000,35.1000,35,180
   FROM public.trips t
   WHERE t.task_id='40000000-0000-0000-0000-000000000005' AND t.status='active';
-  IF (SELECT count(*) FROM public.drivers WHERE fleet_id=f) <> 1
-     OR EXISTS (SELECT 1 FROM public.vehicles WHERE id='30000000-0000-0000-0000-000000000007')
-     OR EXISTS (SELECT 1 FROM public.tasks WHERE id='40000000-0000-0000-0000-000000000006')
-     OR EXISTS (SELECT 1 FROM public.fleet_members WHERE user_id='50000000-0000-0000-0000-000000000005') THEN
-    RAISE EXCEPTION 'Driver can read another driver or member private records';
+  IF (SELECT count(*) FROM public.drivers WHERE fleet_id=f) <> 1 THEN
+    RAISE EXCEPTION 'Driver can read other driver rows: visible_count=%', (SELECT count(*) FROM public.drivers WHERE fleet_id=f);
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.vehicles WHERE id='30000000-0000-0000-0000-000000000007') THEN
+    RAISE EXCEPTION 'Driver can read another driver vehicle';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.tasks WHERE id='40000000-0000-0000-0000-000000000006') THEN
+    RAISE EXCEPTION 'Driver can read another driver task';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.fleet_members WHERE user_id='50000000-0000-0000-0000-000000000005') THEN
+    RAISE EXCEPTION 'Driver can read another fleet member private record';
   END IF;
   SELECT count(*) INTO map_count FROM public.get_active_trip_map_data(f);
   SELECT jsonb_array_length(history), latitude INTO history_count, latest_lat
