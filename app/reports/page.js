@@ -6,12 +6,6 @@ import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { csvDocument } from "../../lib/csv.mjs";
 import { ArrowRight, BarChart3, Download, RefreshCw, Route, Truck, Users } from "lucide-react";
 
-  const rad = n => n * Math.PI / 180;
-  const dLat = rad(Number(b.latitude) - Number(a.latitude));
-  const dLng = rad(Number(b.longitude) - Number(a.longitude));
-  const x = Math.sin(dLat / 2) ** 2 + Math.cos(rad(Number(a.latitude))) * Math.cos(rad(Number(b.latitude))) * Math.sin(dLng / 2) ** 2;
-  return 6371 * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-};
 const durationFor = trip => trip.started_at && trip.ended_at ? Math.max(0, (new Date(trip.ended_at) - new Date(trip.started_at)) / 60000) : null;
 const fmt = n => n == null ? "—" : n < 10 ? n.toFixed(1) : Math.round(n).toLocaleString("he-IL");
 
