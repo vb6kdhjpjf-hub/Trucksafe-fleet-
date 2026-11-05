@@ -718,7 +718,13 @@ BEGIN
     SELECT 1 FROM public.incidents
     WHERE description='Assigned driver visibility test'
   ) THEN
-    RAISE EXCEPTION 'Unassigned driver could read an incident assigned to another driver';
+    RAISE EXCEPTION 'Unexpected incident visibility: uid=%, creator_match=%, role=%, driver_match=%, vehicle_match=%, task_match=%',
+      auth.uid(),
+      (SELECT created_by = auth.uid() FROM public.incidents WHERE description='Assigned driver visibility test'),
+      private.has_fleet_role('10000000-0000-0000-0000-000000000001', ARRAY['owner','fleet_manager','dispatcher','safety_manager']),
+      EXISTS (SELECT 1 FROM public.drivers d WHERE d.fleet_id='10000000-0000-0000-0000-000000000001' AND d.user_id=auth.uid() AND d.id='20000000-0000-0000-0000-000000000002'),
+      EXISTS (SELECT 1 FROM public.drivers d JOIN public.vehicles v ON v.assigned_driver_id=d.id WHERE d.fleet_id='10000000-0000-0000-0000-000000000001' AND d.user_id=auth.uid() AND v.id='30000000-0000-0000-0000-000000000005'),
+      EXISTS (SELECT 1 FROM public.drivers d JOIN public.tasks t ON t.assigned_driver_id=d.id WHERE d.fleet_id='10000000-0000-0000-0000-000000000001' AND d.user_id=auth.uid() AND t.assigned_vehicle_id='30000000-0000-0000-0000-000000000005' AND t.status IN ('pending','assigned','in_progress'));
   END IF;
   IF EXISTS (
     SELECT 1 FROM storage.objects
