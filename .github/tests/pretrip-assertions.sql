@@ -707,3 +707,16 @@ RESET ROLE;
 -- Trigger fresh PR validation after workflow is enabled on main.
 
 -- Trigger push-based SQL validation after adding the branch push event.
+
+-- Ensure the migration removes the legacy permissive incident policy; RLS policies OR together.
+DO $test$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname='public' AND tablename='incidents'
+      AND policyname='incidents_update_safety' AND cmd='UPDATE'
+  ) THEN
+    RAISE EXCEPTION 'Legacy incidents_update_safety policy survived migration';
+  END IF;
+END $test$;
+
