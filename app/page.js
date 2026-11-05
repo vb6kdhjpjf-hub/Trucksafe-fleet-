@@ -253,12 +253,67 @@ export default function Home() {
     setBusy(false);
   }
 
-  async function addVehicle(e){
-    e.preventDefault();setBusy(true);setMessage("");
-    const {error}=await supabase.from("vehicles").insert({fleet_id:fleet.id,registration_number:registration.trim(),vehicle_type:vehicleType,make:vehicleMake.trim()||null,status:"available",assigned_driver_id:assignedDriverId||null});
-    if(error)setMessage("לא הצלחנו להוסיף רכב: "+error.message);
-    else {setRegistration("");setVehicleMake("");setAssignedDriverId("");setShowVehicle(false);await loadFleet(session.user);setMessage("הרכב נוסף לצי.");}
-    setBusy(false);
+  const canManageVehicles = ["owner", "fleet_manager"].includes(fleet?.role);
+
+  function resetVehicleForm(){
+    setRegistration("");
+    setVehicleType("משאית");
+    setVehicleMake("");
+    setAssignedDriverId("");
+    setTestDueAt("");
+    setInsuranceDueAt("");
+    setRegistrationDueAt("");
+    setNextServiceAt("");
+    setEditingVehicleId(null);
+    setShowVehicle(false);
+  }
+
+  function editVehicle(vehicle){
+    setRegistration(vehicle.registration_number||"");
+    setVehicleType(vehicle.vehicle_type||"משאית");
+    setVehicleMake([vehicle.make,vehicle.model].filter(Boolean).join(" "));
+    setAssignedDriverId(vehicle.assigned_driver_id||"");
+    setTestDueAt(vehicle.test_due_at||"");
+    setInsuranceDueAt(vehicle.insurance_due_at||"");
+    setRegistrationDueAt(vehicle.registration_due_at||"");
+    setNextServiceAt(vehicle.next_service_at||"");
+    setEditingVehicleId(vehicle.id);
+    setShowVehicle(true);
+    setMessage("");
+    window.scrollTo({top:document.body.scrollHeight,behavior:"smooth"});
+  }
+
+  async function saveVehicle(e){
+    e.preventDefault();
+    if(!canManageVehicles){setMessage("אין לך הרשאה לעדכן כלי רכב.");return;}
+    if(!registration.trim()||!testDueAt||!insuranceDueAt||!registrationDueAt){
+      setMessage("יש להשלים מספר רישוי ותאריכי טסט, ביטוח ורישיון רכב.");
+      return;
+    }
+    setBusy(true);setMessage("");
+    const payload={
+      registration_number:registration.trim(),
+      vehicle_type:vehicleType,
+      make:vehicleMake.trim()||null,
+      assigned_driver_id:assignedDriverId||null,
+      test_due_at:testDueAt,
+      insurance_due_at:insuranceDueAt,
+      registration_due_at:registrationDueAt,
+      next_service_at:nextServiceAt||null
+    };
+    try{
+      const result=editingVehicleId
+        ? await supabase.from("vehicles").update(payload).eq("id",editingVehicleId).eq("fleet_id",fleet.id)
+        : await supabase.from("vehicles").insert({...payload,fleet_id:fleet.id,status:"available"});
+      if(result.error)throw result.error;
+      resetVehicleForm();
+      await loadFleet(session.user);
+      setMessage(editingVehicleId?"פרטי הרכב עודכנו.":"הרכב נוסף לצי.");
+    }catch(error){
+      setMessage("לא הצלחנו לשמור את פרטי הרכב: "+(error?.message||"שגיאה לא ידועה"));
+    }finally{
+      setBusy(false);
+    }
   }
 
   async function signOut(){await supabase.auth.signOut();setMessage("התנתקת מהמערכת.");}
