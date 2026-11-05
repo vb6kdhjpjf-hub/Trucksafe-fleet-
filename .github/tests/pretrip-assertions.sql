@@ -680,3 +680,5 @@ BEGIN
 END $test$;
 RESET ROLE;
 
+
+-- Keep this assertion suite on the latest feature-branch revision for PR CI validation.
