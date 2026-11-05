@@ -475,6 +475,20 @@ WITH CHECK (
   AND status = 'open'
 );
 
+-- Only fleet owners, fleet managers, and safety managers may resolve incidents.
+-- This is intentionally separate from SELECT access so reporters cannot close reports.
+DROP POLICY IF EXISTS incidents_update_managers ON public.incidents;
+CREATE POLICY incidents_update_managers
+ON public.incidents
+FOR UPDATE
+TO authenticated
+USING (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','safety_manager'])
+)
+WITH CHECK (
+  private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','safety_manager'])
+);
+
 -- Harden existing trigger functions too: SECURITY DEFINER code must not
 -- inherit a writable schema search_path. All relations are explicitly qualified.
 CREATE OR REPLACE FUNCTION public.add_fleet_owner_membership()
