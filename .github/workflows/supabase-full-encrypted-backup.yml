@@ -59,7 +59,7 @@ jobs:
           supabase db dump --db-url="$SUPABASE_DB_URL" --file=backup-tmp/roles.sql --role-only
           supabase db dump --db-url="$SUPABASE_DB_URL" --file=backup-tmp/schema.sql
           supabase db dump --db-url="$SUPABASE_DB_URL" --file=backup-tmp/data.sql --use-copy --data-only \
-            -x "storage.buckets_vectors" -x "storage.vector_indexes"
+            -x "storage.buckets_vectors" -x "storage.vector_indexes" -x "storage.bucket_lifecycle_states"
           test -s backup-tmp/roles.sql
           test -s backup-tmp/schema.sql
           test -s backup-tmp/data.sql
