@@ -1,0 +1,124 @@
+name: Validate encrypted Supabase backup restore
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup_run_id:
+        description: GitHub Actions run ID containing the encrypted full backup
+        required: true
+        default: "41998689416"
+  push:
+    branches:
+      - fix/pretrip-safe-integration
+    paths:
+      - .github/workflows/backup-restore-validation.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: supabase-backup-restore-validation
+  cancel-in-progress: false
+
+jobs:
+  restore-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    services:
+      postgres-roles:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+      BACKUP_RUN_ID: ${{ inputs.backup_run_id || '41998689416' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Download encrypted backup artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.1.8
+        with:
+          name: trucksafe-encrypted-full-backup
+          run-id: ${{ inputs.backup_run_id || '41998689416' }}
+          github-token: ${{ github.token }}
+          path: restore-input
+
+      - name: Decrypt and verify archive checksums
+        shell: bash
+        run: |
+          set +x
+          set -euo pipefail
+          if [ -z "${BACKUP_ENCRYPTION_KEY:-}" ] || [ "${#BACKUP_ENCRYPTION_KEY}" -lt 32 ]; then
+            echo "::error::BACKUP_ENCRYPTION_KEY is missing or too short."
+            exit 1
+          fi
+          test -s restore-input/trucksafe-full-backup.tar.gz.enc
+          openssl enc -d -aes-256-cbc -pbkdf2 \
+            -in restore-input/trucksafe-full-backup.tar.gz.enc \
+            -out /tmp/trucksafe-full-backup.tar.gz \
+            -pass env:BACKUP_ENCRYPTION_KEY
+          mkdir -p /tmp/trucksafe-restore
+          tar -xzf /tmp/trucksafe-full-backup.tar.gz -C /tmp/trucksafe-restore
+          cd /tmp/trucksafe-restore
+          sha256sum -c SHA256SUMS
+          test -s roles.sql
+          test -s schema.sql
+          test -s data.sql
+          echo "Decryption, archive extraction and SHA-256 verification passed."
+
+      - name: Restore exported roles into a clean PostgreSQL 17 instance
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h 127.0.0.1 -p 5433 -U postgres -d postgres \
+            -v ON_ERROR_STOP=1 -f /tmp/trucksafe-restore/roles.sql
+          echo "Role export restored into an isolated, empty PostgreSQL 17 instance."
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: v2.stable
+
+      - name: Start isolated local Supabase stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/trucksafe-supabase
+          cd /tmp/trucksafe-supabase
+          supabase init
+          supabase start
+
+      - name: Restore schema and data into isolated Supabase Postgres
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/trucksafe-restore/schema.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/trucksafe-restore/data.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -Atc \
+            "select count(*) from information_schema.tables where table_schema='public' and table_type='BASE TABLE'" \
+            | awk 'NF { if ($1 < 1) exit 1; print "Restored public tables: " $1 }'
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -Atc \
+            "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public'" \
+            | awk 'NF { print "Restored public functions: " $1 }'
+          echo "Schema and data restore passed in an isolated local Supabase stack."
+
+      - name: Stop isolated Supabase stack and clean temporary plaintext
+        if: always()
+        shell: bash
+        run: |
+          if [ -d /tmp/trucksafe-supabase ]; then
+            cd /tmp/trucksafe-supabase
+            supabase stop --no-backup || true
+          fi
+          rm -rf /tmp/trucksafe-restore /tmp/trucksafe-full-backup.tar.gz /tmp/trucksafe-supabase restore-input
