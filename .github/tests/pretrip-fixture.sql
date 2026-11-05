@@ -11,7 +11,7 @@ CREATE TABLE public.fleet_members (
 );
 CREATE TABLE public.drivers (
   id uuid PRIMARY KEY, fleet_id uuid NOT NULL, status text NOT NULL, user_id uuid,
-  license_expires_at date
+  full_name text NOT NULL DEFAULT 'Test Driver', license_expires_at date
 );
 CREATE TABLE public.vehicles (
   id uuid PRIMARY KEY, fleet_id uuid NOT NULL, registration_number text,
