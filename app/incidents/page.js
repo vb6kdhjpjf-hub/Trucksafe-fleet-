@@ -7,7 +7,7 @@ import { Truck, ArrowRight, Plus, AlertTriangle, MapPin, LogOut, CheckCircle2 } 
 
 const emptyForm = { incident_type: "תקלה ברכב", severity: "medium", description: "", location_text: "", driver_id: "", vehicle_id: "" };
 const severityLabels = { low: "נמוכה", medium: "בינונית", high: "גבוהה", critical: "קריטית" };
-const statusLabels = { open: "פתוח", reported: "דווח", investigating: "בטיפול", resolved: "טופל" };
+const statusLabels = { open: "פתוח", investigating: "בטיפול", resolved: "טופל", closed: "נסגר" };
 
 export default function IncidentsPage() {
   const router = useRouter();
@@ -57,7 +57,7 @@ export default function IncidentsPage() {
 
   async function loadIncidents(fleetId) {
     const {data,error} = await supabase.from("incidents")
-      .select("id,incident_type,severity,description,location_text,latitude,longitude,status,reported_at,resolved_at,driver_id,vehicle_id,photo_path")
+      .select("id,incident_type,severity,description,location_text,latitude,longitude,status,reported_at,resolved_at,resolution_notes,resolved_by,driver_id,vehicle_id,photo_path")
       .eq("fleet_id",fleetId).order("reported_at",{ascending:false});
     if (error) setMessage("שגיאה בטעינת אירועי הבטיחות: "+error.message);
     else {
@@ -105,7 +105,7 @@ export default function IncidentsPage() {
         description:form.description.trim(), location_text:form.location_text.trim()||null,
         driver_id:form.driver_id||null, vehicle_id:form.vehicle_id||null,
         latitude:gps.latitude, longitude:gps.longitude, photo_path:photoPath,
-        status:"reported", reported_at:new Date().toISOString(), created_by:session.user.id
+        status:"open", reported_at:new Date().toISOString(), created_by:session.user.id
       };
       const {error} = await supabase.from("incidents").insert(payload);
       if (error) {
@@ -148,7 +148,7 @@ export default function IncidentsPage() {
       <div className="drivers-header-actions"><a className="nav-link" href="/"><ArrowRight size={16}/> לוח הבקרה</a><a className="nav-link" href="/tasks">משימות ונסיעות</a><button className="logout-btn" onClick={signOut}><LogOut size={16}/> יציאה</button></div>
     </header>
     <section className="fleet-content">
-      <div className="fleet-welcome"><div><small>בטיחות ותחקור</small><h2>אירועי בטיחות</h2><p>{fleet?.name||"הצי שלך"} · {incidents.filter(i=>i.status!=="resolved").length} אירועים פתוחים</p></div><span className="role-pill"><AlertTriangle size={14}/> דיווח ומעקב</span></div>
+      <div className="fleet-welcome"><div><small>בטיחות ותחקור</small><h2>אירועי בטיחות</h2><p>{fleet?.name||"הצי שלך"} · {incidents.filter(i=>["open","investigating"].includes(i.status)).length} אירועים פתוחים</p></div><span className="role-pill"><AlertTriangle size={14}/> דיווח ומעקב</span></div>
       {message && <div className="auth-message">{message}</div>}
       <section className="fleet-panel">
         <div className="fleet-panel-head"><div><h3>דיווח אירוע חדש</h3><p>תעד תאונה, תקלה או מפגע בטיחותי</p></div><button className="primary-btn" onClick={()=>{setShowForm(!showForm);setMessage("");}}><Plus size={16}/> דיווח אירוע</button></div>
