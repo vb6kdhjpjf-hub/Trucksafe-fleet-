@@ -63,7 +63,8 @@ CREATE TABLE public.incidents (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), fleet_id uuid NOT NULL,
   driver_id uuid NOT NULL, vehicle_id uuid NOT NULL, severity text NOT NULL,
   incident_type text NOT NULL, description text NOT NULL, status text NOT NULL,
-  reported_at timestamptz NOT NULL, created_by uuid NOT NULL
+  reported_at timestamptz NOT NULL, created_by uuid NOT NULL,
+  resolved_at timestamptz
 );
 ALTER TABLE public.inspections ENABLE ROW LEVEL SECURITY;
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
