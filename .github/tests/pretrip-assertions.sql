@@ -665,6 +665,70 @@ BEGIN
 END $test$;
 RESET ROLE;
 
+
+
+-- A driver assigned to a different incident's vehicle may read that incident
+-- and photo, while another driver in the same fleet remains blocked.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000002',false);
+INSERT INTO public.incidents (
+  fleet_id, driver_id, vehicle_id, severity, incident_type,
+  description, status, reported_at, created_by, photo_path
+) VALUES (
+  '10000000-0000-0000-0000-000000000001',
+  '20000000-0000-0000-0000-000000000002',
+  '30000000-0000-0000-0000-000000000005',
+  'low','test','Assigned driver visibility test','open',now(),
+  '50000000-0000-0000-0000-000000000002',
+  '10000000-0000-0000-0000-000000000001/incidents/assigned-driver-photo.jpg'
+);
+RESET ROLE;
+INSERT INTO storage.objects (bucket_id,name,owner) VALUES (
+  'incident-photos',
+  '10000000-0000-0000-0000-000000000001/incidents/assigned-driver-photo.jpg',
+  '50000000-0000-0000-0000-000000000002'
+);
+
+-- The driver assigned to the incident vehicle can read its row and photo.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000005',false);
+DO $test$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.incidents
+    WHERE description='Assigned driver visibility test'
+  ) THEN
+    RAISE EXCEPTION 'Assigned driver could not read an incident for their vehicle';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM storage.objects
+    WHERE name='10000000-0000-0000-0000-000000000001/incidents/assigned-driver-photo.jpg'
+  ) THEN
+    RAISE EXCEPTION 'Assigned driver could not read the corresponding incident photo';
+  END IF;
+END $test$;
+RESET ROLE;
+
+-- The original driver is neither reporter nor assigned to this incident.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
+DO $test$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM public.incidents
+    WHERE description='Assigned driver visibility test'
+  ) THEN
+    RAISE EXCEPTION 'Unassigned driver could read another driver's incident';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM storage.objects
+    WHERE name='10000000-0000-0000-0000-000000000001/incidents/assigned-driver-photo.jpg'
+  ) THEN
+    RAISE EXCEPTION 'Unassigned driver could read another driver's incident photo';
+  END IF;
+END $test$;
+RESET ROLE;
+
 -- The incident reporter and fleet manager may read the corresponding photo.
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
