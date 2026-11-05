@@ -91,6 +91,19 @@ jobs:
             NR == FNR { existing[$1] = 1; next }
             {
               line = $0
+              # Global dumps include session-level SET commands and role-level
+              # GUC overrides. They are not required to recreate role identities
+              # or memberships and may require superuser-only privileges locally.
+              if (line ~ /^[[:space:]]*SET[[:space:]]/ ||
+                  line ~ /^[[:space:]]*SELECT[[:space:]]+pg_catalog\.set_config/) {
+                print "-- Skipped session configuration from globals dump"
+                next
+              }
+              if (line ~ /^[[:space:]]*ALTER ROLE[[:space:]]+/ &&
+                  line ~ /[[:space:]]SET[[:space:]]/) {
+                print "-- Skipped role-level configuration from globals dump"
+                next
+              }
               if (line ~ /^[[:space:]]*(CREATE|ALTER) ROLE[[:space:]]+/) {
                 role = line
                 sub(/^[[:space:]]*(CREATE|ALTER) ROLE[[:space:]]+/, "", role)
