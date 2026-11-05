@@ -347,7 +347,7 @@ BEGIN
     RAISE EXCEPTION 'Fleet map RPC returned incomplete or non-latest GPS data';
   END IF;
   IF distance_value IS NULL OR distance_value <= 0 OR gps_points <> 3 OR jsonb_array_length(history_points) <> 3 THEN
-    RAISE EXCEPTION 'GPS analytics RPC returned incomplete trip data';
+    RAISE EXCEPTION 'GPS analytics RPC returned incomplete trip data: distance=%, point_count=%, history_count=%', distance_value, gps_points, CASE WHEN history_points IS NULL THEN NULL ELSE jsonb_array_length(history_points) END;
   END IF;
 END $test$;
 RESET ROLE;
