@@ -69,7 +69,7 @@ Operational requirements:
 
 ## 7. Current known readiness gaps
 - Production trip RPCs were observed using an obsolete helper reference; the proposed PR migration repairs them but has not been applied.
-- A full encrypted database backup (roles, schema and data) was generated on 2026-11-05 and retained as a GitHub Actions artifact for seven days. Its decryption and SHA-256 checks passed. Isolated restore validation is still being repaired and has not yet passed; do not treat the backup as disaster-recovery-ready until a full restore test succeeds. The artifact expires after seven days.
+- A full encrypted database backup (roles, schema and data) was generated on 2026-11-05 and retained as a GitHub Actions artifact for seven days. Its decryption, SHA-256 verification, isolated Postgres startup, schema restore, data restore, post-restore table/function checks, and cleanup all passed in GitHub Actions run 42003793284. This validates the logical database restore path; it does not include Supabase Storage object files, and the encrypted artifact must still be downloaded to an approved off-repository retention location before its seven-day expiry.
 - Supabase Auth leaked-password protection is disabled (Security Advisor warning); enable only after explicit approval.
 - Performance Advisor reports 15 unused-index candidates. Do not drop them without query-plan evidence and review.
 - Vercel currently has no new preview deployment for the latest PR head due deployment quota/rate limits.
@@ -79,7 +79,7 @@ Operational requirements:
 
 ## 8. Go-live checklist
 - [ ] Full encrypted roles/schema/data backup downloaded to an approved off-repository location; decryption key stored separately.
-- [ ] Full restore of that backup successfully validated in an isolated Supabase/Postgres environment.
+- [x] Full restore of that backup successfully validated in an isolated Supabase/Postgres environment.
 - [ ] PR branch synchronized with main and exact-head CI passes.
 - [ ] Full Supabase migration test passes against a faithful schema baseline.
 - [ ] Security Advisor findings reviewed and accepted/remediated.
