@@ -27,6 +27,8 @@ export default function Home() {
   const [incidentAlerts,setIncidentAlerts]=useState([]);
   const [activeTasks,setActiveTasks]=useState(0);
   const [maintenanceAlerts,setMaintenanceAlerts]=useState([]);
+  const [lockedVehicleIds,setLockedVehicleIds]=useState([]);
+  const [lockStatusAvailable,setLockStatusAvailable]=useState(false);
   const [liveLocations,setLiveLocations]=useState([]);
   const [showVehicle,setShowVehicle]=useState(false);
   const [registration,setRegistration]=useState("");
@@ -85,7 +87,7 @@ export default function Home() {
     }
     setFleet({...current,role});
     setWorkspaceChecked(true);
-    const [v,d,tr,inc,incRows,ta,active,maint]=await Promise.all([
+    const [v,d,tr,inc,incRows,ta,active,maint,lockRows]=await Promise.all([
       supabase.from("vehicles").select("id,registration_number,make,model,vehicle_type,status,assigned_driver_id,test_due_at,insurance_due_at,registration_due_at,next_service_at").eq("fleet_id",current.id).order("created_at",{ascending:false}),
       supabase.from("drivers").select("id,full_name,phone,status,license_number,license_class,license_expires_at").eq("fleet_id",current.id).order("created_at",{ascending:false}),
       supabase.from("trips").select("id",{count:"exact",head:true}).eq("fleet_id",current.id).eq("status","active"),
@@ -93,7 +95,8 @@ export default function Home() {
       supabase.from("incidents").select("id,incident_type,severity,description,status,reported_at,vehicle_id").eq("fleet_id",current.id).neq("status","resolved").order("reported_at",{ascending:false}).limit(8),
       supabase.from("tasks").select("id",{count:"exact",head:true}).eq("fleet_id",current.id).in("status",["pending","assigned","in_progress"]),
       supabase.from("trips").select("id,driver_id,vehicle_id").eq("fleet_id",current.id).eq("status","active"),
-      supabase.from("maintenance_records").select("id,vehicle_id,maintenance_type,scheduled_at,status,description").eq("fleet_id",current.id).neq("status","completed").order("scheduled_at",{ascending:true}).limit(30)
+      supabase.from("maintenance_records").select("id,vehicle_id,maintenance_type,scheduled_at,status,description").eq("fleet_id",current.id).neq("status","completed").order("scheduled_at",{ascending:true}).limit(30),
+      supabase.from("incidents").select("vehicle_id").eq("fleet_id",current.id).neq("status","resolved")
     ]);
     if(v.error)setMessage("שגיאה בטעינת כלי הרכב: "+v.error.message); else setVehicles(v.data||[]);
     if(d.error)setMessage("שגיאה בטעינת הנהגים: "+d.error.message); else setDrivers(d.data||[]);
@@ -102,6 +105,7 @@ export default function Home() {
     if(incRows.error)setMessage("שגיאה בטעינת פירוט אירועי בטיחות: "+incRows.error.message); else setIncidentAlerts(incRows.data||[]);
     if(ta.error)setMessage("שגיאה בטעינת המשימות: "+ta.error.message); else setActiveTasks(ta.count||0);
     if(maint.error)setMessage("שגיאה בטעינת תזכורות תחזוקה: "+maint.error.message); else setMaintenanceAlerts(maint.data||[]);
+    if(lockRows.error){setLockStatusAvailable(false);setLockedVehicleIds([]);setMessage("לא הצלחנו לאמת נעילות בטיחות לכלי הרכב: "+lockRows.error.message);} else {setLockedVehicleIds([...new Set((lockRows.data||[]).map(row=>row.vehicle_id).filter(Boolean))]);setLockStatusAvailable(true);}
     if(active.error){setMessage("שגיאה בטעינת מיקומי נסיעות: "+active.error.message);setLiveLocations([]);} else if(active.data?.length){
       const points=await Promise.all(active.data.map(async trip=>{
         const {data:loc,error:locError}=await supabase.from("trip_locations").select("latitude,longitude,speed_kmh,heading_degrees,recorded_at").eq("trip_id",trip.id).order("recorded_at",{ascending:false}).limit(1).maybeSingle();
@@ -151,6 +155,8 @@ export default function Home() {
         setVehicles([]);
         setDrivers([]);
         setLiveLocations([]);
+        setLockedVehicleIds([]);
+        setLockStatusAvailable(false);
         if(event==="SIGNED_OUT")setLoading(false);
       }
     });
