@@ -9,6 +9,7 @@ CREATE TABLE public.fleet_members (
   fleet_id uuid NOT NULL, user_id uuid NOT NULL, role text NOT NULL,
   PRIMARY KEY (fleet_id, user_id)
 );
+ALTER TABLE public.fleet_members ENABLE ROW LEVEL SECURITY;
 CREATE TABLE public.drivers (
   id uuid PRIMARY KEY, fleet_id uuid NOT NULL, status text NOT NULL, user_id uuid,
   full_name text NOT NULL DEFAULT 'Test Driver', license_expires_at date
