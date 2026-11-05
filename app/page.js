@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
-import { Truck, ShieldCheck, LogOut, Plus, Users, Navigation, AlertTriangle, ClipboardList, BarChart3, Wrench, Route } from "lucide-react";
+import { Truck, ShieldCheck, LogOut, Plus, Users, Navigation, AlertTriangle, ClipboardList, BarChart3, Wrench, Route, Pencil } from "lucide-react";
 
 export default function Home() {
   const [session,setSession]=useState(null);
@@ -33,6 +33,11 @@ export default function Home() {
   const [vehicleType,setVehicleType]=useState("משאית");
   const [vehicleMake,setVehicleMake]=useState("");
   const [assignedDriverId,setAssignedDriverId]=useState("");
+  const [testDueAt,setTestDueAt]=useState("");
+  const [insuranceDueAt,setInsuranceDueAt]=useState("");
+  const [registrationDueAt,setRegistrationDueAt]=useState("");
+  const [nextServiceAt,setNextServiceAt]=useState("");
+  const [editingVehicleId,setEditingVehicleId]=useState(null);
 
   async function loadFleet(user) {
     const requestId=++fleetLoadRef.current;
@@ -307,16 +312,49 @@ export default function Home() {
     <section className="fleet-content"><div className="fleet-welcome"><div><small>סביבת ניהול פעילה</small><h2>{fleet.name}</h2><p>שלום {session.user.user_metadata?.full_name||session.user.email}</p></div><span className="role-pill">{fleet.role==="owner"?"בעלים":fleet.role}</span></div>
       {message&&<div className="auth-message">{message}</div>}
       <div className="fleet-stats"><article><Truck/><strong>{vehicles.length}</strong><span>כלי רכב בצי</span></article><article><Users/><strong>{drivers.length}</strong><span>נהגים רשומים</span></article><article><ClipboardList/><strong>{activeTasks}</strong><span>משימות פתוחות</span></article><article><Navigation/><strong>{activeTrips}</strong><span>נסיעות פעילות</span></article><article><AlertTriangle/><strong>{openIncidents}</strong><span>אירועי בטיחות פתוחים</span></article></div>
-      {(() => { const today=new Date(); today.setHours(0,0,0,0); const due=[]; vehicles.forEach(v=>{[["test_due_at","טסט"],["insurance_due_at","ביטוח"],["registration_due_at","רישיון רכב"],["next_service_at","טיפול תקופתי"]].forEach(([key,label])=>{if(!v[key])return;const date=new Date(v[key]+"T00:00:00");const days=Math.ceil((date-today)/86400000);if(days<=30)due.push({id:v.id+key,vehicle:v.registration_number,label,date:v[key],days});});});const driverDue=drivers.filter(d=>d.license_expires_at).map(d=>{const days=Math.ceil((new Date(d.license_expires_at+"T00:00:00")-today)/86400000);return {id:d.id+"license",vehicle:d.full_name,label:"תוקף רישיון נהיגה",date:d.license_expires_at,days,type:"driver"};}).filter(x=>x.days<=30);const all=[...due.map(x=>({...x,type:"vehicle"})),...driverDue,...maintenanceAlerts.map(x=>({id:x.id,vehicle:vehicles.find(v=>v.id===x.vehicle_id)?.registration_number||"רכב לא ידוע",label:x.maintenance_type||"תחזוקה",date:x.scheduled_at,days:x.scheduled_at?Math.ceil((new Date(x.scheduled_at+"T00:00:00")-today)/86400000):null,type:"maintenance"}))].sort((a,b)=>(a.days??9999)-(b.days??9999));return <section className="fleet-panel"><div className="fleet-panel-head"><div><h3>התראות בטיחות ותחזוקה</h3><p>מסמכים שפג תוקפם או עומדים לפוג, וטיפולים שטרם הושלמו</p></div><div style={{display:"flex",gap:10,flexWrap:"wrap"}}><a className="nav-link" href="/drivers">ניהול נהגים ({driverDue.length} רישיונות)</a><a className="nav-link" href="/maintenance">ניהול תחזוקה</a></div></div>{all.length===0?<div className="fleet-empty"><ShieldCheck size={24}/><p>אין כרגע התראות פתוחות.</p></div>:<div className="vehicle-list">{all.map(x=><div className="vehicle-row" key={x.id}><AlertTriangle size={19}/><div><b>{x.vehicle} · {x.label}</b><small>{x.type==="maintenance"?"טיפול מתוכנן":"תוקף מסמך"} · {x.date||"ללא תאריך"}</small></div><span className={x.days!==null&&x.days<0?"status-late":"status-pending"}>{x.days===null?"ממתין":x.days<0?"באיחור "+Math.abs(x.days)+" ימים":x.days===0?"היום":"בעוד "+x.days+" ימים"}</span></div>)}</div>}</section>; })()}
+      {(() => {
+        const today=new Date(); today.setHours(0,0,0,0);
+        const due=[];
+        vehicles.forEach(v=>{
+          [["test_due_at","טסט"],["insurance_due_at","ביטוח"],["registration_due_at","רישיון רכב"]].forEach(([key,label])=>{
+            if(!v[key]){due.push({id:v.id+key,vehicle:v.registration_number,label,date:null,days:null,type:"vehicle",missing:true});return;}
+            const date=new Date(v[key]+"T00:00:00");
+            const days=Math.ceil((date-today)/86400000);
+            if(days<=30)due.push({id:v.id+key,vehicle:v.registration_number,label,date:v[key],days,type:"vehicle",missing:false});
+          });
+          if(v.next_service_at){
+            const days=Math.ceil((new Date(v.next_service_at+"T00:00:00")-today)/86400000);
+            if(days<=30)due.push({id:v.id+"next_service_at",vehicle:v.registration_number,label:"טיפול תקופתי",date:v.next_service_at,days,type:"maintenance",missing:false});
+          }
+        });
+        const driverDue=drivers.map(d=>{
+          const days=d.license_expires_at?Math.ceil((new Date(d.license_expires_at+"T00:00:00")-today)/86400000):null;
+          return {id:d.id+"license",vehicle:d.full_name,label:"תוקף רישיון נהיגה",date:d.license_expires_at,days,type:"driver",missing:!d.license_expires_at};
+        }).filter(x=>x.missing||x.days<=30);
+        const all=[...due,...driverDue,...maintenanceAlerts.map(x=>({id:x.id,vehicle:vehicles.find(v=>v.id===x.vehicle_id)?.registration_number||"רכב לא ידוע",label:x.maintenance_type||"תחזוקה",date:x.scheduled_at,days:x.scheduled_at?Math.ceil((new Date(x.scheduled_at+"T00:00:00")-today)/86400000):null,type:"maintenance",missing:false}))].sort((a,b)=>(a.missing?-1:(a.days??9999))-(b.missing?-1:(b.days??9999)));
+        return <section className="fleet-panel"><div className="fleet-panel-head"><div><h3>התראות בטיחות ותחזוקה</h3><p>מסמכים חסרים, שפג תוקפם או עומדים לפוג, וטיפולים שטרם הושלמו</p></div><div style={{display:"flex",gap:10,flexWrap:"wrap"}}><a className="nav-link" href="/drivers">ניהול נהגים ({driverDue.length} התראות רישיון)</a><a className="nav-link" href="/maintenance">ניהול תחזוקה</a></div></div>{all.length===0?<div className="fleet-empty"><ShieldCheck size={24}/><p>אין כרגע התראות פתוחות.</p></div>:<div className="vehicle-list">{all.map(x=><div className="vehicle-row" key={x.id}><AlertTriangle size={19}/><div><b>{x.vehicle} · {x.label}</b><small>{x.type==="maintenance"?"טיפול מתוכנן":x.missing?"חסר נתון חובה":"תוקף מסמך"} · {x.date||"ללא תאריך"}</small></div><span className={x.missing||(x.days!==null&&x.days<0)?"status-late":"status-pending"}>{x.missing?"חסר תאריך — יש להשלים":x.days===null?"ממתין":x.days<0?"באיחור "+Math.abs(x.days)+" ימים":x.days===0?"היום":"בעוד "+x.days+" ימים"}</span></div>)}</div>}</section>;
+      })()}
       <section className="fleet-panel"><div className="fleet-panel-head"><div><h3>מרכז אירועי בטיחות</h3><p>אירועים פתוחים אחרונים לפי חומרה ומועד דיווח</p></div><a className="nav-link" href="/incidents">ניהול אירועים</a></div>
       {incidentAlerts.length===0?<div className="fleet-empty"><ShieldCheck size={24}/><p>אין אירועי בטיחות פתוחים כרגע.</p></div>:<div className="vehicle-list">{incidentAlerts.map(item=><div className="vehicle-row" key={item.id}><AlertTriangle size={19}/><div><b>{item.incident_type||"אירוע בטיחות"} · {vehicles.find(v=>v.id===item.vehicle_id)?.registration_number||"רכב לא ידוע"}</b><small>{item.description||"ללא תיאור"} · {item.reported_at?new Date(item.reported_at).toLocaleString("he-IL"):"תאריך לא ידוע"}</small></div><span className={["high","critical"].includes(String(item.severity||"").toLowerCase())?"status-late":"status-pending"}>{({low:"נמוכה",medium:"בינונית",high:"גבוהה",critical:"קריטית"})[String(item.severity||"").toLowerCase()]||item.severity||"לא צוינה"}</span></div>)}</div>}
       </section>
       <section className="fleet-panel"><div className="fleet-panel-head"><div><h3>מיקומי נהגים בזמן אמת</h3><p>המיקום האחרון שנשמר בכל נסיעה פעילה</p></div><span className="role-pill">{liveLocations.length} מיקומים</span></div>
       {liveLocations.length===0?<div className="fleet-empty"><Navigation size={26}/><p>עדיין אין נקודות GPS בנסיעות הפעילות.</p><span>כדי לראות נהג כאן, יש להתחיל מעקב GPS במסך משימות ונסיעות.</span></div>:<div className="vehicle-list">{liveLocations.map(loc=><div className="vehicle-row" key={loc.id}><Navigation size={20}/><div><b>{loc.driver} · {loc.vehicle}</b><small>עודכן: {new Date(loc.recorded_at).toLocaleString("he-IL")} · {loc.speed_kmh==null?"מהירות לא זמינה":Math.round(Number(loc.speed_kmh))+" קמ״ש"}</small><small style={{color:!loc.recorded_at||Date.now()-new Date(loc.recorded_at).getTime()>10*60*1000?"#b42318":Date.now()-new Date(loc.recorded_at).getTime()>2*60*1000?"#a15c00":"#16803c",fontWeight:600}}>{!loc.recorded_at?"זמן עדכון לא ידוע":Date.now()-new Date(loc.recorded_at).getTime()>10*60*1000?"המיקום לא עודכן מעל 10 דקות":Date.now()-new Date(loc.recorded_at).getTime()>2*60*1000?"המיקום מתעכב — מעל 2 דקות":"מיקום מעודכן"}</small><small>{Number(loc.latitude).toFixed(5)}, {Number(loc.longitude).toFixed(5)}</small></div><a className="nav-link" target="_blank" rel="noreferrer" href={"https://www.google.com/maps?q="+loc.latitude+","+loc.longitude}>פתיחה במפה</a></div>)}</div>}
       </section>
-      <section className="fleet-panel"><div className="fleet-panel-head"><div><h3>כלי הרכב שלי</h3><p>נתונים שנשמרים במסד הנתונים של הצי</p></div><button className="primary-btn" onClick={()=>setShowVehicle(!showVehicle)}><Plus size={16}/> הוספת רכב</button></div>
-      {showVehicle&&<form className="vehicle-form" onSubmit={addVehicle}><label>מספר רישוי<input required value={registration} onChange={e=>setRegistration(e.target.value)} placeholder="12-345-67"/></label><label>סוג רכב<select value={vehicleType} onChange={e=>setVehicleType(e.target.value)}><option>משאית</option><option>גורר</option><option>נגרר</option><option>מסחרית</option><option>רכב אחר</option></select></label><label>יצרן / דגם<input value={vehicleMake} onChange={e=>setVehicleMake(e.target.value)} placeholder="לדוגמה: Volvo FH"/></label><label>נהג משויך<select value={assignedDriverId} onChange={e=>setAssignedDriverId(e.target.value)}><option value="">ללא נהג משויך</option>{drivers.filter(d=>d.status==="active").map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label><button className="primary-btn" disabled={busy}>שמירת רכב</button></form>}
-      {vehicles.length===0?<div className="fleet-empty">עדיין לא הוספת כלי רכב. לחץ על "הוספת רכב" כדי להתחיל.</div>:<div className="vehicle-list">{vehicles.map(v=><div className="vehicle-row" key={v.id}><Truck size={20}/><div><b>{v.registration_number}</b><small>{[v.make,v.model,v.vehicle_type].filter(Boolean).join(" · ")}{v.assigned_driver_id ? " · נהג: "+(drivers.find(d=>d.id===v.assigned_driver_id)?.full_name||"לא נמצא") : " · ללא נהג משויך"}</small></div><span>{v.status==="available"?"זמין":v.status==="assigned"?"משויך":v.status==="on_trip"?"בנסיעה":v.status==="maintenance"?"בטיפול":v.status==="inactive"?"לא פעיל":v.status}</span></div>)}</div>}
+      <section className="fleet-panel"><div className="fleet-panel-head"><div><h3>כלי הרכב שלי</h3><p>נתונים שנשמרים במסד הנתונים של הצי</p></div>{canManageVehicles&&<button className="primary-btn" onClick={()=>{if(showVehicle)resetVehicleForm();else{resetVehicleForm();setShowVehicle(true);}}}><Plus size={16}/> הוספת רכב</button>}</div>
+      {showVehicle&&canManageVehicles&&<form className="vehicle-form" onSubmit={saveVehicle}>
+        <h3 className="vehicle-form-title">{editingVehicleId?"עדכון פרטי רכב ומסמכים":"הוספת רכב לצי"}</h3>
+        <p className="vehicle-form-note">יש להזין תאריכי תוקף מדויקים לפי המסמכים המקוריים. תאריך חסר או שפג תוקפו ימנע פתיחת נסיעה.</p>
+        <label>מספר רישוי *<input required maxLength={20} value={registration} onChange={e=>setRegistration(e.target.value)} placeholder="12-345-67"/></label>
+        <label>סוג רכב<select value={vehicleType} onChange={e=>setVehicleType(e.target.value)}><option>משאית</option><option>גורר</option><option>נגרר</option><option>מסחרית</option><option>רכב אחר</option></select></label>
+        <label>יצרן / דגם<input maxLength={100} value={vehicleMake} onChange={e=>setVehicleMake(e.target.value)} placeholder="לדוגמה: Volvo FH"/></label>
+        <label>נהג משויך<select value={assignedDriverId} onChange={e=>setAssignedDriverId(e.target.value)}><option value="">ללא נהג משויך</option>{drivers.filter(d=>d.status==="active").map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label>
+        <label>טסט בתוקף עד *<input type="date" required value={testDueAt} onChange={e=>setTestDueAt(e.target.value)}/></label>
+        <label>ביטוח בתוקף עד *<input type="date" required value={insuranceDueAt} onChange={e=>setInsuranceDueAt(e.target.value)}/></label>
+        <label>רישיון רכב בתוקף עד *<input type="date" required value={registrationDueAt} onChange={e=>setRegistrationDueAt(e.target.value)}/></label>
+        <label>טיפול תקופתי הבא<input type="date" value={nextServiceAt} onChange={e=>setNextServiceAt(e.target.value)}/></label>
+        <div className="vehicle-form-actions"><button className="primary-btn" disabled={busy}>{busy?"שומר...":editingVehicleId?"שמירת עדכון":"שמירת רכב"}</button><button type="button" className="secondary-btn" disabled={busy} onClick={resetVehicleForm}>ביטול</button></div>
+      </form>}
+      {vehicles.length===0?<div className="fleet-empty">עדיין לא הוספת כלי רכב. לחץ על "הוספת רכב" כדי להתחיל.</div>:<div className="vehicle-list">{vehicles.map(v=><div className="vehicle-row" key={v.id}><Truck size={20}/><div><b>{v.registration_number}</b><small>{[v.make,v.model,v.vehicle_type].filter(Boolean).join(" · ")}{v.assigned_driver_id ? " · נהג: "+(drivers.find(d=>d.id===v.assigned_driver_id)?.full_name||"לא נמצא") : " · ללא נהג משויך"}</small><small className="vehicle-compliance-line">טסט: {v.test_due_at||"חסר"} · ביטוח: {v.insurance_due_at||"חסר"} · רישיון רכב: {v.registration_due_at||"חסר"}</small></div><span className={!lockStatusAvailable||lockedVehicleIds.includes(v.id)?"status-late":""}>{!lockStatusAvailable?"מצב נעילה לא מאומת":lockedVehicleIds.includes(v.id)?"נעול עקב אירוע בטיחות":v.status==="available"?"זמין":v.status==="assigned"?"משויך":v.status==="on_trip"?"בנסיעה":v.status==="maintenance"?"בטיפול":v.status==="inactive"?"לא פעיל":v.status}</span>{canManageVehicles&&<button type="button" className="secondary-btn" onClick={()=>editVehicle(v)}><Pencil size={14}/> עדכון מסמכים</button>}</div>)}</div>}
       </section>
       <p className="fleet-foot">TruckSafe Fleet V1 · מחובר למסד הנתונים · נתוני הצי מוצגים מהמערכת</p>
     </section>
