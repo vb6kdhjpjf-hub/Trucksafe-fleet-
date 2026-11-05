@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, feat/pretrip-defect-reporting]
 
 permissions:
   contents: read
@@ -32,6 +32,8 @@ jobs:
         run: npm audit --audit-level=high --json > npm-audit.json
       - name: Install exact locked dependencies
         run: npm ci --no-audit --no-fund
+      - name: Run security regression tests
+        run: npm run test:security
       - name: Build application
         run: npm run build
       - name: Save audit report and lockfile for review
