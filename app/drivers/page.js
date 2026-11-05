@@ -112,10 +112,16 @@ export default function DriversPage() {
     } finally { setBusy(false); }
   }
 
+  const canManageDrivers = ["owner", "fleet_manager"].includes(fleet?.role);
   const today = new Date(); today.setHours(0,0,0,0);
-  const licenseAlerts = drivers.filter(d=>d.license_expires_at).map(driver=>({...driver,days:Math.ceil((new Date(driver.license_expires_at+"T00:00:00")-today)/86400000)})).filter(driver=>driver.days<=30).sort((a,b)=>a.days-b.days);
+  const licenseAlerts = drivers.map(driver=>({
+    ...driver,
+    days:driver.license_expires_at?Math.ceil((new Date(driver.license_expires_at+"T00:00:00")-today)/86400000):null,
+    missingExpiry:!driver.license_expires_at
+  })).filter(driver=>driver.missingExpiry||driver.days<=30).sort((a,b)=>(a.days??-9999)-(b.days??-9999));
   const expiredLicenses=licenseAlerts.filter(driver=>driver.days<0);
   const soonLicenses=licenseAlerts.filter(driver=>driver.days>=0);
+  const missingLicenses=licenseAlerts.filter(driver=>driver.missingExpiry);
   async function signOut() { await supabase.auth.signOut(); router.replace("/"); }
 
   if (loading) return <main className="auth-wrap"><section className="auth-card">טוען את רשימת הנהגים...</section></main>;
@@ -159,7 +165,7 @@ export default function DriversPage() {
               {driver.license_expires_at && <span><CalendarDays size={13}/>תוקף עד {new Date(driver.license_expires_at + "T00:00:00").toLocaleDateString("he-IL")}</span>}
             </div></div>
             <span className={driver.status === "active" ? "driver-status active" : "driver-status inactive"}>{driver.status === "active" ? "פעיל" : "לא פעיל"}</span>
-            <div className="driver-actions"><button title="עריכת נהג" onClick={()=>startEdit(driver)}><Pencil size={15}/></button><button disabled={busy} onClick={()=>toggleStatus(driver)}>{driver.status === "active" ? "השבתה" : "הפעלה"}</button></div>
+            {canManageDrivers && <div className="driver-actions"><button title="עריכת נהג" onClick={()=>startEdit(driver)}><Pencil size={15}/></button><button disabled={busy} onClick={()=>toggleStatus(driver)}>{driver.status === "active" ? "השבתה" : "הפעלה"}</button></div>}
           </article>)}</div>}
       </section>
       <p className="fleet-foot">TruckSafe Fleet V1 · פרטי הנהגים נשמרים במסד הנתונים של הצי</p>
