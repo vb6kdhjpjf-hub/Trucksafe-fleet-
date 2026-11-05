@@ -83,24 +83,11 @@ jobs:
           set -euo pipefail
           DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
 
-          # The production backup contains only Supabase-managed roles; these
-          # already exist in the isolated local stack. Restore membership GRANTs,
-          # but never replay CREATE/ALTER ROLE statements: globals dumps can
-          # contain protected per-role GUCs (for example log_min_messages).
-          awk '
-            /^[[:space:]]*(CREATE|ALTER)[[:space:]]+ROLE[[:space:]]/ {
-              print "-- Skipped Supabase-managed role definition/configuration"
-              next
-            }
-            /^[[:space:]]*SET[[:space:]]/ ||
-            /^[[:space:]]*SELECT[[:space:]]+pg_catalog\.set_config/ {
-              print "-- Skipped session configuration from globals dump"
-              next
-            }
-            { print }
-          ' /tmp/trucksafe-restore/roles.sql > /tmp/trucksafe-restore/roles.restore.sql
-
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/trucksafe-restore/roles.restore.sql
+          # Production contains only Supabase-managed roles. The isolated
+          # Supabase stack provisions those roles itself. Do not replay the
+          # globals/roles dump: it contains provider-managed role settings that
+          # local Postgres cannot apply (for example log_min_messages).
+          echo "Skipping provider-managed roles dump; validating schema and data restore."
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/trucksafe-restore/schema.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/trucksafe-restore/data.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -Atc \
