@@ -241,6 +241,14 @@ FOR INSERT
 TO authenticated
 WITH CHECK (private.is_fleet_member(fleet_id));
 
+-- Reproduce the legacy production policy that must be removed by the migration.
+CREATE POLICY incidents_update_safety
+ON public.incidents
+FOR UPDATE
+TO authenticated
+USING (private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','safety_manager']))
+WITH CHECK (private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','safety_manager']));
+
 
 -- Simulate Supabase's normal authenticated table grants before the migration
 -- so the migration's explicit revocations are exercised by the tests.
