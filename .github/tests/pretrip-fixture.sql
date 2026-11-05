@@ -37,7 +37,9 @@ CREATE TABLE public.trip_locations (
   longitude double precision NOT NULL,
   speed_kmh numeric,
   heading_degrees numeric,
-  recorded_at timestamptz NOT NULL DEFAULT now()
+  recorded_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT trip_locations_latitude_check CHECK (latitude >= -90 AND latitude <= 90),
+  CONSTRAINT trip_locations_longitude_check CHECK (longitude >= -180 AND longitude <= 180)
 );
 CREATE TABLE public.inspections (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), fleet_id uuid NOT NULL,
