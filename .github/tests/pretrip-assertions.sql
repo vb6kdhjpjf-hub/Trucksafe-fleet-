@@ -318,6 +318,7 @@ DECLARE
   distance_value double precision;
   gps_points bigint;
   history_points jsonb;
+  active_trip_id uuid;
 BEGIN
   INSERT INTO public.trip_locations(trip_id,driver_id,latitude,longitude,speed_kmh,heading_degrees)
   SELECT t.id,t.driver_id,31.7000,35.1000,35,180
@@ -335,14 +336,17 @@ BEGIN
   IF EXISTS (SELECT 1 FROM public.fleet_members WHERE user_id='50000000-0000-0000-0000-000000000005') THEN
     RAISE EXCEPTION 'Driver can read another fleet member private record';
   END IF;
+  SELECT id INTO active_trip_id FROM public.trips
+  WHERE task_id='40000000-0000-0000-0000-000000000005' AND status='active';
+  IF active_trip_id IS NULL THEN RAISE EXCEPTION 'Active GPS test trip was not found'; END IF;
   SELECT count(*) INTO map_count FROM public.get_active_trip_map_data(f);
   SELECT jsonb_array_length(history), latitude INTO history_count, latest_lat
   FROM public.get_active_trip_map_data(f) LIMIT 1;
   SELECT count(*) INTO latest_count FROM public.get_latest_trip_locations(f);
   SELECT distance_km, point_count INTO distance_value, gps_points
-  FROM public.get_trip_distance_summaries(f,ARRAY['40000000-0000-0000-0000-000000000005']::uuid[]);
+  FROM public.get_trip_distance_summaries(f,ARRAY[active_trip_id]::uuid[]);
   SELECT points INTO history_points
-  FROM public.get_trip_history_data(f,ARRAY['40000000-0000-0000-0000-000000000005']::uuid[]);
+  FROM public.get_trip_history_data(f,ARRAY[active_trip_id]::uuid[]);
   IF map_count <> 1 OR latest_count <> 1 OR history_count <> 3 OR latest_lat <> 31.7 THEN
     RAISE EXCEPTION 'Fleet map RPC returned incomplete or non-latest GPS data';
   END IF;
