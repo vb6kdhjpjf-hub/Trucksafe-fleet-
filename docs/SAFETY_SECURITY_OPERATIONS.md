@@ -60,7 +60,7 @@ Operational requirements:
 - Set restrictive file permissions before exporting (for example, `umask 077`). Encrypt the backup files before transferring or storing them off-device. Keep the decryption key separately from the backup.
 - Never upload plaintext `data.sql`, roles, connection strings, or customer data as a GitHub Actions artifact.
 - The repository includes a manual workflow at `.github/workflows/supabase-full-encrypted-backup.yml`. It requires two GitHub Actions repository secrets: `SUPABASE_DB_URL` and `BACKUP_ENCRYPTION_KEY`. Generate a unique high-entropy key locally (at least 32 characters); add it directly in GitHub repository Settings → Secrets and variables → Actions. Never send the key in chat or commit it.
-- The workflow uploads only the encrypted archive and retains it for one day. Download and move it to an approved encrypted backup location promptly. A successful workflow run proves export and encryption, not restore. Keep the decryption key separately from the archive.
+- The workflow uploads only the encrypted archive and retains it for seven days. Download and move it to an approved encrypted backup location promptly. A successful workflow run proves export, encryption and checksum verification, not restore. Keep the decryption key separately from the archive.
 - Restore validation must be performed in a disposable isolated database: decrypt the archive in a trusted environment, extract it, verify `SHA256SUMS`, then restore roles, schema and data in the correct order using the documented Supabase/Postgres restore procedure. Do not test restore against production.
 - Supabase Storage object files are not included in a Postgres database dump; export and protect those objects separately if the project stores user files.
 - Record file sizes and SHA-256 checksums. Keep at least one encrypted copy outside the repository.
@@ -69,7 +69,7 @@ Operational requirements:
 
 ## 7. Current known readiness gaps
 - Production trip RPCs were observed using an obsolete helper reference; the proposed PR migration repairs them but has not been applied.
-- A schema-only backup artifact was successfully generated and inspected on 2026-11-05. It contains the current schema, policies, functions and triggers, but no table data; it is not sufficient for disaster recovery. The artifact expires after one day.
+- A full encrypted database backup (roles, schema and data) was generated on 2026-11-05 and retained as a GitHub Actions artifact for seven days. Its decryption and SHA-256 checks passed. Isolated restore validation is still being repaired and has not yet passed; do not treat the backup as disaster-recovery-ready until a full restore test succeeds. The artifact expires after seven days.
 - Supabase Auth leaked-password protection is disabled (Security Advisor warning); enable only after explicit approval.
 - Performance Advisor reports 15 unused-index candidates. Do not drop them without query-plan evidence and review.
 - Vercel currently has no new preview deployment for the latest PR head due deployment quota/rate limits.
@@ -78,7 +78,8 @@ Operational requirements:
 - Driver licence class/vehicle-category eligibility and the authenticity of manually entered document dates are not verified against Ministry of Transport or insurer systems.
 
 ## 8. Go-live checklist
-- [ ] Successful schema-only backup artifact reviewed and stored safely.
+- [ ] Full encrypted roles/schema/data backup downloaded to an approved off-repository location; decryption key stored separately.
+- [ ] Full restore of that backup successfully validated in an isolated Supabase/Postgres environment.
 - [ ] PR branch synchronized with main and exact-head CI passes.
 - [ ] Full Supabase migration test passes against a faithful schema baseline.
 - [ ] Security Advisor findings reviewed and accepted/remediated.
