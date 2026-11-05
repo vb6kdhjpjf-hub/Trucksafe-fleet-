@@ -682,3 +682,5 @@ RESET ROLE;
 
 
 -- Keep this assertion suite on the latest feature-branch revision for PR CI validation.
+
+-- Trigger fresh PR validation after workflow is enabled on main.
