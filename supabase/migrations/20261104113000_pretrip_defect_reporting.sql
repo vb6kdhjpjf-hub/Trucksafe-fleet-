@@ -688,6 +688,22 @@ USING (
   )
 );
 
+-- Incident photo reads inherit the exact incident-row visibility rules.
+-- This prevents unrelated members of the same fleet from reading every photo.
+DROP POLICY IF EXISTS incident_photos_member_read ON storage.objects;
+CREATE POLICY incident_photos_member_read
+ON storage.objects
+FOR SELECT
+TO authenticated
+USING (
+  bucket_id = 'incident-photos'
+  AND EXISTS (
+    SELECT 1
+    FROM public.incidents i
+    WHERE i.photo_path = storage.objects.name
+  )
+);
+
 DROP POLICY IF EXISTS inspections_select_member ON public.inspections;
 CREATE POLICY inspections_select_member
 ON public.inspections
