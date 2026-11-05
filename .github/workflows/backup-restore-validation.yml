@@ -6,7 +6,7 @@ on:
       backup_run_id:
         description: GitHub Actions run ID containing the encrypted full backup
         required: true
-        default: "42002604993"
+        default: "42003266588"
   push:
     branches:
       - fix/pretrip-safe-integration
@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 50
     env:
       BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
-      BACKUP_RUN_ID: ${{ inputs.backup_run_id || '42002604993' }}
+      BACKUP_RUN_ID: ${{ inputs.backup_run_id || '42003266588' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -36,7 +36,7 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.1.8
         with:
           name: trucksafe-encrypted-full-backup
-          run-id: ${{ inputs.backup_run_id || '42002604993' }}
+          run-id: ${{ inputs.backup_run_id || '42003266588' }}
           github-token: ${{ github.token }}
           path: restore-input
 
