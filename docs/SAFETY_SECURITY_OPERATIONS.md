@@ -59,6 +59,9 @@ Operational requirements:
 - Run from a trusted workstation or controlled runner. Supply the database URL through a protected environment variable or secret manager; never paste it into chat, commit it, or print it in logs.
 - Set restrictive file permissions before exporting (for example, `umask 077`). Encrypt the backup files before transferring or storing them off-device. Keep the decryption key separately from the backup.
 - Never upload plaintext `data.sql`, roles, connection strings, or customer data as a GitHub Actions artifact.
+- The repository includes a manual workflow at `.github/workflows/supabase-full-encrypted-backup.yml`. It requires two GitHub Actions repository secrets: `SUPABASE_DB_URL` and `BACKUP_ENCRYPTION_KEY`. Generate a unique high-entropy key locally (at least 32 characters); add it directly in GitHub repository Settings → Secrets and variables → Actions. Never send the key in chat or commit it.
+- The workflow uploads only the encrypted archive and retains it for one day. Download and move it to an approved encrypted backup location promptly. A successful workflow run proves export and encryption, not restore. Keep the decryption key separately from the archive.
+- Restore validation must be performed in a disposable isolated database: decrypt the archive in a trusted environment, extract it, verify `SHA256SUMS`, then restore roles, schema and data in the correct order using the documented Supabase/Postgres restore procedure. Do not test restore against production.
 - Supabase Storage object files are not included in a Postgres database dump; export and protect those objects separately if the project stores user files.
 - Record file sizes and SHA-256 checksums. Keep at least one encrypted copy outside the repository.
 - Validate restoration into a disposable local Supabase/Postgres environment before any production migration. A successful dump alone does not prove that restoration works.
