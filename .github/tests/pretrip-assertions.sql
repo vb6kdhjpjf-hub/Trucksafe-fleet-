@@ -668,6 +668,15 @@ BEGIN
     IF SQLERRM = 'Incident resolved without resolution notes' THEN RAISE; END IF;
     IF SQLERRM NOT LIKE '%תיעוד טיפול%' THEN RAISE; END IF;
   END;
+  BEGIN
+    UPDATE public.incidents
+    SET status='resolved', resolution_notes=repeat('x',1001)
+    WHERE id=incident_id;
+    RAISE EXCEPTION 'Incident accepted resolution notes longer than 1,000 characters';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'Incident accepted resolution notes longer than 1,000 characters' THEN RAISE; END IF;
+    IF SQLERRM NOT LIKE '%1,000%' THEN RAISE; END IF;
+  END;
   UPDATE public.incidents
   SET status='resolved', resolution_notes='בוצעה בדיקה חוזרת והתקלה טופלה'
   WHERE id=incident_id;
