@@ -877,3 +877,59 @@ BEGIN
   END IF;
 END $test$;
 
+
+
+-- Revoking fleet membership must also remove every driver-scoped read path,
+-- including reporter-owned incidents and their private Storage objects.
+INSERT INTO public.trip_locations (trip_id,driver_id,latitude,longitude)
+SELECT id, '20000000-0000-0000-0000-000000000001', 32.1, 34.8
+FROM public.trips
+WHERE driver_id='20000000-0000-0000-0000-000000000001'
+ORDER BY started_at
+LIMIT 1;
+INSERT INTO public.maintenance_records (fleet_id,vehicle_id,maintenance_type,description,status)
+VALUES (
+  '10000000-0000-0000-0000-000000000001',
+  '30000000-0000-0000-0000-000000000001',
+  'test','Membership read-visibility fixture','scheduled'
+);
+
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
+DO $test$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.drivers WHERE id='20000000-0000-0000-0000-000000000001')
+     OR NOT EXISTS (SELECT 1 FROM public.vehicles WHERE id='30000000-0000-0000-0000-000000000001')
+     OR NOT EXISTS (SELECT 1 FROM public.tasks WHERE id='40000000-0000-0000-0000-000000000001')
+     OR NOT EXISTS (SELECT 1 FROM public.trips WHERE driver_id='20000000-0000-0000-0000-000000000001')
+     OR NOT EXISTS (SELECT 1 FROM public.trip_locations)
+     OR NOT EXISTS (SELECT 1 FROM public.inspections WHERE driver_id='20000000-0000-0000-0000-000000000001')
+     OR NOT EXISTS (SELECT 1 FROM public.maintenance_records WHERE description='Membership read-visibility fixture')
+     OR NOT EXISTS (SELECT 1 FROM public.incidents WHERE description='Valid incident report')
+     OR NOT EXISTS (SELECT 1 FROM storage.objects WHERE name='10000000-0000-0000-0000-000000000001/incidents/test-photo.jpg') THEN
+    RAISE EXCEPTION 'Membership visibility fixture is incomplete before revocation';
+  END IF;
+END $test$;
+RESET ROLE;
+
+DELETE FROM public.fleet_members
+WHERE fleet_id='10000000-0000-0000-0000-000000000001'
+  AND user_id='50000000-0000-0000-0000-000000000001';
+
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
+DO $test$
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.drivers WHERE id='20000000-0000-0000-0000-000000000001')
+     OR EXISTS (SELECT 1 FROM public.vehicles WHERE id='30000000-0000-0000-0000-000000000001')
+     OR EXISTS (SELECT 1 FROM public.tasks WHERE id='40000000-0000-0000-0000-000000000001')
+     OR EXISTS (SELECT 1 FROM public.trips WHERE driver_id='20000000-0000-0000-0000-000000000001')
+     OR EXISTS (SELECT 1 FROM public.trip_locations)
+     OR EXISTS (SELECT 1 FROM public.inspections WHERE driver_id='20000000-0000-0000-0000-000000000001')
+     OR EXISTS (SELECT 1 FROM public.maintenance_records WHERE description='Membership read-visibility fixture')
+     OR EXISTS (SELECT 1 FROM public.incidents WHERE description='Valid incident report')
+     OR EXISTS (SELECT 1 FROM storage.objects WHERE name='10000000-0000-0000-0000-000000000001/incidents/test-photo.jpg') THEN
+    RAISE EXCEPTION 'Revoked fleet member retained access to fleet records or incident photos';
+  END IF;
+END $test$;
+RESET ROLE;
