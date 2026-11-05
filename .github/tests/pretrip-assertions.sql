@@ -428,12 +428,18 @@ SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000004'
 DO $test$
 DECLARE
   f uuid := '10000000-0000-0000-0000-000000000001';
+  driver_count integer;
+  vehicle_count integer;
+  task_count integer;
+  membership_count integer;
 BEGIN
-  IF (SELECT count(*) FROM public.drivers WHERE fleet_id=f) <> 2
-     OR (SELECT count(*) FROM public.vehicles WHERE fleet_id=f) <> 6
-     OR (SELECT count(*) FROM public.tasks WHERE fleet_id=f) <> 6
-     OR (SELECT count(*) FROM public.fleet_members WHERE fleet_id=f) <> 1 THEN
-    RAISE EXCEPTION 'Dispatcher operational visibility or membership privacy is misconfigured';
+  SELECT count(*) INTO driver_count FROM public.drivers WHERE fleet_id=f;
+  SELECT count(*) INTO vehicle_count FROM public.vehicles WHERE fleet_id=f;
+  SELECT count(*) INTO task_count FROM public.tasks WHERE fleet_id=f;
+  SELECT count(*) INTO membership_count FROM public.fleet_members WHERE fleet_id=f;
+  IF driver_count <> 2 OR vehicle_count <> 6 OR task_count <> 6 OR membership_count <> 1 THEN
+    RAISE EXCEPTION 'Dispatcher visibility mismatch: drivers=%, vehicles=%, tasks=%, memberships=%',
+      driver_count, vehicle_count, task_count, membership_count;
   END IF;
 END $test$;
 RESET ROLE;
