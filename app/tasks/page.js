@@ -31,6 +31,7 @@ export default function TasksPage() {
   const preTripItems = ["צמיגים ולחץ אוויר תקינים","בלמים ובלם חניה תקינים","אורות, איתותים וצופר תקינים","מראות, שמשות ומגבים תקינים","אין נזילות או נזק גלוי","המטען מאובטח והמשקל מתאים","מסמכי רכב ורישיון נהיגה בתוקף"];
   const watchIdRef = useRef(null);
   const lastLocationWriteRef = useRef(0);
+  const canManageTasks = ["owner", "fleet_manager"].includes(fleet?.role);
 
   useEffect(() => () => {
     if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
