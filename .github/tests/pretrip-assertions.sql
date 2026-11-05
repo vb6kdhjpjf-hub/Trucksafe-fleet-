@@ -638,14 +638,51 @@ SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
 INSERT INTO public.incidents (
   fleet_id, driver_id, vehicle_id, severity, incident_type,
-  description, status, reported_at, created_by
+  description, status, reported_at, created_by, photo_path
 ) VALUES (
   '10000000-0000-0000-0000-000000000001',
   '20000000-0000-0000-0000-000000000001',
   '30000000-0000-0000-0000-000000000002',
   'medium','test','Valid incident report','open',now(),
+  '50000000-0000-0000-0000-000000000001',
+  '10000000-0000-0000-0000-000000000001/incidents/test-photo.jpg'
+);
+RESET ROLE;
+INSERT INTO storage.objects (bucket_id,name,owner) VALUES (
+  'incident-photos',
+  '10000000-0000-0000-0000-000000000001/incidents/test-photo.jpg',
   '50000000-0000-0000-0000-000000000001'
 );
+
+-- A different driver in the same fleet must not read this incident's photo.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000005',false);
+DO $test$
+BEGIN
+  IF EXISTS (SELECT 1 FROM storage.objects WHERE name='10000000-0000-0000-0000-000000000001/incidents/test-photo.jpg') THEN
+    RAISE EXCEPTION 'Unrelated fleet driver could read another incident photo';
+  END IF;
+END $test$;
+RESET ROLE;
+
+-- The incident reporter and fleet manager may read the corresponding photo.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
+DO $test$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM storage.objects WHERE name='10000000-0000-0000-0000-000000000001/incidents/test-photo.jpg') THEN
+    RAISE EXCEPTION 'Incident reporter could not read their own photo';
+  END IF;
+END $test$;
+RESET ROLE;
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000002',false);
+DO $test$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM storage.objects WHERE name='10000000-0000-0000-0000-000000000001/incidents/test-photo.jpg') THEN
+    RAISE EXCEPTION 'Fleet manager could not read an incident photo';
+  END IF;
+END $test$;
 RESET ROLE;
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000002',false);
