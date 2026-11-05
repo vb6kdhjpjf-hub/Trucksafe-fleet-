@@ -92,7 +92,7 @@ jobs:
             /^CREATE ROLE / || /^ALTER ROLE / {
               role = $3
               gsub(/[";]/, "", role)
-              if (role in existing) {
+              if (role in existing || role ~ /^supabase_/) {
                 print "-- Skipped platform/pre-existing role statement for " role
                 next
               }
