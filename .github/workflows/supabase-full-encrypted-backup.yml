@@ -2,6 +2,11 @@ name: Supabase encrypted full backup
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix/pretrip-safe-integration
+    paths:
+      - .github/workflows/supabase-full-encrypted-backup.yml
 
 permissions:
   contents: read
