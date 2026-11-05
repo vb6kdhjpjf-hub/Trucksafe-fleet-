@@ -274,6 +274,7 @@ DECLARE
   t uuid := '40000000-0000-0000-0000-000000000005';
   trip_id uuid;
 BEGIN
+  UPDATE public.drivers SET license_expires_at = current_date + 365 WHERE id = d;
   INSERT INTO public.vehicles(id,fleet_id,status,assigned_driver_id) VALUES (v,f,'available',d);
   INSERT INTO public.tasks(id,fleet_id,assigned_driver_id,assigned_vehicle_id,status) VALUES (t,f,d,v,'assigned');
   PERFORM set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',true);
