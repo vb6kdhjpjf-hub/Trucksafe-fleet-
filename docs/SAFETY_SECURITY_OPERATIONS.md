@@ -40,15 +40,33 @@ The HERE routing provider is not configured in the current environment. The rout
 A successful provider response or a route with no notices is not a guarantee that every bridge, road restriction, time-window closure, work zone, weight limit or local rule has been considered. Verify current official information before departure and during the trip.
 
 ## 6. Operational and release controls
-- Do not apply production migrations until a schema-only backup is successfully generated, reviewed and retained.
+- Do not apply production migrations until a full data-inclusive database backup (roles, schema and data) is generated, encrypted, retained outside the repository, and its restore procedure is validated. A schema-only dump is useful for review but is not a complete backup.
 - Run the isolated PostgreSQL migration/lifecycle/RLS tests and application build against the exact PR head.
 - Review the PR diff, migration, RLS policies, function grants, deployment commit and runtime health before release.
 - Apply migrations and deploy production only after explicit release approval.
 - Preserve the production Vercel preview/SSO protection. Do not bypass deployment quota or activate paid plans without approval.
 
+
+### 6.1 Full backup requirements (Free plan)
+The current project is on Supabase Free, which does not include automatic daily database backups. Supabase recommends manual logical exports with the CLI.
+
+A complete database backup must include all three logical components:
+1. Custom roles: `supabase db dump --db-url="$SUPABASE_DB_URL" --file=roles.sql --role-only`
+2. Schema: `supabase db dump --db-url="$SUPABASE_DB_URL" --file=schema.sql`
+3. Data: `supabase db dump --db-url="$SUPABASE_DB_URL" --file=data.sql --use-copy --data-only -x "storage.buckets_vectors" -x "storage.vector_indexes"`
+
+Operational requirements:
+- Run from a trusted workstation or controlled runner. Supply the database URL through a protected environment variable or secret manager; never paste it into chat, commit it, or print it in logs.
+- Set restrictive file permissions before exporting (for example, `umask 077`). Encrypt the backup files before transferring or storing them off-device. Keep the decryption key separately from the backup.
+- Never upload plaintext `data.sql`, roles, connection strings, or customer data as a GitHub Actions artifact.
+- Supabase Storage object files are not included in a Postgres database dump; export and protect those objects separately if the project stores user files.
+- Record file sizes and SHA-256 checksums. Keep at least one encrypted copy outside the repository.
+- Validate restoration into a disposable local Supabase/Postgres environment before any production migration. A successful dump alone does not prove that restoration works.
+- Do not treat the existing schema-only artifact as a full backup. Do not apply the production migration until the complete backup and restore validation are finished.
+
 ## 7. Current known readiness gaps
 - Production trip RPCs were observed using an obsolete helper reference; the proposed PR migration repairs them but has not been applied.
-- The schema-only backup workflow currently reaches the Supabase pooler but fails password authentication; no backup artifact exists yet.
+- A schema-only backup artifact was successfully generated and inspected on 2026-11-05. It contains the current schema, policies, functions and triggers, but no table data; it is not sufficient for disaster recovery. The artifact expires after one day.
 - Supabase Auth leaked-password protection is disabled (Security Advisor warning); enable only after explicit approval.
 - Performance Advisor reports 15 unused-index candidates. Do not drop them without query-plan evidence and review.
 - Vercel currently has no new preview deployment for the latest PR head due deployment quota/rate limits.
