@@ -477,6 +477,7 @@ WITH CHECK (
 
 -- Only fleet owners, fleet managers, and safety managers may resolve incidents.
 -- This is intentionally separate from SELECT access so reporters cannot close reports.
+DROP POLICY IF EXISTS incidents_update_safety ON public.incidents;
 DROP POLICY IF EXISTS incidents_update_managers ON public.incidents;
 CREATE POLICY incidents_update_managers
 ON public.incidents
