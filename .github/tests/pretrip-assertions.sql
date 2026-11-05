@@ -1,5 +1,6 @@
 -- Safety, authorization, lifecycle and privacy assertions for the disposable database.
 -- Exercises driver and manager authorization, lifecycle, safety lockout, and RPC grants.
+-- Keep each DO block's opening and closing dollar-quote tag identical.
 DO $test$
 DECLARE
   f uuid := '10000000-0000-0000-0000-000000000001';
