@@ -73,7 +73,17 @@ jobs:
             -out trucksafe-full-backup.tar.gz.enc \
             -pass env:BACKUP_ENCRYPTION_KEY
           test -s trucksafe-full-backup.tar.gz.enc
-          echo "Encrypted backup created. Plaintext exports remain on the ephemeral runner only and are removed when this step exits."
+          # Verify encryption/decryption and every exported file checksum without printing backup contents.
+          openssl enc -d -aes-256-cbc -pbkdf2 -in trucksafe-full-backup.tar.gz.enc \
+            -out trucksafe-verify.tar.gz -pass env:BACKUP_ENCRYPTION_KEY
+          mkdir -p backup-verify
+          tar -xzf trucksafe-verify.tar.gz -C backup-verify
+          (cd backup-verify && sha256sum -c SHA256SUMS)
+          test -s backup-verify/roles.sql
+          test -s backup-verify/schema.sql
+          test -s backup-verify/data.sql
+          rm -rf backup-verify trucksafe-verify.tar.gz
+          echo "Encrypted backup decrypted successfully; archive contents and SHA256 checksums verified. Plaintext exports are removed."
           rm -rf backup-tmp
 
       - name: Upload encrypted backup only
@@ -82,4 +92,4 @@ jobs:
           name: trucksafe-encrypted-full-backup
           path: trucksafe-full-backup.tar.gz.enc
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
