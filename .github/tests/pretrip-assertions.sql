@@ -34,7 +34,9 @@ DECLARE
 BEGIN
   INSERT INTO public.fleet_members VALUES
     (f,driver_user,'driver'),(f,manager_user,'fleet_manager'),(f,dispatcher_user,'dispatcher'),(f,other_driver_user,'driver');
-  INSERT INTO public.drivers VALUES (d,f,'active',driver_user,current_date + 365),(other_driver_id,f,'active',other_driver_user,current_date + 365);
+  INSERT INTO public.drivers(id,fleet_id,status,user_id,full_name,license_expires_at) VALUES
+    (d,f,'active',driver_user,'Test Driver',current_date + 365),
+    (other_driver_id,f,'active',other_driver_user,'Other Test Driver',current_date + 365);
   INSERT INTO public.vehicles(id,fleet_id,status,assigned_driver_id) VALUES
     (v_ok,f,'available',d),(v_bad,f,'available',d),
     (v_manager,f,'available',d),(v_unauthorized,f,'available',d),
