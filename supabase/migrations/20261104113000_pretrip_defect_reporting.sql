@@ -35,6 +35,9 @@ BEGIN
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'יש להתחבר כדי לפתוח נסיעה';
   END IF;
+  IF NOT private.is_fleet_member(p_fleet_id) THEN
+    RAISE EXCEPTION 'רק חבר צי פעיל יכול לפתוח נסיעה';
+  END IF;
 
   -- Validate the JSON container before calling object-only JSON functions.
   IF p_checklist IS NULL OR jsonb_typeof(p_checklist) <> 'object' THEN
@@ -350,6 +353,9 @@ DECLARE
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'יש להתחבר כדי לסיים נסיעה';
+  END IF;
+  IF NOT private.is_fleet_member(p_fleet_id) THEN
+    RAISE EXCEPTION 'רק חבר צי פעיל יכול לסיים נסיעה';
   END IF;
 
   SELECT * INTO v_trip
