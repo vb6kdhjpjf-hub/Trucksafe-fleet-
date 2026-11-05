@@ -75,7 +75,14 @@ jobs:
           mkdir -p /tmp/trucksafe-supabase
           cd /tmp/trucksafe-supabase
           supabase init
-          supabase start
+          # The restore only needs Postgres. Avoid pulling and health-checking
+          # unrelated API/UI containers in CI, which can stall startup.
+          timeout 15m supabase start -x gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor || {
+            echo "::error::Isolated Supabase Postgres did not start within 15 minutes."
+            docker ps -a --format 'table {{.Names}}\t{{.Status}}' || true
+            exit 1
+          }
+          supabase status
 
       - name: Restore roles, schema and data into isolated Supabase Postgres
         shell: bash
