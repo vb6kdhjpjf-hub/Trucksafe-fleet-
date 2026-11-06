@@ -21,7 +21,9 @@ async function geocode(address, apiKey) {
   }).toString();
 
   const result = await fetch(url, { signal: AbortSignal.timeout(12000), cache: "no-store" });
-  if (!result.ok) throw new Error("geocoding_unavailable");
+  if (!result.ok) {
+    throw new Error(`geocoding_unavailable_http_${result.status}`);
+  }
   const data = await result.json();
   const place = data.items?.[0];
   if (!place?.position || place.address?.countryCode !== "ISR") return null;
@@ -34,8 +36,6 @@ async function geocode(address, apiKey) {
 }
 
 export async function GET() {
-  // Use the exact same three-part readiness gate as POST. Otherwise the UI
-  // could enable routing while the explicit safety switch is still disabled.
   return response({ configured: getTruckRoutingConfig().configured });
 }
 
