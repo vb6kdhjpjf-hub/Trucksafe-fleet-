@@ -68,6 +68,7 @@ export default function DriversPage() {
     e.preventDefault();
     if (!fleet) return;
     if (!form.full_name.trim()) { setMessage("יש להזין שם מלא לנהג."); return; }
+    if (!form.license_expires_at) { setMessage("יש להזין את תאריך תוקף רישיון הנהיגה לפי המסמך המקורי."); return; }
     setBusy(true); setMessage("");
     try {
       const payload = {
@@ -142,7 +143,7 @@ export default function DriversPage() {
         <div className="fleet-panel-head"><div><h3>התראות תוקף רישיונות נהיגה</h3><p>רישיונות שפג תוקפם או יפוגו בתוך 30 יום</p></div><span className="role-pill">{licenseAlerts.length} התראות</span></div>
         {expiredLicenses.length>0&&<div className="auth-message" style={{background:"#fff0f0",color:"#9b1c1c"}}><b>{expiredLicenses.length} רישיונות שפג תוקפם</b></div>}
         {soonLicenses.length>0&&<div className="auth-message" style={{background:"#fff7e6",color:"#8a5700"}}><b>{soonLicenses.length} רישיונות שעומדים לפוג</b></div>}
-        <div className="driver-list">{licenseAlerts.map(driver=><article className="driver-row" key={driver.id+"-expiry"}><div className="driver-avatar">{(driver.full_name||"?").trim().charAt(0)}</div><div className="driver-main"><b>{driver.full_name}</b><div className="driver-details"><span><CalendarDays size={13}/>תוקף עד {new Date(driver.license_expires_at+"T00:00:00").toLocaleDateString("he-IL")}</span></div></div><span className={driver.days<0?"status-late":"status-pending"}>{driver.days<0?"פג לפני "+Math.abs(driver.days)+" ימים":driver.days===0?"פג היום":"נותרו "+driver.days+" ימים"}</span><button className="secondary-btn" onClick={()=>startEdit(driver)}>עדכון פרטים</button></article>)}</div>
+        <div className="driver-list">{licenseAlerts.map(driver=><article className="driver-row" key={driver.id+"-expiry"}><div className="driver-avatar">{(driver.full_name||"?").trim().charAt(0)}</div><div className="driver-main"><b>{driver.full_name}</b><div className="driver-details">{driver.license_expires_at?<span><CalendarDays size={13}/>תוקף עד {new Date(driver.license_expires_at+"T00:00:00").toLocaleDateString("he-IL")}</span>:<span className="status-late">חסר תאריך תוקף רישיון</span>}</div></div><span className={driver.days<0?"status-late":"status-pending"}>{driver.missingExpiry?"חסר תאריך":driver.days<0?"פג לפני "+Math.abs(driver.days)+" ימים":driver.days===0?"פג היום":"נותרו "+driver.days+" ימים"}</span><button className="secondary-btn" onClick={()=>startEdit(driver)}>עדכון פרטים</button></article>)}</div>
       </section>}
       <h3>רשימת נהגים</h3><p>פרטי קשר, רישיון וסטטוס העסקה</p></div><button className="primary-btn" onClick={startAdd}><Plus size={16}/> הוספת נהג</button></div>
         {showForm && <form className="driver-form" onSubmit={saveDriver}>
@@ -152,7 +153,7 @@ export default function DriversPage() {
             <label>טלפון<input type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="050-0000000"/></label>
             <label>מספר רישיון<input value={form.license_number} onChange={e=>setForm({...form,license_number:e.target.value})} placeholder="מספר רישיון נהיגה"/></label>
             <label>דרגת רישיון<input value={form.license_class} onChange={e=>setForm({...form,license_class:e.target.value})} placeholder="לדוגמה: C / C+E"/></label>
-            <label>תוקף רישיון<input type="date" value={form.license_expires_at} onChange={e=>setForm({...form,license_expires_at:e.target.value})}/></label>
+            <label>תוקף רישיון נהיגה *<input type="date" required value={form.license_expires_at} onChange={e=>setForm({...form,license_expires_at:e.target.value})}/></label>
           </div>
           <div className="driver-form-actions"><button className="primary-btn" disabled={busy}>{busy ? "שומר..." : "שמירת נהג"}</button><button type="button" className="secondary-btn" onClick={()=>{setShowForm(false);setEditing(null);setForm(emptyForm);}}>ביטול</button></div>
         </form>}
