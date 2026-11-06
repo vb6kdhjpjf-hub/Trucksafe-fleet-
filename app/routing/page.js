@@ -225,13 +225,30 @@ export default function TruckRoutingPage() {
           originCoordinates: form.originCoordinates
         })
       });
-      const data = await response.json();
-      if (!response.ok) { setMessage(data.error || "לא הצלחנו לחשב מסלול."); return; }
+      const responseText = await response.text();
+      let data = null;
+      try { data = responseText ? JSON.parse(responseText) : null; } catch { /* handled below */ }
+      if (!data || typeof data !== "object") {
+        console.error("Truck route returned a non-JSON response", { status: response.status });
+        setMessage("שירות חישוב המסלולים החזיר תשובה לא תקינה (קוד " + response.status + "). נסה לרענן. אם התקלה חוזרת, פנה לתמיכה.");
+        return;
+      }
+      if (!response.ok) {
+        console.error("Truck route request failed", { status: response.status, error: data.error || "unknown" });
+        setMessage((data.error || "לא הצלחנו לחשב מסלול.") + " (קוד " + response.status + ")");
+        return;
+      }
+      if (!Array.isArray(data.sections) || data.sections.length === 0) {
+        console.error("Truck route response missing route sections");
+        setMessage("התקבלה תשובה ללא נתוני מסלול. לא נוצר מסלול לנסיעה.");
+        return;
+      }
       setResult(data);
       if (data.hasCriticalNotices) setMessage("המסלול כולל התראות קריטיות. אין לצאת לדרך על סמך מסלול זה.");
       else setMessage("המסלול חושב. יש לאמת שילוט והגבלות בשטח לפני היציאה.");
-    } catch {
-      setMessage("לא ניתן להתחבר לשירות חישוב המסלולים. בדוק חיבור לאינטרנט ונסה שוב.");
+    } catch (error) {
+      console.error("Truck route request could not be completed", error?.name || "unknown");
+      setMessage("החיבור לשירות חישוב המסלולים נכשל. בדוק אינטרנט ורענן את הדף. אם התקלה חוזרת, נבדוק את קוד השגיאה.");
     } finally {
       setBusy(false);
     }
