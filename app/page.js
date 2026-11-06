@@ -34,6 +34,14 @@ export default function Home() {
   const [registration,setRegistration]=useState("");
   const [vehicleType,setVehicleType]=useState("משאית");
   const [vehicleMake,setVehicleMake]=useState("");
+  const [routingVehicleType,setRoutingVehicleType]=useState("StraightTruck");
+  const [heightCm,setHeightCm]=useState("");
+  const [widthCm,setWidthCm]=useState("");
+  const [lengthCm,setLengthCm]=useState("");
+  const [grossWeightKg,setGrossWeightKg]=useState("");
+  const [axleCount,setAxleCount]=useState("");
+  const [trailerCount,setTrailerCount]=useState("0");
+  const [weightPerAxleKg,setWeightPerAxleKg]=useState("");
   const [isDemo,setIsDemo]=useState(false);
   const [assignedDriverId,setAssignedDriverId]=useState("");
   const [testDueAt,setTestDueAt]=useState("");
@@ -89,7 +97,7 @@ export default function Home() {
     setFleet({...current,role});
     setWorkspaceChecked(true);
     const [v,d,tr,inc,incRows,ta,active,maint,lockRows]=await Promise.all([
-      supabase.from("vehicles").select("id,registration_number,make,model,vehicle_type,status,is_demo,assigned_driver_id,test_due_at,insurance_due_at,registration_due_at,next_service_at").eq("fleet_id",current.id).order("created_at",{ascending:false}),
+      supabase.from("vehicles").select("id,registration_number,make,model,vehicle_type,status,is_demo,assigned_driver_id,test_due_at,insurance_due_at,registration_due_at,next_service_at,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,axle_count,trailer_count,weight_per_axle_kg").eq("fleet_id",current.id).order("created_at",{ascending:false}),
       supabase.from("drivers").select("id,full_name,phone,status,license_number,license_class,license_expires_at").eq("fleet_id",current.id).order("created_at",{ascending:false}),
       supabase.from("trips").select("id",{count:"exact",head:true}).eq("fleet_id",current.id).eq("status","active"),
       supabase.from("incidents").select("id",{count:"exact",head:true}).eq("fleet_id",current.id).in("status",["open","investigating"]),
@@ -266,6 +274,9 @@ export default function Home() {
     setRegistration("");
     setVehicleType("משאית");
     setVehicleMake("");
+    setRoutingVehicleType("StraightTruck");
+    setHeightCm(""); setWidthCm(""); setLengthCm(""); setGrossWeightKg("");
+    setAxleCount(""); setTrailerCount("0"); setWeightPerAxleKg("");
     setIsDemo(false);
     setAssignedDriverId("");
     setTestDueAt("");
@@ -280,6 +291,14 @@ export default function Home() {
     setRegistration(vehicle.registration_number||"");
     setVehicleType(vehicle.vehicle_type||"משאית");
     setVehicleMake([vehicle.make,vehicle.model].filter(Boolean).join(" "));
+    setRoutingVehicleType(vehicle.routing_vehicle_type||"StraightTruck");
+    setHeightCm(vehicle.height_cm==null?"":String(vehicle.height_cm));
+    setWidthCm(vehicle.width_cm==null?"":String(vehicle.width_cm));
+    setLengthCm(vehicle.length_cm==null?"":String(vehicle.length_cm));
+    setGrossWeightKg(vehicle.gross_weight_kg==null?"":String(vehicle.gross_weight_kg));
+    setAxleCount(vehicle.axle_count==null?"":String(vehicle.axle_count));
+    setTrailerCount(vehicle.trailer_count==null?"0":String(vehicle.trailer_count));
+    setWeightPerAxleKg(vehicle.weight_per_axle_kg==null?"":String(vehicle.weight_per_axle_kg));
     setIsDemo(Boolean(vehicle.is_demo));
     setAssignedDriverId(vehicle.assigned_driver_id||"");
     setTestDueAt(vehicle.test_due_at||"");
@@ -310,7 +329,15 @@ export default function Home() {
       test_due_at:testDueAt,
       insurance_due_at:insuranceDueAt,
       registration_due_at:registrationDueAt,
-      next_service_at:nextServiceAt||null
+      next_service_at:nextServiceAt||null,
+      routing_vehicle_type:routingVehicleType,
+      height_cm:heightCm?Number(heightCm):null,
+      width_cm:widthCm?Number(widthCm):null,
+      length_cm:lengthCm?Number(lengthCm):null,
+      gross_weight_kg:grossWeightKg?Number(grossWeightKg):null,
+      axle_count:axleCount?Number(axleCount):null,
+      trailer_count:Number(trailerCount||0),
+      weight_per_axle_kg:weightPerAxleKg?Number(weightPerAxleKg):null
     };
     try{
       const result=editingVehicleId
@@ -413,6 +440,15 @@ export default function Home() {
         <label>מספר רישוי *<input required maxLength={20} value={registration} onChange={e=>setRegistration(e.target.value)} placeholder="12-345-67"/></label>
         <label>סוג רכב<select value={vehicleType} onChange={e=>setVehicleType(e.target.value)}><option>משאית</option><option>גורר</option><option>נגרר</option><option>מסחרית</option><option>רכב אחר</option></select></label>
         <label>יצרן / דגם<input maxLength={100} value={vehicleMake} onChange={e=>setVehicleMake(e.target.value)} placeholder="לדוגמה: Volvo FH"/></label>
+        <div className="vehicle-form-note">נתוני ניתוב למשאית — יש להעתיק מרישיון הרכב או ממסמכי היצרן. ללא הנתונים האלה לא ניתן לחשב מסלול מותאם לרכב.</div>
+        <label>סוג משאית לניווט<select value={routingVehicleType} onChange={e=>setRoutingVehicleType(e.target.value)}><option value="StraightTruck">משאית קשיחה</option><option value="Tractor">גורר / ראש גורר</option></select></label>
+        <label>גובה כולל בס״מ<input type="number" min="100" max="600" step="1" value={heightCm} onChange={e=>setHeightCm(e.target.value)} placeholder="לפי הרישיון"/></label>
+        <label>רוחב כולל בס״מ<input type="number" min="100" max="350" step="1" value={widthCm} onChange={e=>setWidthCm(e.target.value)} placeholder="לפי הרישיון"/></label>
+        <label>אורך כולל בס״מ<input type="number" min="200" max="3000" step="1" value={lengthCm} onChange={e=>setLengthCm(e.target.value)} placeholder="כולל נגרר"/></label>
+        <label>משקל כולל מותר בק״ג<input type="number" min="1000" max="100000" step="100" value={grossWeightKg} onChange={e=>setGrossWeightKg(e.target.value)} placeholder="לפי הרישיון"/></label>
+        <label>מספר סרנים<input type="number" min="2" max="12" step="1" value={axleCount} onChange={e=>setAxleCount(e.target.value)} placeholder="לפי הרישיון"/></label>
+        <label>מספר נגררים<input type="number" min="0" max="3" step="1" value={trailerCount} onChange={e=>setTrailerCount(e.target.value)}/></label>
+        <label>משקל מרבי לסרן בק״ג (אם ידוע)<input type="number" min="500" max="30000" step="100" value={weightPerAxleKg} onChange={e=>setWeightPerAxleKg(e.target.value)} placeholder="אופציונלי"/></label>
         <label style={{display:"flex",alignItems:"center",gap:8}}><input type="checkbox" checked={isDemo} onChange={e=>setIsDemo(e.target.checked)}/> רכב הדגמה — לא ניתן לפתוח איתו נסיעות</label>
         <label>נהג משויך<select value={assignedDriverId} onChange={e=>setAssignedDriverId(e.target.value)}><option value="">ללא נהג משויך</option>{drivers.filter(d=>d.status==="active").map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label>
         <label>טסט בתוקף עד *<input type="date" required value={testDueAt} onChange={e=>setTestDueAt(e.target.value)}/></label>
@@ -421,7 +457,7 @@ export default function Home() {
         <label>טיפול תקופתי הבא<input type="date" value={nextServiceAt} onChange={e=>setNextServiceAt(e.target.value)}/></label>
         <div className="vehicle-form-actions"><button className="primary-btn" disabled={busy}>{busy?"שומר...":editingVehicleId?"שמירת עדכון":"שמירת רכב"}</button><button type="button" className="secondary-btn" disabled={busy} onClick={resetVehicleForm}>ביטול</button></div>
       </form>}
-      {vehicles.length===0?<div className="fleet-empty">עדיין לא הוספת כלי רכב. לחץ על "הוספת רכב" כדי להתחיל.</div>:<div className="vehicle-list">{vehicles.map(v=><div className="vehicle-row" key={v.id}><Truck size={20}/><div><b>{v.registration_number} {v.is_demo&&<span className="role-pill">רכב הדגמה</span>}</b><small>{[v.make,v.model,v.vehicle_type].filter(Boolean).join(" · ")}{v.assigned_driver_id ? " · נהג: "+(drivers.find(d=>d.id===v.assigned_driver_id)?.full_name||"לא נמצא") : " · ללא נהג משויך"}</small><small className="vehicle-compliance-line">טסט: {v.test_due_at||"חסר"} · ביטוח: {v.insurance_due_at||"חסר"} · רישיון רכב: {v.registration_due_at||"חסר"}</small></div><span className={!lockStatusAvailable||lockedVehicleIds.includes(v.id)?"status-late":""}>{!lockStatusAvailable?"מצב נעילה לא מאומת":lockedVehicleIds.includes(v.id)?"נעול עקב אירוע בטיחות":v.status==="available"?"זמין":v.status==="assigned"?"משויך":v.status==="on_trip"?"בנסיעה":v.status==="maintenance"?"בטיפול":v.status==="inactive"?"לא פעיל":v.status}</span>{canManageVehicles&&<button type="button" className="secondary-btn" onClick={()=>editVehicle(v)}><Pencil size={14}/> עדכון מסמכים</button>}</div>)}</div>}
+      {vehicles.length===0?<div className="fleet-empty">עדיין לא הוספת כלי רכב. לחץ על "הוספת רכב" כדי להתחיל.</div>:<div className="vehicle-list">{vehicles.map(v=><div className="vehicle-row" key={v.id}><Truck size={20}/><div><b>{v.registration_number} {v.is_demo&&<span className="role-pill">רכב הדגמה</span>}</b><small>{[v.make,v.model,v.vehicle_type].filter(Boolean).join(" · ")}{v.height_cm&&v.width_cm&&v.length_cm?" · מידות: "+v.height_cm+"×"+v.width_cm+"×"+v.length_cm+" ס״מ": " · חסרות מידות לניווט"}{v.assigned_driver_id ? " · נהג: "+(drivers.find(d=>d.id===v.assigned_driver_id)?.full_name||"לא נמצא") : " · ללא נהג משויך"}</small><small className="vehicle-compliance-line">טסט: {v.test_due_at||"חסר"} · ביטוח: {v.insurance_due_at||"חסר"} · רישיון רכב: {v.registration_due_at||"חסר"}</small></div><span className={!lockStatusAvailable||lockedVehicleIds.includes(v.id)?"status-late":""}>{!lockStatusAvailable?"מצב נעילה לא מאומת":lockedVehicleIds.includes(v.id)?"נעול עקב אירוע בטיחות":v.status==="available"?"זמין":v.status==="assigned"?"משויך":v.status==="on_trip"?"בנסיעה":v.status==="maintenance"?"בטיפול":v.status==="inactive"?"לא פעיל":v.status}</span>{canManageVehicles&&<button type="button" className="secondary-btn" onClick={()=>editVehicle(v)}><Pencil size={14}/> עדכון מסמכים</button>}</div>)}</div>}
       </section>
       <p className="fleet-foot">TruckSafe Fleet V1 · מחובר למסד הנתונים · נתוני הצי מוצגים מהמערכת</p>
     </section>
