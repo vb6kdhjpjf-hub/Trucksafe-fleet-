@@ -301,6 +301,7 @@ export default function Home() {
       registration_number:registration.trim(),
       vehicle_type:vehicleType,
       make:vehicleMake.trim()||null,
+      model:null,
       assigned_driver_id:assignedDriverId||null,
       test_due_at:testDueAt,
       insurance_due_at:insuranceDueAt,
