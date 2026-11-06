@@ -21,7 +21,9 @@ async function geocode(address, apiKey) {
   }).toString();
 
   const result = await fetch(url, { signal: AbortSignal.timeout(12000), cache: "no-store" });
-  if (!result.ok) throw new Error("geocoding_unavailable");
+  if (!result.ok) {
+    throw new Error(`geocoding_unavailable_http_${result.status}`);
+  }
   const data = await result.json();
   const place = data.items?.[0];
   if (!place?.position || place.address?.countryCode !== "ISR") return null;
@@ -34,20 +36,21 @@ async function geocode(address, apiKey) {
 }
 
 export async function GET() {
-  // Use the exact same three-part readiness gate as POST. Otherwise the UI
-  // could enable routing while the explicit safety switch is still disabled.
   return response({ configured: getTruckRoutingConfig().configured });
 }
 
 export async function POST(request) {
+  let stage = "request_start";
   try {
     if (!request.headers.get("content-type")?.includes("application/json")) {
       return response({ error: "יש לשלוח בקשה בפורמט JSON." }, 415);
     }
+    stage = "read_authorization";
     const authorization = request.headers.get("authorization") || "";
     const token = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
     if (!token || token.length > 8192) return response({ error: "נדרשת התחברות מחדש למערכת." }, 401);
 
+    stage = "read_supabase_config";
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!supabaseUrl || !publishableKey) return response({ error: "חיבור מסד הנתונים אינו מוגדר." }, 503);
@@ -56,9 +59,11 @@ export async function POST(request) {
       global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
     });
+    stage = "validate_user_session";
     const { data: authData, error: authError } = await db.auth.getUser(token);
     if (authError || !authData?.user) return response({ error: "החיבור אינו תקף. יש להתחבר מחדש." }, 401);
 
+    stage = "check_fleet_membership";
     const { data: membership, error: membershipError } = await db
       .from("fleet_members")
       .select("fleet_id")
@@ -67,10 +72,12 @@ export async function POST(request) {
       .maybeSingle();
     if (membershipError || !membership) return response({ error: "אין לחשבון הרשאה לתכנון מסלולים בצי." }, 403);
 
+    stage = "read_routing_config";
     const routing = getTruckRoutingConfig();
     const apiKey = routing.apiKey;
     if (!apiKey) return response({ error: "מנוע ניתוב המשאיות מושבת או לא הוגדר במלואו. אין להשתמש במסלול עד להשלמת אישור הספק, הגדרה ובדיקות בטיחות." }, 503);
 
+    stage = "read_request_body";
     const rawBody = await request.text();
     if (new TextEncoder().encode(rawBody).byteLength > 16000) {
       return response({ error: "הבקשה גדולה מדי." }, 413);
@@ -121,6 +128,7 @@ export async function POST(request) {
       return response({ error: "יש לבדוק את סוג המשאית, מספר הסרנים והנגררים, המידות והמשקלים. המשקל בפועל חייב להיות קטן או שווה למשקל הכולל המותר." }, 400);
     }
 
+    stage = "geocode_addresses";
     const [origin, destination] = await Promise.all([
       hasOriginCoordinates
         ? Promise.resolve({ lat: originCoordinates.lat, lng: originCoordinates.lng, label: "המיקום הנוכחי" })
@@ -153,7 +161,9 @@ export async function POST(request) {
     if (weightPerAxleKg !== null) params["vehicle[weightPerAxle]"] = String(Math.round(weightPerAxleKg));
     url.search = new URLSearchParams(params).toString();
 
+    stage = "call_here_truck_router";
     const routeResponse = await fetch(url, { signal: AbortSignal.timeout(15000), cache: "no-store" });
+    stage = "parse_here_route_response";
     const routeData = await routeResponse.json().catch(() => null);
     if (!routeResponse.ok) return response({ error: "ספק הניווט לא הצליח לחשב מסלול. בדוק את פרטי הרכב ונסה שוב." }, 502);
 
@@ -187,6 +197,7 @@ export async function POST(request) {
       sections: route.sections.map(section => ({ polyline: section.polyline || "" }))
     });
   } catch (error) {
+    console.error("Truck route API failure", { stage, name: String(error?.name || "Error").slice(0, 80), message: String(error?.message || "unknown").slice(0, 240) });
     const message = error?.name === "TimeoutError"
       ? "שירות הניווט לא הגיב בזמן. בדוק חיבור ונסה שוב."
       : "אירעה תקלה זמנית בחישוב המסלול. נסה שוב בעוד רגע.";

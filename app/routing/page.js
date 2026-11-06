@@ -74,6 +74,8 @@ export default function TruckRoutingPage() {
   const router = useRouter();
   const mapElement = useRef(null);
   const [form, setForm] = useState(initial);
+  const [vehicles, setVehicles] = useState([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
@@ -85,9 +87,16 @@ export default function TruckRoutingPage() {
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למערכת אינו מוגדר."); setLoading(false); return; }
     let alive = true;
-    supabase.auth.getSession().then(({ data, error }) => {
+    supabase.auth.getSession().then(async ({ data, error }) => {
       if (!alive) return;
       if (error || !data.session) { router.replace("/"); return; }
+      const { data: membership } = await supabase.from("fleet_members").select("fleet_id").eq("user_id", data.session.user.id).limit(1).maybeSingle();
+      if (membership?.fleet_id) {
+        const { data: fleetVehicles, error: vehicleError } = await supabase.from("vehicles")
+          .select("id,registration_number,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,axle_count,trailer_count,weight_per_axle_kg,is_demo")
+          .eq("fleet_id", membership.fleet_id).eq("is_demo", false).order("registration_number");
+        if (!vehicleError) setVehicles(fleetVehicles || []);
+      }
       setLoading(false);
       fetch("/api/truck-route").then(response => response.json()).then(status => {
         if (!alive) return;
@@ -147,6 +156,25 @@ export default function TruckRoutingPage() {
     setForm(current => ({ ...current, [key]: value, ...(key === "origin" ? { originCoordinates: null } : {}) }));
   }
 
+  function chooseVehicle(id) {
+    setSelectedVehicleId(id);
+    const vehicle = vehicles.find(item => item.id === id);
+    if (!vehicle) return;
+    setForm(current => ({
+      ...current,
+      heightCm: vehicle.height_cm == null ? "" : String(vehicle.height_cm),
+      widthCm: vehicle.width_cm == null ? "" : String(vehicle.width_cm),
+      lengthCm: vehicle.length_cm == null ? "" : String(vehicle.length_cm),
+      grossWeightKg: vehicle.gross_weight_kg == null ? "" : String(vehicle.gross_weight_kg),
+      weightPerAxleKg: vehicle.weight_per_axle_kg == null ? "" : String(vehicle.weight_per_axle_kg),
+      vehicleType: vehicle.routing_vehicle_type || "StraightTruck",
+      axleCount: vehicle.axle_count == null ? "" : String(vehicle.axle_count),
+      trailerCount: vehicle.trailer_count == null ? "0" : String(vehicle.trailer_count)
+    }));
+    setResult(null);
+    setMessage("פרטי הרכב נטענו. יש להזין את המשקל בפועל לנסיעה הנוכחית.");
+  }
+
   function useCurrentLocation() {
     if (!navigator.geolocation) { setMessage("הדפדפן אינו תומך באיתור מיקום."); return; }
     setLocating(true);
@@ -197,13 +225,30 @@ export default function TruckRoutingPage() {
           originCoordinates: form.originCoordinates
         })
       });
-      const data = await response.json();
-      if (!response.ok) { setMessage(data.error || "לא הצלחנו לחשב מסלול."); return; }
+      const responseText = await response.text();
+      let data = null;
+      try { data = responseText ? JSON.parse(responseText) : null; } catch { /* handled below */ }
+      if (!data || typeof data !== "object") {
+        console.error("Truck route returned a non-JSON response", { status: response.status });
+        setMessage("שירות חישוב המסלולים החזיר תשובה לא תקינה (קוד " + response.status + "). נסה לרענן. אם התקלה חוזרת, פנה לתמיכה.");
+        return;
+      }
+      if (!response.ok) {
+        console.error("Truck route request failed", { status: response.status, error: data.error || "unknown" });
+        setMessage((data.error || "לא הצלחנו לחשב מסלול.") + " (קוד " + response.status + ")");
+        return;
+      }
+      if (!Array.isArray(data.sections) || data.sections.length === 0) {
+        console.error("Truck route response missing route sections");
+        setMessage("התקבלה תשובה ללא נתוני מסלול. לא נוצר מסלול לנסיעה.");
+        return;
+      }
       setResult(data);
       if (data.hasCriticalNotices) setMessage("המסלול כולל התראות קריטיות. אין לצאת לדרך על סמך מסלול זה.");
       else setMessage("המסלול חושב. יש לאמת שילוט והגבלות בשטח לפני היציאה.");
-    } catch {
-      setMessage("לא ניתן להתחבר לשירות חישוב המסלולים. בדוק חיבור לאינטרנט ונסה שוב.");
+    } catch (error) {
+      console.error("Truck route request could not be completed", error?.name || "unknown");
+      setMessage("החיבור לשירות חישוב המסלולים נכשל. בדוק אינטרנט ורענן את הדף. אם התקלה חוזרת, נבדוק את קוד השגיאה.");
     } finally {
       setBusy(false);
     }
@@ -225,12 +270,19 @@ export default function TruckRoutingPage() {
       <section style={{ background: "#fff8e8", border: "1px solid #f0d9a8", borderRadius: 14, padding: 14, marginBottom: 16 }}>
         <b><ShieldAlert size={17} style={{ verticalAlign: "middle" }}/> בטיחות לפני הכול</b>
         <p style={{ margin: "7px 0 0", lineHeight: 1.6, fontSize: 13 }}>המערכת משתמשת בנתוני ניתוב למשאיות של HERE. גם מסלול ללא התראות אינו הבטחה שהדרך בטוחה או חוקית בכל רגע. חובה לבדוק שילוט, הוראות משטרה, עבודות בכביש ומגבלות מקומיות לפני ובמהלך הנסיעה. מסלול עם התראה קריטית אינו מאושר ליציאה.</p>
+        <p style={{ margin: "8px 0 0", lineHeight: 1.6, fontSize: 13, color: "#8a4b08" }}><b>חשוב:</b> מגבלות דרך שהוזנו ידנית במערכת עדיין אינן משולבות אוטומטית בחישוב המסלול. יש לבדוק אותן בנפרד לפני היציאה.</p>
       </section>
 
       {message && <div role="status" style={{ background: result?.hasCriticalNotices ? "#fff0f0" : "#eef4ff", border: "1px solid #dce6f7", borderRadius: 10, padding: 12, marginBottom: 14, lineHeight: 1.5 }}>{message}</div>}
 
       <form onSubmit={calculate} style={{ background: "white", border: "1px solid #e5eaf1", borderRadius: 16, padding: 18, boxShadow: "0 5px 20px #17233808" }}>
         <h2 style={{ margin: "0 0 14px", fontSize: 18 }}>פרטי הנסיעה והרכב</h2>
+        {vehicles.length > 0 && <label style={{ ...label, marginBottom: 14 }}>בחירת רכב מהצי
+          <select style={field} value={selectedVehicleId} onChange={e => chooseVehicle(e.target.value)}>
+            <option value="">הזנת פרטי רכב ידנית</option>
+            {vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.id}>{vehicle.registration_number}{vehicle.height_cm ? " · "+vehicle.height_cm+" ס״מ" : " · חסרים נתוני מידות"}</option>)}
+          </select>
+        </label>}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 14 }}>
           <label style={label}>מוצא בישראל<div style={{ display: "flex", gap: 7, marginTop: 6 }}><input required maxLength={180} style={{ ...field, marginTop: 0, minWidth: 0 }} value={form.origin} onChange={e => update("origin", e.target.value)} placeholder="כתובת, יישוב או אזור"/><button type="button" onClick={useCurrentLocation} disabled={locating || busy} style={{ ...field, width: "auto", whiteSpace: "nowrap", marginTop: 0, cursor: "pointer" }}><MapPin size={15} style={{ verticalAlign: "middle" }}/> {locating ? "מאתר..." : "המיקום שלי"}</button></div></label>
           <label style={label}>יעד בישראל<input required maxLength={180} style={field} value={form.destination} onChange={e => update("destination", e.target.value)} placeholder="כתובת, יישוב או אזור"/></label>
