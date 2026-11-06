@@ -87,7 +87,7 @@ export default function TruckRoutingPage() {
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למערכת אינו מוגדר."); setLoading(false); return; }
     let alive = true;
-    supabase.auth.getSession().then(({ data, error }) => {
+    supabase.auth.getSession().then(async ({ data, error }) => {
       if (!alive) return;
       if (error || !data.session) { router.replace("/"); return; }
       const { data: membership } = await supabase.from("fleet_members").select("fleet_id").eq("user_id", data.session.user.id).limit(1).maybeSingle();
