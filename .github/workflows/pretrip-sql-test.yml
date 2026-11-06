@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - feat/pretrip-defect-reporting
+      - fix/pretrip-safe-integration
 
 permissions:
   contents: read
