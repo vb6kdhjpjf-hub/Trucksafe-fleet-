@@ -107,7 +107,10 @@ export default function FleetMapPage() {
   }, [fleetId]);
 
   useEffect(() => {
-    if (!mapElement.current || typeof window === "undefined") return;
+    // The map container is rendered only after the initial fleet/session load.
+    // Re-run this effect when loading becomes false so the Leaflet map is
+    // initialized after its DOM element actually exists.
+    if (loading || !mapElement.current || typeof window === "undefined") return;
     let cancelled = false;
     const loadMapLibrary = () => new Promise((resolve, reject) => {
       if (window.L) { resolve(window.L); return; }
@@ -144,7 +147,7 @@ export default function FleetMapPage() {
         mapInstance.current = null;
       }
     };
-  }, []);
+  }, [loading]);
 
   useEffect(() => {
     const map = mapInstance.current;
