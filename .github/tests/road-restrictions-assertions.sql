@@ -51,6 +51,17 @@ BEGIN
     RAISE EXCEPTION 'Service role could not verify a restriction';
   END IF;
 
+  PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
+  BEGIN
+    UPDATE public.road_restrictions SET latitude = 32.1 WHERE id = restriction_id;
+    RAISE EXCEPTION 'Expected verified restriction edits to be blocked';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM NOT LIKE '%requires trusted administrative review%' THEN
+      RAISE;
+    END IF;
+  END;
+
+  PERFORM set_config('request.jwt.claim.role', 'service_role', true);
   BEGIN
     UPDATE public.road_restrictions SET latitude = 90 WHERE id = restriction_id;
     RAISE EXCEPTION 'Expected invalid latitude to be rejected';
