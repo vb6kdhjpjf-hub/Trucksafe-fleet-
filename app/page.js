@@ -446,7 +446,7 @@ export default function Home() {
         <label>מספר רישוי *<input required maxLength={20} value={registration} onChange={e=>setRegistration(e.target.value)} placeholder="12-345-67"/></label>
         <label>סוג רכב<select value={vehicleType} onChange={e=>setVehicleType(e.target.value)}><option>משאית</option><option>גורר</option><option>נגרר</option><option>מסחרית</option><option>רכב אחר</option></select></label>
         <label>יצרן / דגם<input maxLength={100} value={vehicleMake} onChange={e=>setVehicleMake(e.target.value)} placeholder="לדוגמה: Volvo FH"/></label>
-        <div className="vehicle-form-note">נתוני ניתוב למשאית — יש להעתיק מרישיון הרכב או ממסמכי היצרן. ללא הנתונים האלה לא ניתן לחשב מסלול מותאם לרכב.</div>
+        <div className="vehicle-form-note">נתוני ניתוב למשאית — יש להעתיק מרישיון הרכב או ממסמכי היצרן. את עומס הסרן יש לקחת מנתון מאומת או משקילה; אין לחשב ממוצע של המשקל הכולל חלקי מספר הסרנים. ללא הנתונים האלה לא ניתן לחשב מסלול מותאם לרכב.</div>
         <label>סוג משאית לניווט<select value={routingVehicleType} onChange={e=>setRoutingVehicleType(e.target.value)}><option value="StraightTruck">משאית קשיחה</option><option value="Tractor">גורר / ראש גורר</option></select></label>
         <label>גובה כולל בס״מ<input type="number" min="100" max="600" step="1" value={heightCm} onChange={e=>setHeightCm(e.target.value)} placeholder="לפי הרישיון"/></label>
         <label>רוחב כולל בס״מ<input type="number" min="100" max="350" step="1" value={widthCm} onChange={e=>setWidthCm(e.target.value)} placeholder="לפי הרישיון"/></label>
@@ -454,7 +454,7 @@ export default function Home() {
         <label>משקל כולל מותר בק״ג<input type="number" min="1000" max="100000" step="100" value={grossWeightKg} onChange={e=>setGrossWeightKg(e.target.value)} placeholder="לפי הרישיון"/></label>
         <label>מספר סרנים<input type="number" min="2" max="12" step="1" value={axleCount} onChange={e=>setAxleCount(e.target.value)} placeholder="לפי הרישיון"/></label>
         <label>מספר נגררים<input type="number" min="0" max="3" step="1" value={trailerCount} onChange={e=>setTrailerCount(e.target.value)}/></label>
-        <label>משקל מרבי לסרן בק״ג (אם ידוע)<input type="number" min="500" max="30000" step="100" value={weightPerAxleKg} onChange={e=>setWeightPerAxleKg(e.target.value)} placeholder="אופציונלי"/></label>
+        <label>עומס בפועל על הסרן הכבד ביותר בק״ג (נדרש לניווט בטוח)<input type="number" min="500" max="30000" step="100" value={weightPerAxleKg} onChange={e=>setWeightPerAxleKg(e.target.value)} placeholder="לפי שקילה או נתון יצרן"/></label>
         <label style={{display:"flex",alignItems:"center",gap:8}}><input type="checkbox" checked={isDemo} onChange={e=>setIsDemo(e.target.checked)}/> רכב הדגמה — לא ניתן לפתוח איתו נסיעות</label>
         <label>נהג משויך<select value={assignedDriverId} onChange={e=>setAssignedDriverId(e.target.value)}><option value="">ללא נהג משויך</option>{drivers.filter(d=>d.status==="active").map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label>
         <label>טסט בתוקף עד *<input type="date" required value={testDueAt} onChange={e=>setTestDueAt(e.target.value)}/></label>
