@@ -1,6 +1,6 @@
 import { getTruckRoutingConfig } from "../../../lib/truck-routing-config.mjs";
 import { getSavedTruckRoutingProfile } from "../../../lib/truck-routing-profile.mjs";
-import { evaluateFleetRestrictions, decodeFlexiblePolyline } from "../../../lib/road-restriction-geometry.mjs";
+import { evaluateFleetRestrictions, decodeFlexiblePolyline, hasBlockingHereNotice } from "../../../lib/road-restriction-geometry.mjs";
 import { buildHereTruckVehicleParams } from "../../../lib/here-truck-parameters.mjs";
 import { createClient } from "@supabase/supabase-js";
 
@@ -204,7 +204,8 @@ export async function POST(request) {
         duration: Number.isFinite(action.duration) ? action.duration : null
       })));
     const critical = notices.some(notice => notice.severity.toLowerCase() === "critical");
-    if (critical) {
+    const blockingProviderNotice = notices.some(hasBlockingHereNotice);
+    if (blockingProviderNotice) {
       return response({
         error: "ספק הניווט דיווח על הפרת מגבלת משאית קריטית במסלול. המסלול נחסם ולא יוצג לנהג.",
         criticalNotices: notices
