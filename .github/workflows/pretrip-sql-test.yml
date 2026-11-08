@@ -89,6 +89,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108250000_make_truck_route_quota_invoker_scoped.sql
+      - name: Prevent client-side truck route quota resets
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108260000_prevent_truck_route_quota_reset.sql
       - name: Verify rolling truck route quota and grants
         env:
           PGPASSWORD: postgres
