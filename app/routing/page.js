@@ -90,12 +90,18 @@ export default function TruckRoutingPage() {
     supabase.auth.getSession().then(async ({ data, error }) => {
       if (!alive) return;
       if (error || !data.session) { router.replace("/"); return; }
-      const { data: membership } = await supabase.from("fleet_members").select("fleet_id").eq("user_id", data.session.user.id).limit(1).maybeSingle();
-      if (membership?.fleet_id) {
+      const { data: memberships, error: membershipError } = await supabase.from("fleet_members")
+        .select("fleet_id").eq("user_id", data.session.user.id).limit(2);
+      if (membershipError) {
+        setMessage("לא הצלחנו לאמת את החברות בצי. לא נטען רכב עד לבדיקת ההרשאות.");
+      } else if ((memberships || []).length > 1) {
+        setMessage("החשבון משויך ליותר מצי אחד. בחירת צי מרובה עדיין לא הוגדרה, ולכן לא נבחר צי אוטומטית.");
+      } else if (memberships?.[0]?.fleet_id) {
         const { data: fleetVehicles, error: vehicleError } = await supabase.from("vehicles")
           .select("id,registration_number,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,axle_count,trailer_count,weight_per_axle_kg,is_demo")
-          .eq("fleet_id", membership.fleet_id).eq("is_demo", false).order("registration_number");
-        if (!vehicleError) setVehicles(fleetVehicles || []);
+          .eq("fleet_id", memberships[0].fleet_id).eq("is_demo", false).order("registration_number");
+        if (vehicleError) setMessage("לא הצלחנו לטעון את כלי הרכב המורשים.");
+        else setVehicles(fleetVehicles || []);
       }
       setLoading(false);
       fetch("/api/truck-route").then(response => response.json()).then(status => {
@@ -195,6 +201,7 @@ export default function TruckRoutingPage() {
 
   async function calculate(event) {
     event.preventDefault();
+    if (!selectedVehicleId) { setMessage("יש לבחור רכב שמור מהצי. נתוני רכב שמוזנים ידנית אינם משמשים לחישוב מסלול בטיחותי."); return; }
     if (!providerReady) { setMessage("מנוע ניתוב המשאיות עדיין לא הופעל. אין לחשב מסלול עד להשלמת החיבור והבדיקות."); return; }
     setBusy(true);
     setMessage("");
@@ -212,6 +219,7 @@ export default function TruckRoutingPage() {
           Authorization: "Bearer " + session.access_token
         },
         body: JSON.stringify({
+          vehicleId: selectedVehicleId,
           ...form,
           heightCm: Number(form.heightCm),
           widthCm: Number(form.widthCm),
@@ -277,6 +285,7 @@ export default function TruckRoutingPage() {
 
       <form onSubmit={calculate} style={{ background: "white", border: "1px solid #e5eaf1", borderRadius: 16, padding: 18, boxShadow: "0 5px 20px #17233808" }}>
         <h2 style={{ margin: "0 0 14px", fontSize: 18 }}>פרטי הנסיעה והרכב</h2>
+        {vehicles.length === 0 && <p role="status" style={{ color: "#8a4b08", lineHeight: 1.6 }}>אין רכב שמור זמין לניווט בצי. יש להוסיף רכב ולעדכן את מידותיו לפי רישיון הרכב בלוח הבקרה.</p>}
         {vehicles.length > 0 && <label style={{ ...label, marginBottom: 14 }}>בחירת רכב מהצי
           <select style={field} value={selectedVehicleId} onChange={e => chooseVehicle(e.target.value)}>
             <option value="">הזנת פרטי רכב ידנית</option>
@@ -286,18 +295,18 @@ export default function TruckRoutingPage() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 14 }}>
           <label style={label}>מוצא בישראל<div style={{ display: "flex", gap: 7, marginTop: 6 }}><input required maxLength={180} style={{ ...field, marginTop: 0, minWidth: 0 }} value={form.origin} onChange={e => update("origin", e.target.value)} placeholder="כתובת, יישוב או אזור"/><button type="button" onClick={useCurrentLocation} disabled={locating || busy} style={{ ...field, width: "auto", whiteSpace: "nowrap", marginTop: 0, cursor: "pointer" }}><MapPin size={15} style={{ verticalAlign: "middle" }}/> {locating ? "מאתר..." : "המיקום שלי"}</button></div></label>
           <label style={label}>יעד בישראל<input required maxLength={180} style={field} value={form.destination} onChange={e => update("destination", e.target.value)} placeholder="כתובת, יישוב או אזור"/></label>
-          <label style={label}>גובה כולל (ס״מ)<input required type="number" min="100" max="600" step="1" style={field} value={form.heightCm} onChange={e => update("heightCm", e.target.value)} placeholder="לדוגמה: 400"/></label>
-          <label style={label}>רוחב כולל (ס״מ)<input required type="number" min="100" max="350" step="1" style={field} value={form.widthCm} onChange={e => update("widthCm", e.target.value)} placeholder="לדוגמה: 250"/></label>
-          <label style={label}>אורך כולל (ס״מ)<input required type="number" min="200" max="3000" step="1" style={field} value={form.lengthCm} onChange={e => update("lengthCm", e.target.value)} placeholder="כולל נגרר"/></label>
-          <label style={label}>משקל כולל מותר (ק״ג)<input required type="number" min="1000" max="100000" step="100" style={field} value={form.grossWeightKg} onChange={e => update("grossWeightKg", e.target.value)} placeholder="לפי רישיון הרכב"/></label>
+          <label style={label}>גובה כולל (ס״מ)<input required readOnly type="number" min="100" max="600" step="1" style={field} value={form.heightCm} onChange={e => update("heightCm", e.target.value)} placeholder="לדוגמה: 400"/></label>
+          <label style={label}>רוחב כולל (ס״מ)<input required readOnly type="number" min="100" max="350" step="1" style={field} value={form.widthCm} onChange={e => update("widthCm", e.target.value)} placeholder="לדוגמה: 250"/></label>
+          <label style={label}>אורך כולל (ס״מ)<input required readOnly type="number" min="200" max="3000" step="1" style={field} value={form.lengthCm} onChange={e => update("lengthCm", e.target.value)} placeholder="כולל נגרר"/></label>
+          <label style={label}>משקל כולל מותר (ק״ג)<input required readOnly type="number" min="1000" max="100000" step="100" style={field} value={form.grossWeightKg} onChange={e => update("grossWeightKg", e.target.value)} placeholder="לפי רישיון הרכב"/></label>
           <label style={label}>משקל בפועל בנסיעה (ק״ג)<input required type="number" min="1000" max="100000" step="100" style={field} value={form.currentWeightKg} onChange={e => update("currentWeightKg", e.target.value)} placeholder="רכב + מטען + נגרר"/></label>
           <label style={label}>סוג משאית<select required style={field} value={form.vehicleType} onChange={e => update("vehicleType", e.target.value)}><option value="StraightTruck">משאית קשיחה</option><option value="Tractor">גורר / ראש גורר</option></select></label>
-          <label style={label}>מספר סרנים<input required type="number" min="2" max="12" step="1" style={field} value={form.axleCount} onChange={e => update("axleCount", e.target.value)} placeholder="לפי רישיון הרכב"/></label>
-          <label style={label}>מספר נגררים<input required type="number" min="0" max="3" step="1" style={field} value={form.trailerCount} onChange={e => update("trailerCount", e.target.value)}/></label>
-          <label style={label}>משקל מרבי לסרן (ק״ג, אם ידוע)<input type="number" min="500" max="30000" step="100" style={field} value={form.weightPerAxleKg} onChange={e => update("weightPerAxleKg", e.target.value)} placeholder="אופציונלי"/></label>
+          <label style={label}>מספר סרנים<input required readOnly type="number" min="2" max="12" step="1" style={field} value={form.axleCount} onChange={e => update("axleCount", e.target.value)} placeholder="לפי רישיון הרכב"/></label>
+          <label style={label}>מספר נגררים<input required readOnly type="number" min="0" max="3" step="1" style={field} value={form.trailerCount} onChange={e => update("trailerCount", e.target.value)}/></label>
+          <label style={label}>משקל מרבי לסרן (ק״ג, אם ידוע)<input readOnly type="number" min="500" max="30000" step="100" style={field} value={form.weightPerAxleKg} onChange={e => update("weightPerAxleKg", e.target.value)} placeholder="אופציונלי"/></label>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 18 }}>
-          <button type="submit" disabled={busy || !providerReady} style={button}><Route size={17} style={{ verticalAlign: "middle" }}/> {busy ? "מחשב מסלול..." : providerReady ? "חשב מסלול למשאית" : "ממתין לחיבור שירות הניווט"}</button>
+          <button type="submit" disabled={busy || !providerReady || !selectedVehicleId} style={button}><Route size={17} style={{ verticalAlign: "middle" }}/> {busy ? "מחשב מסלול..." : providerReady ? "חשב מסלול למשאית" : "ממתין לחיבור שירות הניווט"}</button>
           <span style={{ color: "#718096", fontSize: 12 }}>המשקלים והמידות נדרשים כדי למנוע חישוב לפי פרופיל משאית שגוי.</span>
         </div>
       </form>
