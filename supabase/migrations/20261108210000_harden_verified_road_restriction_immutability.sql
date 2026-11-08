@@ -9,13 +9,7 @@ security definer
 set search_path = ''
 as $$
 begin
-  if tg_op = 'DELETE' then
-    if old.verification_status = 'verified'
-       and coalesce(current_setting('request.jwt.claim.role', true), '') <> 'service_role' then
-      raise exception 'Road restriction verification requires trusted administrative review';
-    end if;
-    return old;
-  elsif tg_op = 'INSERT' then
+  if tg_op = 'INSERT' then
     if new.verification_status <> 'unverified'
        or new.verified_at is not null
        or new.verified_by is not null
@@ -66,9 +60,3 @@ end;
 $$;
 
 revoke all on function private.guard_road_restriction_verification() from public, anon, authenticated;
-
--- Verified records are safety-critical: managers may not delete them directly.
-drop trigger if exists road_restrictions_guard_verification on public.road_restrictions;
-create trigger road_restrictions_guard_verification
-before insert or update or delete on public.road_restrictions
-for each row execute function private.guard_road_restriction_verification();
