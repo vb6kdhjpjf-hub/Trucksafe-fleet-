@@ -87,5 +87,32 @@ BEGIN
   EXCEPTION WHEN check_violation THEN
     NULL;
   END;
+
+  -- The follow-up hardening migration must also protect ownership and audit metadata.
+  PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
+  BEGIN
+    UPDATE public.road_restrictions SET notes = 'tampered notes' WHERE id = restriction_id;
+    RAISE EXCEPTION 'Expected verified notes edits to be blocked';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM NOT LIKE '%requires trusted administrative review%' THEN RAISE; END IF;
+  END;
+  BEGIN
+    UPDATE public.road_restrictions SET fleet_id = gen_random_uuid() WHERE id = restriction_id;
+    RAISE EXCEPTION 'Expected verified fleet reassignment to be blocked';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM NOT LIKE '%requires trusted administrative review%' THEN RAISE; END IF;
+  END;
+  BEGIN
+    UPDATE public.road_restrictions SET created_by = gen_random_uuid() WHERE id = restriction_id;
+    RAISE EXCEPTION 'Expected verified creator edits to be blocked';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM NOT LIKE '%requires trusted administrative review%' THEN RAISE; END IF;
+  END;
+  BEGIN
+    UPDATE public.road_restrictions SET created_at = created_at + interval '1 minute' WHERE id = restriction_id;
+    RAISE EXCEPTION 'Expected verified creation timestamp edits to be blocked';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM NOT LIKE '%requires trusted administrative review%' THEN RAISE; END IF;
+  END;
 END;
-$$;
+$;
