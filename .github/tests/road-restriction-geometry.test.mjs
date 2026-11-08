@@ -165,6 +165,33 @@ test("supports time windows that cross midnight in Israel local time", () => {
   assert.equal(result.conflicts.length, 1);
 });
 
+
+test("treats a partial time schedule with only a start time as unresolved", () => {
+  const result = evaluateFleetRestrictions({
+    sections: route([[31.999,34.8],[32.001,34.8]]),
+    restrictions: [{ ...verified, valid_from: "12:00:00", valid_until: null }],
+    vehicle,
+    currentWeightKg: 18000,
+    now: new Date("2026-11-08T10:00:00Z")
+  });
+  assert.equal(result.unresolved.length, 1);
+  assert.equal(result.conflicts.length, 0);
+  assert.equal(result.validated, false);
+});
+
+test("treats a partial time schedule with only an end time as unresolved", () => {
+  const result = evaluateFleetRestrictions({
+    sections: route([[31.999,34.8],[32.001,34.8]]),
+    restrictions: [{ ...verified, valid_from: null, valid_until: "12:00:00" }],
+    vehicle,
+    currentWeightKg: 18000,
+    now: new Date("2026-11-08T10:00:00Z")
+  });
+  assert.equal(result.unresolved.length, 1);
+  assert.equal(result.conflicts.length, 0);
+  assert.equal(result.validated, false);
+});
+
 test("flags a time-window restriction with missing hours as unresolved", () => {
   const result = evaluateFleetRestrictions({
     sections: route([[31.999,34.8],[32.001,34.8]]),
