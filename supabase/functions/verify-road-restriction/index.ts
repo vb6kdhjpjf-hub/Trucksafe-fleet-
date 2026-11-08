@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "null",
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Content-Type": "application/json"
@@ -98,7 +98,7 @@ Deno.serve(async (request: Request) => {
   }
 
   const checkedAt = new Date().toISOString();
-  const { error: updateError } = await admin
+  const { data: updated, error: updateError } = await admin
     .from("road_restrictions")
     .update({
       verification_status: "verified",
@@ -108,8 +108,11 @@ Deno.serve(async (request: Request) => {
       verification_note: reviewNote
     })
     .eq("id", restrictionId)
-    .eq("verification_status", "unverified");
+    .eq("verification_status", "unverified")
+    .select("id")
+    .maybeSingle();
   if (updateError) return json({ error: "Verification update failed" }, 500);
+  if (!updated) return json({ error: "Restriction was changed by another reviewer; refresh and review again" }, 409);
 
   return json({ verified: true, restrictionId, verifiedAt: checkedAt });
 });
