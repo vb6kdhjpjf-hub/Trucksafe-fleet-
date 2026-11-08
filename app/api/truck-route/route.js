@@ -7,8 +7,8 @@ import { createClient } from "@supabase/supabase-js";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const response = (body, status = 200) =>
-  Response.json(body, { status, headers: { "Cache-Control": "no-store, max-age=0" } });
+const response = (body, status = 200, extraHeaders = {}) =>
+  Response.json(body, { status, headers: { "Cache-Control": "no-store, max-age=0", ...extraHeaders } });
 
 const numberInRange = (value, min, max) =>
   typeof value === "number" && Number.isFinite(value) && value >= min && value <= max;
@@ -147,6 +147,16 @@ export async function POST(request) {
     const routing = getTruckRoutingConfig();
     const apiKey = routing.apiKey;
     if (!apiKey) return response({ error: "מנוע ניתוב המשאיות מושבת או לא הוגדר במלואו. אין להשתמש במסלול עד להשלמת אישור הספק, הגדרה ובדיקות בטיחות." }, 503);
+
+    stage = "consume_truck_route_quota";
+    const { data: quotaAllowed, error: quotaError } = await db.rpc("consume_truck_route_quota");
+    if (quotaError || quotaAllowed !== true) {
+      if (quotaError) {
+        console.error("Truck route quota check failed", { stage, code: String(quotaError.code || "unknown").slice(0, 40) });
+        return response({ error: "לא ניתן לאמת כרגע את מכסת בקשות הניווט. לא נשלחה בקשה לספק הניווט." }, 503);
+      }
+      return response({ error: "הגעת למכסת חישובי המסלול. אפשר לנסות שוב לאחר שהמכסה תתחדש." }, 429);
+    }
 
     stage = "geocode_addresses";
     const [origin, destination] = await Promise.all([
