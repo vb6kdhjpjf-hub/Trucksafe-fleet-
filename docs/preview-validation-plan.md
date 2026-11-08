@@ -88,7 +88,7 @@ The following feature-only migrations have been applied to the isolated test pro
 - `20261108195705` `prevent_truck_route_quota_reset`
 - `20261108195817` `validate_truck_route_quota_timestamps`
 - `20261108200740` `validate_road_restriction_active_date_range`
-- `20261108201100` `add_route_quota_primary_key`
+- `20261108201143` `add_route_quota_primary_key`
 
 The isolated test project currently has zero road-restriction rows and zero quota-ledger rows. Do not copy production rows, auth users, storage objects, or secrets. Do not apply any of these feature-only migrations to Production without a separate reviewed migration plan and explicit approval.
 
