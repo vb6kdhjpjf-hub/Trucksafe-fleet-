@@ -51,3 +51,19 @@ Official docs:
 - [Vehicle properties and trailer dimensions](https://docs.here.com/routing/docs/routing-v8-vehicle-properties)
 
 No paid HERE request or external data subscription was activated as part of this review.
+
+
+## Reviewer-only verification function (prepared, not deployed)
+
+The source code is in `supabase/functions/verify-road-restriction/index.ts`. It is intentionally disabled until a controlled deployment is approved.
+
+Required Edge Function secrets:
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (server-side secret only; never expose to the browser)
+- `TRUCK_RESTRICTION_REVIEWER_IDS` (comma-separated UUID allowlist; empty means disabled)
+- `TRUCK_RESTRICTION_ALLOWED_SOURCE_HOSTS` (comma-separated exact hostnames; empty means disabled)
+
+The function verifies the caller's Supabase JWT, checks the reviewer UUID allowlist, requires explicit source and field-check confirmations plus a written review note, validates the source hostname and restriction fields, then writes the verification timestamp/reviewer/audit note using the service role. It refuses re-verification of already verified rows; those need a separate controlled correction workflow.
+
+Do not deploy the function or set reviewer IDs until the organization has formally appointed reviewers and approved the source-host allowlist.
