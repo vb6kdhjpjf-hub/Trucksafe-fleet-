@@ -48,7 +48,28 @@ begin
     end if;
   elsif old.verification_status is distinct from new.verification_status
      or old.verified_at is distinct from new.verified_at
-     or old.verified_by is distinct from new.verified_by then
+     or old.verified_by is distinct from new.verified_by
+     or (
+       old.verification_status = 'verified'
+       and (
+         old.road_name is distinct from new.road_name
+         or old.restriction_type is distinct from new.restriction_type
+         or old.direction is distinct from new.direction
+         or old.max_height_m is distinct from new.max_height_m
+         or old.max_weight_t is distinct from new.max_weight_t
+         or old.max_width_m is distinct from new.max_width_m
+         or old.max_length_m is distinct from new.max_length_m
+         or old.valid_from is distinct from new.valid_from
+         or old.valid_until is distinct from new.valid_until
+         or old.active_from is distinct from new.active_from
+         or old.active_until is distinct from new.active_until
+         or old.latitude is distinct from new.latitude
+         or old.longitude is distinct from new.longitude
+         or old.radius_m is distinct from new.radius_m
+         or old.source_url is distinct from new.source_url
+         or old.is_active is distinct from new.is_active
+       )
+     ) then
     if coalesce(auth.role(), '') <> 'service_role' then
       raise exception 'Road restriction verification requires trusted administrative review';
     end if;
