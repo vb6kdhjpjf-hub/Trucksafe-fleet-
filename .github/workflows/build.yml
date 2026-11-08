@@ -4,7 +4,7 @@ on:
   # Run validation for every PR target, including the active safety-integration base.
   pull_request:
   push:
-    branches: [main, fix/pretrip-safe-integration]
+    branches: [main, fix/pretrip-safe-integration, feat/truck-vehicle-routing-profile]
   workflow_dispatch:
 
 permissions:
