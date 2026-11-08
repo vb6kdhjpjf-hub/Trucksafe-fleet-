@@ -1,6 +1,6 @@
 import { getTruckRoutingConfig } from "../../../lib/truck-routing-config.mjs";
 import { getSavedTruckRoutingProfile } from "../../../lib/truck-routing-profile.mjs";
-import { evaluateFleetRestrictions } from "../../../lib/road-restriction-geometry.mjs";
+import { evaluateFleetRestrictions, decodeFlexiblePolyline } from "../../../lib/road-restriction-geometry.mjs";
 import { buildHereTruckVehicleParams } from "../../../lib/here-truck-parameters.mjs";
 import { createClient } from "@supabase/supabase-js";
 
@@ -182,12 +182,20 @@ export async function POST(request) {
 
     const route = routeData?.routes?.[0];
     if (!route?.sections?.length) return response({ error: "לא נמצא מסלול למשאית לפי הנתונים שהוזנו. אין להחליף למסלול רכב פרטי." }, 422);
+    try {
+      if (route.sections.some(section => typeof section.polyline !== "string" || !section.polyline)) {
+        throw new Error("Missing route geometry");
+      }
+      for (const section of route.sections) decodeFlexiblePolyline(section.polyline);
+    } catch {
+      return response({ error: "נתוני הגיאומטריה של המסלול אינם תקינים. המסלול נחסם ולא יוצג לנהג." }, 502);
+    }
 
-    const notices = route.sections.flatMap(section => (section.notices || []).map(notice => ({
+    const notices = [...(route.notices || []), ...route.sections.flatMap(section => section.notices || [])].map(notice => ({
       code: String(notice.code || "notice").slice(0, 100),
       severity: String(notice.severity || "info").slice(0, 30),
       title: String(notice.title || notice.code || "הודעת ניווט").slice(0, 240)
-    })));
+    }));
     const actions = route.sections.flatMap(section => (section.actions || [])
       .filter(action => typeof action.instruction === "string" && action.instruction.trim())
       .map(action => ({
