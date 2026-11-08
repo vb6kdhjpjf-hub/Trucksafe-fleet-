@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { ArrowRight, AlertTriangle, Plus, RefreshCw, ShieldAlert } from "lucide-react";
 
-const blank = { road_name: "", restriction_type: "height", direction: "", max_height_m: "", max_weight_t: "", max_width_m: "", max_length_m: "", valid_from: "", valid_until: "", active_from: "", active_until: "", notes: "" };
+const blank = { road_name: "", restriction_type: "height", direction: "", max_height_m: "", max_weight_t: "", max_width_m: "", max_length_m: "", valid_from: "", valid_until: "", active_from: "", active_until: "", latitude: "", longitude: "", radius_m: "75", source_url: "", notes: "" };
 const labels = { height: "גובה מרבי", weight: "משקל מרבי", width: "רוחב מרבי", length: "אורך מרבי", hazmat: "חומרים מסוכנים", time_window: "הגבלת שעות", closed: "כביש סגור", other: "אחר" };
 
 export default function RoadRestrictionsPage() {
@@ -59,6 +59,19 @@ export default function RoadRestrictionsPage() {
         (form.active_from && form.active_until && form.active_until < form.active_from)) {
       setMessage("תאריך או שעת הסיום אינם יכולים להיות לפני ההתחלה."); return;
     }
+    const hasLatitude = form.latitude !== "";
+    const hasLongitude = form.longitude !== "";
+    if (hasLatitude !== hasLongitude) { setMessage("יש להזין גם קו רוחב וגם קו אורך, או להשאיר את שניהם ריקים."); return; }
+    if (hasLatitude && (!Number.isFinite(Number(form.latitude)) || Number(form.latitude) < 29 || Number(form.latitude) > 34 ||
+        !Number.isFinite(Number(form.longitude)) || Number(form.longitude) < 34 || Number(form.longitude) > 36)) {
+      setMessage("הקואורדינטות חייבות להיות תקינות ובתחומי ישראל."); return;
+    }
+    if (!Number.isInteger(Number(form.radius_m)) || Number(form.radius_m) < 10 || Number(form.radius_m) > 1000) {
+      setMessage("רדיוס האזור חייב להיות בין 10 ל־1,000 מטר."); return;
+    }
+    if (form.source_url && !/^https:\/\//i.test(form.source_url.trim())) {
+      setMessage("קישור המקור חייב להתחיל ב־https://."); return;
+    }
     setBusy(true); setMessage("");
     try {
       const numeric = value => value === "" ? null : Number(value);
@@ -69,6 +82,11 @@ export default function RoadRestrictionsPage() {
         max_width_m: numeric(form.max_width_m), max_length_m: numeric(form.max_length_m),
         valid_from: form.valid_from || null, valid_until: form.valid_until || null,
         active_from: form.active_from || null, active_until: form.active_until || null,
+        latitude: form.latitude === "" ? null : Number(form.latitude),
+        longitude: form.longitude === "" ? null : Number(form.longitude),
+        radius_m: Number(form.radius_m),
+        source_url: form.source_url.trim() || null,
+        verification_status: "unverified",
         notes: form.notes.trim() || null
       };
       const { error } = await supabase.from("road_restrictions").insert(payload);
@@ -116,6 +134,11 @@ export default function RoadRestrictionsPage() {
         <label>משקל מרבי (טון)<input type="number" min="0.1" step="0.1" style={field} value={form.max_weight_t} onChange={e => setForm({ ...form, max_weight_t: e.target.value })}/></label>
         <label>רוחב מרבי (מטר)<input type="number" min="0.1" step="0.01" style={field} value={form.max_width_m} onChange={e => setForm({ ...form, max_width_m: e.target.value })}/></label>
         <label>אורך מרבי (מטר)<input type="number" min="0.1" step="0.01" style={field} value={form.max_length_m} onChange={e => setForm({ ...form, max_length_m: e.target.value })}/></label>
+        <label>קו רוחב (Latitude)<input type="number" step="0.000001" min="29" max="34" style={field} value={form.latitude} onChange={e => setForm({ ...form, latitude: e.target.value })} placeholder="לדוגמה: 32.123456"/></label>
+        <label>קו אורך (Longitude)<input type="number" step="0.000001" min="34" max="36" style={field} value={form.longitude} onChange={e => setForm({ ...form, longitude: e.target.value })} placeholder="לדוגמה: 34.987654"/></label>
+        <label>רדיוס בדיקה (מטר)<input required type="number" min="10" max="1000" step="5" style={field} value={form.radius_m} onChange={e => setForm({ ...form, radius_m: e.target.value })}/></label>
+        <label style={{ gridColumn: "1/-1" }}>קישור למקור המגבלה (HTTPS)<input type="url" style={field} value={form.source_url} onChange={e => setForm({ ...form, source_url: e.target.value })} placeholder="קישור למסמך או הודעה רשמית"/></label>
+        <p style={{ gridColumn: "1/-1", margin: 0, color: "#8a4b08", fontSize: 13 }}>כל מגבלה חדשה נשמרת כלא מאומתת. הזנת קואורדינטות או קישור אינה מאשרת את אמינותה; אימות יבוצע בנפרד לפני אכיפה אוטומטית.</p>
         <label>שעת התחלה<input type="time" style={field} value={form.valid_from} onChange={e => setForm({ ...form, valid_from: e.target.value })}/></label>
         <label>שעת סיום<input type="time" style={field} value={form.valid_until} onChange={e => setForm({ ...form, valid_until: e.target.value })}/></label>
         <label>בתוקף מתאריך<input type="date" style={field} value={form.active_from} onChange={e => setForm({ ...form, active_from: e.target.value })}/></label>
@@ -134,6 +157,8 @@ export default function RoadRestrictionsPage() {
         {(row.valid_from || row.valid_until) && <span>שעות: {row.valid_from || "—"}–{row.valid_until || "—"}</span>}
         {(row.active_from || row.active_until) && <span>תאריכים: {row.active_from || "—"} עד {row.active_until || "—"}</span>}
       </div>
+      {row.latitude != null && row.longitude != null && <div style={{ marginTop: 8, fontSize: 12, color: "#536176" }}>מיקום: {Number(row.latitude).toFixed(6)}, {Number(row.longitude).toFixed(6)} · רדיוס: {row.radius_m} מ׳</div>}
+      <div style={{ marginTop: 6, fontSize: 12, color: row.verification_status === "verified" ? "#16803c" : "#9b5b16" }}>סטטוס אימות: {row.verification_status === "verified" ? "מאומת" : row.verification_status === "expired" ? "פג תוקף" : "לא מאומת"}{row.source_url ? <> · <a href={row.source_url} target="_blank" rel="noreferrer">מקור</a></> : " · חסר מקור"}</div>
       {row.notes && <p style={{ marginBottom: 0, whiteSpace: "pre-wrap" }}>{row.notes}</p>}
     </article>)}
     <p style={{ color: "#718096", fontSize: 12 }}>TruckSafe Fleet · יש לוודא כל מגבלה מול מקור רשמי ועדכני</p>
