@@ -312,7 +312,8 @@ test("never selects a route with a critical HERE notice when another alternative
     routes: [providerBlocked, safe],
     restrictions: [],
     vehicle,
-    currentWeightKg: 18000
+    currentWeightKg: 18000,
+    now: new Date("2026-11-08T10:00:00Z")
   });
   assert.equal(result.route, safe);
   assert.equal(result.rejected[0].reason, "provider_restriction_notice");
