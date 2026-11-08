@@ -46,7 +46,7 @@ export async function GET() {
 export async function POST(request) {
   let stage = "request_start";
   try {
-    if (!/^application\\/json(?:\\s*;|$)/i.test(request.headers.get("content-type") || "")) {
+    if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get("content-type") || "")) {
       return response({ error: "יש לשלוח בקשה בפורמט JSON." }, 415);
     }
     stage = "read_authorization";
