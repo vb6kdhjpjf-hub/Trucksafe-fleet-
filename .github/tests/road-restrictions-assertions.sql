@@ -114,5 +114,11 @@ BEGIN
   EXCEPTION WHEN raise_exception THEN
     IF SQLERRM NOT LIKE '%requires trusted administrative review%' THEN RAISE; END IF;
   END;
+  BEGIN
+    DELETE FROM public.road_restrictions WHERE id = restriction_id;
+    RAISE EXCEPTION 'Expected verified restriction deletion to be blocked';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM NOT LIKE '%requires trusted administrative review%' THEN RAISE; END IF;
+  END;
 END;
 $$;
