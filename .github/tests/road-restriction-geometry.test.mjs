@@ -20,7 +20,7 @@ function encodePolyline(points, precision = 5) {
   }
   return out;
 }
-const route = (points) => [{ polyline: encodePolyline(points), summary: { duration: 0 } }];
+const route = (points) => [{ polyline: encodePolyline(points), summary: { length: 100, duration: 0 } }];
 const vehicle = { heightCm: 420, widthCm: 250, lengthCm: 900 };
 const verified = {
   id: "r1", road_name: "Bridge A", is_active: true, verification_status: "verified", verified_at: "2026-11-01T00:00:00Z", source_last_checked_at: "2026-11-01T00:00:00Z", verification_note: "Checked official notice and verified all restriction fields.", verified_by: "00000000-0000-4000-8000-000000000001",
