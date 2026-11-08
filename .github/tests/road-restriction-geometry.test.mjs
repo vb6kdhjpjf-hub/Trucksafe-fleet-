@@ -182,6 +182,24 @@ test("evaluates a restriction that becomes active during the estimated route", (
   assert.equal(result.conflicts.length, 1);
 });
 
+test("detects a sub-minute restriction between route minute samples", () => {
+  const scheduled = {
+    ...verified,
+    restriction_type: "time_window",
+    valid_from: "02:30:10",
+    valid_until: "02:30:20"
+  };
+  const result = evaluateFleetRestrictions({
+    sections: [{ ...route([[31.999,34.8],[32.001,34.8]])[0], summary: { duration: 60 } }],
+    restrictions: [scheduled],
+    vehicle,
+    currentWeightKg: 18000,
+    now: new Date("2026-11-08T00:29:50Z")
+  });
+  assert.equal(result.conflicts.length, 1);
+  assert.equal(result.validated, false);
+});
+
 test("does not block a time-window restriction after the route has passed its active period", () => {
   const scheduled = {
     ...verified,
