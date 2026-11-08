@@ -33,6 +33,12 @@ BEGIN
   IF NOT (SELECT relrowsecurity FROM pg_catalog.pg_class WHERE oid = 'private.truck_route_requests'::regclass) THEN
     RAISE EXCEPTION 'Route quota rows must be protected by RLS';
   END IF;
+  IF has_table_privilege('authenticated', 'private.truck_route_requests', 'DELETE') THEN
+    RAISE EXCEPTION 'Authenticated users must not delete quota history to reset their limit';
+  END IF;
+  IF has_function_privilege('authenticated', 'private.prune_truck_route_quota_rows()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Authenticated users must not execute the private quota cleanup trigger';
+  END IF;
 
   SET LOCAL ROLE authenticated;
   PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
@@ -78,6 +84,13 @@ BEGIN
     NULL;
   END;
 
+  BEGIN
+    DELETE FROM private.truck_route_requests WHERE user_id = user_b;
+    RAISE EXCEPTION 'Authenticated users must not delete quota rows';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
   PERFORM set_config('request.jwt.claim.sub', '', true);
   SELECT public.consume_truck_route_quota() INTO allowed;
   IF allowed IS DISTINCT FROM false THEN
@@ -85,3 +98,6 @@ BEGIN
   END IF;
 END;
 $$;
+
+-- Test harness runs as the database owner after the role-scoped assertions.
+DELETE FROM private.truck_route_requests WHERE user_id IN ('33333333-3333-4333-8333-333333333333', '44444444-4444-4444-8444-444444444444');
