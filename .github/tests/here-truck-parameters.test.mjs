@@ -28,9 +28,8 @@ test("preserves axle count, trailer count and supported vehicle type", () => {
   assert.equal(params["vehicle[type]"], "StraightTruck");
 });
 
-test("omits unknown optional axle weight rather than inventing it", () => {
-  const params = buildHereTruckVehicleParams({ ...profile, weightPerAxleKg: null }, 18000);
-  assert.equal("vehicle[weightPerAxle]" in params, false);
+test("rejects an unknown axle load rather than calculating an unsafe route", () => {
+  assert.throws(() => buildHereTruckVehicleParams({ ...profile, weightPerAxleKg: null }, 18000), /Invalid saved truck profile/);
 });
 
 test("rejects a current weight above the saved gross weight", () => {
