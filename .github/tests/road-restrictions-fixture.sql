@@ -1,8 +1,4 @@
 -- Minimal isolated schema for geospatial road restriction migration tests.
-CREATE OR REPLACE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS $$
-  SELECT NULLIF(current_setting('request.jwt.claim.role', true), '')
-$$;
-
 CREATE TABLE public.road_restrictions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   fleet_id uuid NOT NULL,
