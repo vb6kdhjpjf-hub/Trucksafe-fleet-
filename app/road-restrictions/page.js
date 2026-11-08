@@ -158,8 +158,8 @@ export default function RoadRestrictionsPage() {
         {(row.active_from || row.active_until) && <span>תאריכים: {row.active_from || "—"} עד {row.active_until || "—"}</span>}
       </div>
       {row.latitude != null && row.longitude != null && <div style={{ marginTop: 8, fontSize: 12, color: "#536176" }}>מיקום: {Number(row.latitude).toFixed(6)}, {Number(row.longitude).toFixed(6)} · רדיוס: {row.radius_m} מ׳</div>}
-      <div style={{ marginTop: 6, fontSize: 12, color: row.verification_status === "verified" ? "#16803c" : "#9b5b16" }}>סטטוס אימות: {row.verification_status === "verified" ? "מאומת" : row.verification_status === "expired" ? "פג תוקף" : "לא מאומת"}{row.source_url ? <> · <a href={row.source_url} target="_blank" rel="noreferrer">מקור</a></> : " · חסר מקור"}</div>
-      {row.notes && <p style={{ marginBottom: 0, whiteSpace: "pre-wrap" }}>{row.notes}</p>}
+      <div style={{ marginTop: 6, fontSize: 12, color: row.verification_status === "verified" ? "#16803c" : "#9b5b16" }}>סטטוס אימות: {row.verification_status === "verified" ? "מאומת" : row.verification_status === "expired" ? "פג תוקף" : "לא מאומת"}{row.source_last_checked_at ? " · נבדק: " + new Date(row.source_last_checked_at).toLocaleDateString("he-IL") : ""}{row.source_url ? <> · <a href={row.source_url} target="_blank" rel="noreferrer">מקור</a></> : " · חסר מקור"}</div>
+      {row.verification_note && <p style={{ marginBottom: 0, whiteSpace: "pre-wrap" }}>הערת אימות: {row.verification_note}</p>}{row.notes && <p style={{ marginBottom: 0, whiteSpace: "pre-wrap" }}>{row.notes}</p>}
     </article>)}
     <p style={{ color: "#718096", fontSize: 12 }}>TruckSafe Fleet · יש לוודא כל מגבלה מול מקור רשמי ועדכני</p>
   </main>;
