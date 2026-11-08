@@ -46,7 +46,7 @@ as $$
 begin
   if tg_op = 'INSERT' then
     if new.verification_status <> 'unverified' or new.verified_at is not null or new.verified_by is not null then
-      if coalesce(auth.role(), '') <> 'service_role' then
+      if coalesce(current_setting('request.jwt.claim.role', true), '') <> 'service_role' then
         raise exception 'Road restriction verification requires trusted administrative review';
       end if;
     end if;
