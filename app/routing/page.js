@@ -318,7 +318,7 @@ export default function TruckRoutingPage() {
           <label style={label}>סוג משאית<select required style={field} value={form.vehicleType} onChange={e => update("vehicleType", e.target.value)}><option value="StraightTruck">משאית קשיחה</option><option value="Tractor">גורר / ראש גורר</option></select></label>
           <label style={label}>מספר סרנים<input required readOnly type="number" min="2" max="12" step="1" style={field} value={form.axleCount} onChange={e => update("axleCount", e.target.value)} placeholder="לפי רישיון הרכב"/></label>
           <label style={label}>מספר נגררים<input required readOnly type="number" min="0" max="3" step="1" style={field} value={form.trailerCount} onChange={e => update("trailerCount", e.target.value)}/></label>
-          <label style={label}>משקל מרבי לסרן (ק״ג, אם ידוע)<input readOnly type="number" min="500" max="30000" step="100" style={field} value={form.weightPerAxleKg} onChange={e => update("weightPerAxleKg", e.target.value)} placeholder="אופציונלי"/></label>
+          <label style={label}>משקל מרבי לסרן (ק״ג) — חובה<input required readOnly type="number" min="500" max="30000" step="100" style={field} value={form.weightPerAxleKg} onChange={e => update("weightPerAxleKg", e.target.value)} placeholder="יש לעדכן בפרופיל הרכב לפי נתון מאומת"/></label>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 18 }}>
           <button type="submit" disabled={busy || !providerReady || !selectedVehicleId} style={button}><Route size={17} style={{ verticalAlign: "middle" }}/> {busy ? "מחשב מסלול..." : providerReady ? "חשב מסלול למשאית" : "ממתין לחיבור שירות הניווט"}</button>
