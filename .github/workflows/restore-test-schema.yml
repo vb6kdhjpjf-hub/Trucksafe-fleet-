@@ -30,7 +30,6 @@ jobs:
       actions: read
     env:
       SUPABASE_TEST_DB_URL: ${{ secrets.SUPABASE_TEST_DB_URL }}
-      EXPECTED_TEST_HOST: db.yxxrgblpqzhnnyojbwcr.supabase.co
       SCHEMA_ARTIFACT_RUN_ID: "42468539345"
       SCHEMA_ARTIFACT_NAME: trucksafe-schema-only-temporary
     steps:
@@ -42,15 +41,27 @@ jobs:
         run: |
           set +x
           python3 - <<'PY'
-          import os, re
+          import os
+          from urllib.parse import urlsplit, unquote
           target = os.environ.get("SUPABASE_TEST_DB_URL", "")
-          expected = os.environ["EXPECTED_TEST_HOST"]
-          match = re.match(r"^postgres(?:ql)?://[^@]+@([^:/?#]+)(?::[0-9]+)?/[^?#]+(?:\?.*)?$", target)
-          if not match:
+          try:
+              parsed = urlsplit(target)
+              username = unquote(parsed.username or "")
+              host = (parsed.hostname or "").lower()
+              port = parsed.port
+              database = parsed.path.lstrip("/")
+          except ValueError:
               raise SystemExit("SUPABASE_TEST_DB_URL is not a valid PostgreSQL connection URI.")
-          if match.group(1) != expected:
-              raise SystemExit("Refusing to run: target host is not the dedicated TruckSafe Fleet Test project.")
-          print("Target credential format and dedicated test host verified.")
+          expected_user = "postgres.yxxrgblpqzhnnyojbwcr"
+          if parsed.scheme not in ("postgres", "postgresql"):
+              raise SystemExit("Connection URI must use the PostgreSQL scheme.")
+          if not host.endswith(".pooler.supabase.com"):
+              raise SystemExit("Refusing direct IPv6 connection. Use this project's Supabase Session pooler URI.")
+          if port != 5432 or username != expected_user or database != "postgres":
+              raise SystemExit("Refusing connection: expected the TruckSafe Fleet Test project's Session pooler on port 5432.")
+          if not parsed.password:
+              raise SystemExit("Connection URI is missing its password.")
+          print("Session pooler URI verified for the dedicated TruckSafe Fleet Test project; secret value hidden.")
           PY
 
       - name: Download previously verified schema-only snapshot
