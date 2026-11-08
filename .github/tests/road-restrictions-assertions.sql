@@ -39,8 +39,7 @@ BEGIN
 
   PERFORM set_config('request.jwt.claim.role', 'service_role', true);
   UPDATE public.road_restrictions
-  SET max_height_m = 4.1,
-      latitude = 32.0,
+  SET latitude = 32.0,
       longitude = 34.8,
       radius_m = 100,
       max_height_m = 4.2,
