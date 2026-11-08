@@ -108,3 +108,58 @@ test("rejects verification without trusted timestamp and reviewer identity", () 
   assert.equal(result.unresolved.length, 1);
   assert.equal(result.conflicts.length, 0);
 });
+
+
+test("enforces a daytime restriction using Israel local time", () => {
+  const timeRestriction = {
+    ...verified,
+    restriction_type: "time_window",
+    valid_from: "02:00:00",
+    valid_until: "04:00:00"
+  };
+  const during = evaluateFleetRestrictions({
+    sections: route([[31.999,34.8],[32.001,34.8]]),
+    restrictions: [timeRestriction],
+    vehicle,
+    currentWeightKg: 18000,
+    now: new Date("2026-11-08T00:30:00Z")
+  });
+  const outside = evaluateFleetRestrictions({
+    sections: route([[31.999,34.8],[32.001,34.8]]),
+    restrictions: [timeRestriction],
+    vehicle,
+    currentWeightKg: 18000,
+    now: new Date("2026-11-08T03:30:00Z")
+  });
+  assert.equal(during.conflicts.length, 1);
+  assert.equal(outside.conflicts.length, 0);
+});
+
+test("supports time windows that cross midnight in Israel local time", () => {
+  const timeRestriction = {
+    ...verified,
+    restriction_type: "time_window",
+    valid_from: "22:00:00",
+    valid_until: "06:00:00"
+  };
+  const result = evaluateFleetRestrictions({
+    sections: route([[31.999,34.8],[32.001,34.8]]),
+    restrictions: [timeRestriction],
+    vehicle,
+    currentWeightKg: 18000,
+    now: new Date("2026-11-08T00:30:00Z")
+  });
+  assert.equal(result.conflicts.length, 1);
+});
+
+test("flags a time-window restriction with missing hours as unresolved", () => {
+  const result = evaluateFleetRestrictions({
+    sections: route([[31.999,34.8],[32.001,34.8]]),
+    restrictions: [{ ...verified, restriction_type: "time_window", valid_from: null, valid_until: null }],
+    vehicle,
+    currentWeightKg: 18000,
+    now: new Date("2026-11-08T10:00:00Z")
+  });
+  assert.equal(result.unresolved.length, 1);
+  assert.equal(result.validated, false);
+});
