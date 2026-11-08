@@ -167,7 +167,7 @@ export async function POST(request) {
       origin: `${origin.lat},${origin.lng}`,
       destination: `${destination.lat},${destination.lng}`,
       departureTime: departureAt.toISOString(),
-      return: "polyline,summary,actions",
+      return: "polyline,summary,actions,instructions,potentialTimeDependentViolations",
       lang: "he-IL",
       "avoid[features]": "dirtRoad,uTurns",
       apiKey
