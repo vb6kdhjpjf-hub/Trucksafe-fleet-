@@ -56,9 +56,15 @@ export default function Home() {
     setWorkspaceError("");
     const isCurrent=()=>requestId===fleetLoadRef.current;
     let membership=null;
-    const membershipResult=await supabase.from("fleet_members").select("fleet_id,role").eq("user_id",user.id).limit(1).maybeSingle();
+    const membershipResult=await supabase.from("fleet_members").select("fleet_id,role").eq("user_id",user.id).limit(2);
     if(!isCurrent())return;
-    membership=membershipResult.data;
+    if(membershipResult.data?.length>1){
+      setFleet(null);
+      setWorkspaceError("החשבון משויך ליותר מצי אחד. בחירת צי מרובה עדיין לא הוגדרה, ולכן לא נבחר צי אוטומטית.");
+      setWorkspaceChecked(true);
+      return;
+    }
+    membership=membershipResult.data?.[0]||null;
     let current=null;
     let role=membership?.role||"owner";
     if(membershipResult.error||!membership){
