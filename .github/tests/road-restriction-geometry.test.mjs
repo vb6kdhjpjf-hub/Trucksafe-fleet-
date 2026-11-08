@@ -210,3 +210,19 @@ test("fails closed when route duration cannot be evaluated safely", () => {
   assert.equal(result.unresolved.length, 1);
   assert.equal(result.validated, false);
 });
+
+
+test("blocks any HERE critical notice even when the code is unknown", async () => {
+  const { hasBlockingHereNotice } = await import("../../lib/road-restriction-geometry.mjs");
+  assert.equal(hasBlockingHereNotice({ code: "futureUnknownCode", severity: "critical" }), true);
+});
+
+test("blocks administrative-wide vehicle violations even when HERE marks them informational", async () => {
+  const { hasBlockingHereNotice } = await import("../../lib/road-restriction-geometry.mjs");
+  assert.equal(hasBlockingHereNotice({ code: "violatedAdminWideVehicleRestriction", severity: "info" }), true);
+});
+
+test("does not block ordinary informational route notices", async () => {
+  const { hasBlockingHereNotice } = await import("../../lib/road-restriction-geometry.mjs");
+  assert.equal(hasBlockingHereNotice({ code: "mainLanguageNotFound", severity: "info" }), false);
+});
