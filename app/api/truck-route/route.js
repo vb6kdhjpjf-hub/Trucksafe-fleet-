@@ -186,7 +186,10 @@ export async function POST(request) {
       if (route.sections.some(section => typeof section.polyline !== "string" || !section.polyline)) {
         throw new Error("Missing route geometry");
       }
-      for (const section of route.sections) decodeFlexiblePolyline(section.polyline);
+      for (const section of route.sections) {
+        const coordinates = decodeFlexiblePolyline(section.polyline);
+        if (coordinates.length < 2) throw new Error("Incomplete route geometry");
+      }
     } catch {
       return response({ error: "נתוני הגיאומטריה של המסלול אינם תקינים. המסלול נחסם ולא יוצג לנהג." }, 502);
     }
