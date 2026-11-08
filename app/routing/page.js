@@ -243,7 +243,8 @@ export default function TruckRoutingPage() {
       }
       if (!response.ok) {
         console.error("Truck route request failed", { status: response.status, error: data.error || "unknown" });
-        setMessage((data.error || "לא הצלחנו לחשב מסלול.") + " (קוד " + response.status + ")");
+        const blockedRoads = Array.isArray(data.restrictionConflicts) ? data.restrictionConflicts.map(item => item.roadName).filter(Boolean).join(", ") : "";
+        setMessage((data.error || "לא הצלחנו לחשב מסלול.") + (blockedRoads ? " מגבלות: " + blockedRoads + "." : "") + " (קוד " + response.status + ")");
         return;
       }
       if (!Array.isArray(data.sections) || data.sections.length === 0) {
@@ -253,7 +254,8 @@ export default function TruckRoutingPage() {
       }
       setResult(data);
       if (data.hasCriticalNotices) setMessage("המסלול כולל התראות קריטיות. אין לצאת לדרך על סמך מסלול זה.");
-      else setMessage("המסלול חושב. יש לאמת שילוט והגבלות בשטח לפני היציאה.");
+      else if (data.restrictionValidation?.unresolvedNearbyRestrictions > 0) setMessage("המסלול חושב אך נמצאו מגבלות דרך סמוכות שלא אומתו או חסר להן מיקום. אין להסתמך עליו כמסלול בטוח עד לבדיקה ידנית.");
+      else setMessage("המסלול חושב ונבדקו מגבלות הדרך המאומתות של הצי. עדיין חובה לבדוק שילוט והגבלות בשטח; מאגר ארצי רשמי מלא אינו מחובר.");
     } catch (error) {
       console.error("Truck route request could not be completed", error?.name || "unknown");
       setMessage("החיבור לשירות חישוב המסלולים נכשל. בדוק אינטרנט ורענן את הדף. אם התקלה חוזרת, נבדוק את קוד השגיאה.");
@@ -278,7 +280,7 @@ export default function TruckRoutingPage() {
       <section style={{ background: "#fff8e8", border: "1px solid #f0d9a8", borderRadius: 14, padding: 14, marginBottom: 16 }}>
         <b><ShieldAlert size={17} style={{ verticalAlign: "middle" }}/> בטיחות לפני הכול</b>
         <p style={{ margin: "7px 0 0", lineHeight: 1.6, fontSize: 13 }}>המערכת משתמשת בנתוני ניתוב למשאיות של HERE. גם מסלול ללא התראות אינו הבטחה שהדרך בטוחה או חוקית בכל רגע. חובה לבדוק שילוט, הוראות משטרה, עבודות בכביש ומגבלות מקומיות לפני ובמהלך הנסיעה. מסלול עם התראה קריטית אינו מאושר ליציאה.</p>
-        <p style={{ margin: "8px 0 0", lineHeight: 1.6, fontSize: 13, color: "#8a4b08" }}><b>חשוב:</b> מגבלות דרך שהוזנו ידנית במערכת עדיין אינן משולבות אוטומטית בחישוב המסלול. יש לבדוק אותן בנפרד לפני היציאה.</p>
+        <p style={{ margin: "8px 0 0", lineHeight: 1.6, fontSize: 13, color: "#8a4b08" }}><b>חשוב:</b> המערכת בודקת רק מגבלות צי בעלות מיקום ואימות תקין. אין עדיין חיבור למאגר ארצי רשמי מלא של כל מגבלות המשאיות בישראל, ולכן גם מסלול שעבר את הבדיקה אינו אישור בטיחות או חוקיות.</p>
       </section>
 
       {message && <div role="status" style={{ background: result?.hasCriticalNotices ? "#fff0f0" : "#eef4ff", border: "1px solid #dce6f7", borderRadius: 10, padding: 12, marginBottom: 14, lineHeight: 1.5 }}>{message}</div>}
@@ -312,6 +314,10 @@ export default function TruckRoutingPage() {
       </form>
 
       {result && <section style={{ marginTop: 16, display: "grid", gap: 14 }}>
+        {result.restrictionValidation && <div role="status" style={{ background: result.restrictionValidation.manualRestrictionsValidated ? "#fff8e8" : "#fff0f0", border: "1px solid #f0d9a8", borderRadius: 12, padding: 14, lineHeight: 1.6 }}>
+          <b>{result.restrictionValidation.manualRestrictionsValidated ? "בדיקת מגבלות הצי הושלמה" : "בדיקת מגבלות הצי אינה מלאה"}</b>
+          <div style={{ fontSize: 13, marginTop: 5 }}>מגבלות לא פתורות בקרבת המסלול: {result.restrictionValidation.unresolvedNearbyRestrictions}. מאגר מגבלות ארצי רשמי: לא מחובר.</div>
+        </div>}
         <div style={{ background: "white", border: "1px solid #e5eaf1", borderRadius: 14, padding: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
             <div><b>{result.origin}</b><div style={{ color: "#718096", margin: "5px 0" }}>אל</div><b>{result.destination}</b></div>
