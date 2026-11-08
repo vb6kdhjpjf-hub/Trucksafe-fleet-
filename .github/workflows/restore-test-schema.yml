@@ -67,11 +67,34 @@ jobs:
         run: |
           set +x
           test -s schema-artifact/schema.sql
-          if grep -Eq '^[[:space:]]*(COPY |INSERT INTO )' schema-artifact/schema.sql; then
-            echo "::error::Snapshot contains data-loading statements. Refusing to restore."
-            exit 1
-          fi
-          echo "Schema snapshot present; no top-level data-loading statements found."
+          # pg_dump function bodies may contain INSERT text as executable function code.
+          # Reject COPY blocks and top-level INSERT statements only; ignore SQL inside dollar-quoted bodies.
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          sql = Path("schema-artifact/schema.sql").read_text()
+          if re.search(r"(?im)^\\s*COPY\\s+[^;]+\\s+FROM\\s+stdin\\s*;", sql):
+              raise SystemExit("Snapshot contains a COPY data block. Refusing to restore.")
+          outside = []
+          in_dollar = None
+          for line in sql.splitlines():
+              if in_dollar:
+                  if in_dollar in line:
+                      in_dollar = None
+                  continue
+              m = re.search(r"\\$[A-Za-z_0-9]*\\$", line)
+              if m:
+                  tag = m.group(0)
+                  # Only scan SQL before the first function-body delimiter on this line.
+                  prefix = line[:m.start()]
+                  outside.append(prefix)
+                  in_dollar = tag
+                  continue
+              outside.append(line)
+          if re.search(r"(?im)^\\s*INSERT\\s+INTO\\b", "\\n".join(outside)):
+              raise SystemExit("Snapshot contains a top-level INSERT statement. Refusing to restore.")
+          print("Schema snapshot present; no COPY data blocks or top-level INSERT statements found.")
+          PY
 
       - name: Install PostgreSQL client
         shell: bash
