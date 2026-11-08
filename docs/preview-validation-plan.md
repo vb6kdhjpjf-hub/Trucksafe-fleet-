@@ -4,11 +4,13 @@ Last reviewed: 2026-11-08
 
 ## Current gate
 
-Do not enable a Vercel Preview deployment for this branch yet.
+Do not enable a new Vercel Preview deployment for this branch yet.
 
-The connected Vercel Preview environment currently uses the connected Supabase project's environment configuration. The geospatial road-restriction migration is intentionally not applied to that project, so the current API query for the new columns must fail closed with HTTP 503. Enabling a Preview now would not provide a valid routing integration test and could encourage testing against production data.
+Read-only account inspection found older READY Preview deployments from this feature branch (latest inspected READY commit: `0f5fcd8`); the current PR head is newer and has not been deployed. The most recent deployment record inspected was CANCELED. Do not use the older Preview URLs for routing tests.
 
-Vercel Preview auto-deployments remain disabled. No Production deployment or merge is permitted as part of this plan.
+The connected Vercel Preview environment currently uses the connected Supabase project's environment configuration. The geospatial road-restriction migration is intentionally not applied to that project, so the current API query for the new columns must fail closed with HTTP 503. A Preview against this database would not provide a valid routing integration test and could encourage testing against production data.
+
+Read-only inspection also found a HERE credential configured for both Production and Preview, and the Preview branch feature switch was enabled. The credential had previously been exposed in chat, so it must be rotated before use. Older Preview builds do not contain the new safety gates and must not be used to test routing. No Production deployment or merge is permitted as part of this plan.
 
 ## Safe validation already automated
 
@@ -55,3 +57,15 @@ A release candidate requires:
 ## HERE provider notice handling
 
 The route API discards a route if any HERE notice has `severity=critical`, including future/unknown critical codes. It also discards a route for any notice whose code begins with `violated`, because HERE documents administrative-area-wide truck restriction violations as `info` notices even though they describe an actual vehicle restriction violation. Ordinary informational notices remain displayable. The request includes `instructions` because the client uses maneuver instruction text.
+
+
+## HERE credential and paid-usage safety gates
+
+The server-side routing configuration now requires all of the following before it returns a HERE API key to the route handler:
+- `TRUCK_ROUTING_ENABLED=true`.
+- `TRUCK_ROUTING_PROVIDER=here`.
+- `HERE_API_KEY_ROTATED=true`, set only after the previously exposed credential has been revoked and replaced.
+- `HERE_PROVIDER_USAGE_APPROVED=true`, set only after the owner explicitly approves provider terms, billing, and a low-volume test plan.
+- A non-empty server-side `HERE_API_KEY`.
+
+The two new approval variables are intentionally absent until those prerequisites are met. Do not add them, make HERE requests, or use older Preview builds before explicit owner approval.
