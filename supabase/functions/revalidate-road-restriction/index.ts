@@ -64,7 +64,7 @@ Deno.serve(async (request: Request) => {
   });
   const { data: row, error: readError } = await admin
     .from("road_restrictions")
-    .select("id,fleet_id,road_name,restriction_type,max_height_m,max_weight_t,max_width_m,max_length_m,valid_from,valid_until,active_from,active_until,is_active,latitude,longitude,radius_m,source_url,verification_status,verified_at")
+    .select("id,fleet_id,road_name,restriction_type,max_height_m,max_weight_t,max_width_m,max_length_m,valid_from,valid_until,active_from,active_until,is_active,latitude,longitude,radius_m,source_url,verification_status,verified_at,verified_by,source_last_checked_at,verification_note")
     .eq("id", restrictionId)
     .maybeSingle();
   if (readError || !row) return json({ error: "Restriction not found" }, 404);
@@ -72,7 +72,7 @@ Deno.serve(async (request: Request) => {
     return json({ error: "Only previously verified or expired restrictions can be re-reviewed" }, 409);
   }
 
-  if (row.latitude == null || row.longitude == null ||
+  if (!row.is_active || row.latitude == null || row.longitude == null ||
       row.latitude < 29 || row.latitude > 34 || row.longitude < 34 || row.longitude > 36 ||
       !Number.isInteger(row.radius_m) || row.radius_m < 10 || row.radius_m > 1000) {
     return json({ error: "Restriction is missing a valid Israeli location" }, 422);
@@ -84,7 +84,7 @@ Deno.serve(async (request: Request) => {
   } catch {
     return json({ error: "A valid HTTPS source URL is required" }, 422);
   }
-  if (source.protocol !== "https:" || source.username || source.password ||
+  if (source.protocol !== "https:" || source.username || source.password || source.port ||
       !allowedHosts.includes(source.hostname.toLowerCase())) {
     return json({ error: "Source host is not in the trusted allowlist" }, 422);
   }
@@ -96,6 +96,9 @@ Deno.serve(async (request: Request) => {
   if (limitField && !(typeof row[limitField] === "number" && Number.isFinite(row[limitField]) && row[limitField] > 0)) {
     return json({ error: "The numeric restriction limit is missing or invalid" }, 422);
   }
+  if (row.active_from && row.active_until && row.active_from > row.active_until) {
+    return json({ error: "Restriction active date range is invalid" }, 422);
+  }
   if (row.restriction_type === "time_window" && (!row.valid_from || !row.valid_until)) {
     return json({ error: "Both start and end times are required" }, 422);
   }
@@ -106,7 +109,8 @@ Deno.serve(async (request: Request) => {
   const snapshotFields = [
     "fleet_id", "road_name", "restriction_type", "max_height_m", "max_weight_t",
     "max_width_m", "max_length_m", "valid_from", "valid_until", "active_from",
-    "active_until", "is_active", "latitude", "longitude", "radius_m", "source_url"
+    "active_until", "is_active", "latitude", "longitude", "radius_m", "source_url",
+    "verified_at", "verified_by", "source_last_checked_at", "verification_note"
   ] as const;
   const checkedAt = new Date().toISOString();
   const updateValues = {
