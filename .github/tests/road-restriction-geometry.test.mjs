@@ -79,6 +79,19 @@ test("flags active closed roads and ignores inactive dates", () => {
   assert.equal(expired.conflicts.length,0);
 });
 
+test("treats a one-point route geometry as unresolved instead of safe", () => {
+  const incompleteRoute = [{ polyline: encodePolyline([[32.1,34.8]]), summary: { duration: 60 } }];
+  const result = evaluateFleetRestrictions({
+    sections: incompleteRoute,
+    restrictions: [verified],
+    vehicle,
+    currentWeightKg: 18000,
+    now: new Date("2026-11-08T10:00:00Z")
+  });
+  assert.equal(result.unresolved.length, 1);
+  assert.equal(result.validated, false);
+});
+
 test("treats missing coordinates as unresolved instead of assuming safe", () => {
   const result = evaluateFleetRestrictions({ sections: route([[31.999,34.8],[32.001,34.8]]), restrictions:[{...verified,latitude:null,longitude:null}], vehicle, currentWeightKg:18000, now:new Date("2026-11-08T10:00:00Z") });
   assert.equal(result.unresolved.length,1);
