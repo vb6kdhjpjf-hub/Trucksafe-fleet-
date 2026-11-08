@@ -81,3 +81,11 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f .github/tests/road-restriction-rls-assertions.sql
+      - name: Apply per-user truck route quota migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108240000_add_truck_route_rate_limit.sql
+      - name: Verify rolling truck route quota and grants
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f .github/tests/truck-route-rate-limit-assertions.sql
