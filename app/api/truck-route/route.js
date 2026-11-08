@@ -6,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const response = (body, status = 200, extraHeaders = {}) =>
   Response.json(body, { status, headers: { "Cache-Control": "no-store, max-age=0", ...extraHeaders } });
@@ -45,7 +46,7 @@ export async function GET() {
 export async function POST(request) {
   let stage = "request_start";
   try {
-    if (!request.headers.get("content-type")?.includes("application/json")) {
+    if (!/^application\\/json(?:\\s*;|$)/i.test(request.headers.get("content-type") || "")) {
       return response({ error: "יש לשלוח בקשה בפורמט JSON." }, 415);
     }
     stage = "read_authorization";
@@ -67,6 +68,10 @@ export async function POST(request) {
     if (authError || !authData?.user) return response({ error: "החיבור אינו תקף. יש להתחבר מחדש." }, 401);
 
     stage = "read_request_body";
+    const declaredLength = Number(request.headers.get("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > 16000) {
+      return response({ error: "הבקשה גדולה מדי." }, 413);
+    }
     const rawBody = await request.text();
     if (new TextEncoder().encode(rawBody).byteLength > 16000) {
       return response({ error: "הבקשה גדולה מדי." }, 413);
@@ -126,8 +131,8 @@ export async function POST(request) {
       return response({ error: "חסרים נתוני רכב תקינים בפרופיל השמור. יש לעדכן מידות, משקל כולל, מספר סרנים ועומס בפועל על הסרן הכבד ביותר לפי רישיון הרכב, מסמכי היצרן או שקילה מאומתת לפני חישוב מסלול." }, 422);
     }
 
-    const currentWeightKg = Number(raw.currentWeightKg);
-    if (!numberInRange(currentWeightKg, 1000, 100000) || currentWeightKg > profile.grossWeightKg) {
+    const currentWeightKg = raw.currentWeightKg;
+    if (typeof currentWeightKg !== "number" || !numberInRange(currentWeightKg, 1000, 100000) || currentWeightKg > profile.grossWeightKg) {
       return response({ error: "המשקל בפועל חייב להיות תקין וקטן או שווה למשקל הכולל המותר בפרופיל הרכב." }, 400);
     }
 
