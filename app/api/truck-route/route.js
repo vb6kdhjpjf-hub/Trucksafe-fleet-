@@ -135,7 +135,7 @@ export async function POST(request) {
     stage = "read_fleet_road_restrictions";
     const { data: fleetRestrictions, error: restrictionsError, count: restrictionsCount } = await db
       .from("road_restrictions")
-      .select("id,road_name,restriction_type,max_height_m,max_weight_t,max_width_m,max_length_m,valid_from,valid_until,active_from,active_until,is_active,latitude,longitude,radius_m,source_url,verification_status,verified_at,verified_by", { count: "exact" })
+      .select("id,road_name,restriction_type,max_height_m,max_weight_t,max_width_m,max_length_m,valid_from,valid_until,active_from,active_until,is_active,latitude,longitude,radius_m,source_url,verification_status,verified_at,verified_by,source_last_checked_at,verification_note", { count: "exact" })
       .eq("fleet_id", vehicle.fleet_id)
       .eq("is_active", true)
       .limit(500);
