@@ -23,28 +23,32 @@ const initial = {
 function decodeUnsigned(encoded, state) {
   let result = 0;
   let shift = 0;
-  let byte;
-  do {
-    byte = encoded.charCodeAt(state.index++) - 63;
-    result += (byte & 0x1f) * (2 ** shift);
+  while (state.index < encoded.length) {
+    const value = encoded.charCodeAt(state.index++) - 63;
+    if (value < 0 || value > 63) throw new Error("Invalid route geometry");
+    result += (value & 0x1f) * (2 ** shift);
+    if ((value & 0x20) === 0) return result;
     shift += 5;
-  } while (byte >= 0x20 && state.index < encoded.length);
-  return result;
+    if (shift > 30) throw new Error("Invalid route geometry");
+  }
+  throw new Error("Truncated route geometry");
 }
 
 function decodeSigned(value) {
-  return value & 1 ? ~(value >> 1) : value >> 1;
+  return value % 2 ? -Math.floor(value / 2) - 1 : Math.floor(value / 2);
 }
 
 function decodeFlexiblePolyline(encoded) {
-  if (!encoded) return [];
+  if (typeof encoded !== "string" || encoded.length < 4) throw new Error("Missing route geometry");
   const state = { index: 0 };
-  const version = decodeUnsigned(encoded, state);
-  if (version !== 1) return [];
-  const precision = decodeUnsigned(encoded, state);
-  const thirdDimension = decodeUnsigned(encoded, state);
-  decodeUnsigned(encoded, state);
+  if (decodeUnsigned(encoded, state) !== 1) throw new Error("Unsupported route geometry version");
+  const header = decodeUnsigned(encoded, state);
+  const precision = header & 0x0f;
+  const thirdDimension = (header >> 4) & 0x07;
+  const thirdDimensionPrecision = (header >> 7) & 0x0f;
+  if (precision > 15 || thirdDimensionPrecision > 15) throw new Error("Invalid route geometry precision");
   const factor = 10 ** precision;
+  const thirdFactor = 10 ** thirdDimensionPrecision;
   let lat = 0;
   let lng = 0;
   let z = 0;
@@ -52,9 +56,18 @@ function decodeFlexiblePolyline(encoded) {
   while (state.index < encoded.length) {
     lat += decodeSigned(decodeUnsigned(encoded, state));
     lng += decodeSigned(decodeUnsigned(encoded, state));
-    if (thirdDimension) z += decodeSigned(decodeUnsigned(encoded, state));
-    points.push([lat / factor, lng / factor]);
+    const point = [lat / factor, lng / factor];
+    if (thirdDimension !== 0) {
+      z += decodeSigned(decodeUnsigned(encoded, state));
+      point.push(z / thirdFactor);
+    }
+    if (!Number.isFinite(point[0]) || point[0] < -90 || point[0] > 90 ||
+        !Number.isFinite(point[1]) || point[1] < -180 || point[1] > 180) {
+      throw new Error("Route geometry coordinate out of range");
+    }
+    points.push(point);
   }
+  if (points.length === 0) throw new Error("Empty route geometry");
   return points;
 }
 
