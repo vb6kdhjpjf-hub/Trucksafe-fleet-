@@ -64,3 +64,27 @@ test("treats missing coordinates as unresolved instead of assuming safe", () => 
   assert.equal(result.unresolved.length,1);
   assert.equal(result.validated,false);
 });
+
+test("does not treat an incomplete verified limit as clear", () => {
+  const result = evaluateFleetRestrictions({
+    sections: route([[31.999,34.8],[32.001,34.8]]),
+    restrictions: [{ ...verified, max_height_m: null }],
+    vehicle,
+    currentWeightKg: 18000,
+    now: new Date("2026-11-08T10:00:00Z")
+  });
+  assert.equal(result.unresolved.length, 1);
+  assert.equal(result.validated, false);
+});
+
+test("rejects verification without trusted timestamp and reviewer identity", () => {
+  const result = evaluateFleetRestrictions({
+    sections: route([[31.999,34.8],[32.001,34.8]]),
+    restrictions: [{ ...verified, verified_by: null }],
+    vehicle,
+    currentWeightKg: 18000,
+    now: new Date("2026-11-08T10:00:00Z")
+  });
+  assert.equal(result.unresolved.length, 1);
+  assert.equal(result.conflicts.length, 0);
+});
