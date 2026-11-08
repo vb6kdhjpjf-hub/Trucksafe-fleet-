@@ -109,3 +109,9 @@ The route API no longer logs raw exception messages from HERE/network failures. 
 - The server route endpoint has a 60-second execution ceiling; upstream geocoding and routing requests each have shorter explicit timeouts.
 - The request handler validates JSON content type, checks declared and actual body size, and requires the current trip weight to be a JSON number rather than coercing arbitrary values.
 - No provider requests were made while adding these guards.
+
+
+### Additional fail-closed checks
+- Reversed road-restriction active date ranges are now rejected by a database CHECK constraint and treated as unresolved by route evaluation, rather than silently considered inactive.
+- A route candidate must include finite, non-negative distance and duration summaries for every section; missing or malformed summaries are rejected before display.
+- These cases are covered by local regression tests and disposable PostgreSQL assertions.
