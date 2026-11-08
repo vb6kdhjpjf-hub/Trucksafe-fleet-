@@ -11,7 +11,7 @@ const feature = {
   id: "restriction-123",
   type: "Feature",
   geometry: { type: "Point", coordinates: [34.8, 32.0] },
-  properties: { road_name: "Test bridge", restriction_type: "height", max_height_m: 4.1 }
+  properties: { road_name: "Test bridge", restriction_type: "height", max_height_m: 4.1, radius_m: 100 }
 };
 
 test("imports an explicitly described point restriction as unverified candidate", () => {
@@ -21,7 +21,7 @@ test("imports an explicitly described point restriction as unverified candidate"
   assert.equal(candidate.latitude, 32);
   assert.equal(candidate.longitude, 34.8);
   assert.equal(candidate.source_record_id, "restriction-123");
-  assert.equal(candidate.radius_m, null);
+  assert.equal(candidate.radius_m, 100);
   assert.equal(candidate.import_status, "candidate_requires_human_review");
 });
 
@@ -46,4 +46,12 @@ test("requires source publication/update time and retains provenance", () => {
   const candidate = normalizeRestrictionCandidate(feature, source);
   assert.equal(candidate.source_name, source.name);
   assert.equal(candidate.source_updated_at, "2026-11-07T08:00:00.000Z");
+});
+
+
+test("rejects point candidates without an explicit, defensible geofence radius", () => {
+  const noRadius = { ...feature, properties: { ...feature.properties, radius_m: null } };
+  const tooWide = { ...feature, properties: { ...feature.properties, radius_m: 5000 } };
+  assert.equal(normalizeRestrictionCandidate(noRadius, source), null);
+  assert.equal(normalizeRestrictionCandidate(tooWide, source), null);
 });
