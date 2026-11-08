@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pretrip-sql-${{ github.event.pull_request.number || github.ref }}
+  group: pretrip-sql-${{ github.event.pull_request.head.ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
