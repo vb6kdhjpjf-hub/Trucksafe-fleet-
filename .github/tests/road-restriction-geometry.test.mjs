@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { decodeFlexiblePolyline, routePassesNearRestriction, evaluateFleetRestrictions } from "../../lib/road-restriction-geometry.mjs";
+import { decodeFlexiblePolyline, routePassesNearRestriction, evaluateFleetRestrictions, selectSafeTruckRoute } from "../../lib/road-restriction-geometry.mjs";
 
 const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 function encodeUnsigned(value) {
@@ -283,4 +283,65 @@ test("blocks administrative-wide vehicle violations even when HERE marks them in
 test("does not block ordinary informational route notices", async () => {
   const { hasBlockingHereNotice } = await import("../../lib/road-restriction-geometry.mjs");
   assert.equal(hasBlockingHereNotice({ code: "mainLanguageNotFound", severity: "info" }), false);
+});
+
+
+test("selects a safe alternative when the fastest candidate crosses a verified restriction", () => {
+  const blocked = { sections: route([[31.999,34.8],[32.001,34.8]])[0].polyline
+    ? route([[31.999,34.8],[32.001,34.8]]) : [], notices: [] };
+  const safe = { sections: route([[32.1,34.8],[32.101,34.8]]), notices: [] };
+  const result = selectSafeTruckRoute({
+    routes: [blocked, safe],
+    restrictions: [verified],
+    vehicle,
+    currentWeightKg: 18000,
+    now: new Date("2026-11-08T10:00:00Z")
+  });
+  assert.equal(result.route, safe);
+  assert.equal(result.routeIndex, 1);
+  assert.equal(result.restrictionCheck.validated, true);
+  assert.equal(result.rejected[0].reason, "fleet_restriction_conflict");
+});
+
+test("never selects a route with a critical HERE notice when another alternative is safe", () => {
+  const providerBlocked = {
+    sections: route([[32.1,34.8],[32.101,34.8]]),
+    notices: [{ code: "violatedBlockedRoad", severity: "critical" }]
+  };
+  const safe = { sections: route([[32.1,34.8],[32.101,34.8]]), notices: [] };
+  const result = selectSafeTruckRoute({
+    routes: [providerBlocked, safe],
+    restrictions: [],
+    vehicle,
+    currentWeightKg: 18000
+  });
+  assert.equal(result.route, safe);
+  assert.equal(result.rejected[0].reason, "provider_restriction_notice");
+});
+
+test("rejects every alternative if relevant fleet restriction data is unresolved", () => {
+  const candidates = [
+    { sections: route([[31.999,34.8],[32.001,34.8]]) },
+    { sections: route([[31.998,34.8],[32.002,34.8]]) }
+  ];
+  const result = selectSafeTruckRoute({
+    routes: candidates,
+    restrictions: [{ ...verified, latitude: null, longitude: null }],
+    vehicle,
+    currentWeightKg: 18000
+  });
+  assert.equal(result.route, null);
+  assert.equal(result.rejected.length, 2);
+  assert.ok(result.rejected.every(item => item.reason === "unresolved_fleet_restrictions"));
+});
+
+test("does not select malformed geometry even if no restrictions were supplied", () => {
+  const result = selectSafeTruckRoute({
+    routes: [{ sections: [{ polyline: "invalid" }] }],
+    restrictions: [],
+    vehicle,
+    currentWeightKg: 18000
+  });
+  assert.equal(result.route, null);
+  assert.equal(result.rejected[0].reason, "invalid_route_geometry");
 });
