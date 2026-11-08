@@ -77,3 +77,7 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f .github/tests/security-definer-grants-assertions.sql
+      - name: Verify road restriction tenant isolation and RLS
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f .github/tests/road-restriction-rls-assertions.sql
