@@ -111,11 +111,10 @@ Deno.serve(async (request: Request) => {
   const checkedAt = new Date().toISOString();
   const updateValues = {
     verification_status: "verified",
+    verified_at: checkedAt,
+    verified_by: authData.user.id,
     source_last_checked_at: checkedAt,
-    verification_note: reviewNote,
-    ...(row.verification_status === "expired"
-      ? { verified_at: checkedAt, verified_by: authData.user.id }
-      : {})
+    verification_note: reviewNote
   };
   let updateQuery = admin
     .from("road_restrictions")
