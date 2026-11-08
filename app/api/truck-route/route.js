@@ -258,7 +258,9 @@ export async function POST(request) {
       sections: route.sections.map(section => ({ polyline: section.polyline || "" }))
     });
   } catch (error) {
-    console.error("Truck route API failure", { stage, name: String(error?.name || "Error").slice(0, 80), message: String(error?.message || "unknown").slice(0, 240) });
+    // Do not log raw exception messages: provider/network errors can contain full
+    // request URLs, and HERE URLs include the server-side API key in the query.
+    console.error("Truck route API failure", { stage, name: String(error?.name || "Error").slice(0, 80) });
     const message = error?.name === "TimeoutError"
       ? "שירות הניווט לא הגיב בזמן. בדוק חיבור ונסה שוב."
       : "אירעה תקלה זמנית בחישוב המסלול. נסה שוב בעוד רגע.";
