@@ -13,6 +13,7 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  if (!/^application\\/json(?:\\s*;|$)/i.test(request.headers.get("content-type") || "")) return json({ error: "Content type must be application/json" }, 415);
 
   const authHeader = request.headers.get("Authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -39,6 +40,8 @@ Deno.serve(async (request: Request) => {
     return json({ error: "Not authorized to re-review road restrictions" }, 403);
   }
 
+  const declaredLength = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > 8192) return json({ error: "Request too large" }, 413);
   const raw = await request.text();
   if (new TextEncoder().encode(raw).byteLength > 8192) return json({ error: "Request too large" }, 413);
   let body: Record<string, unknown>;
@@ -47,6 +50,7 @@ Deno.serve(async (request: Request) => {
   } catch {
     return json({ error: "Invalid JSON" }, 400);
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "JSON body must be an object" }, 400);
 
   const restrictionId = typeof body.restrictionId === "string" ? body.restrictionId : "";
   const reviewNote = typeof body.reviewNote === "string" ? body.reviewNote.trim() : "";
