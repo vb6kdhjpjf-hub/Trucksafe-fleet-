@@ -113,7 +113,6 @@ Deno.serve(async (request: Request) => {
     .maybeSingle();
   if (updateError) return json({ error: "Verification update failed" }, 500);
   if (!updated) return json({ error: "Restriction was changed by another reviewer; refresh and review again" }, 409);
-  if (!updated) return json({ error: "Restriction was changed by another reviewer; refresh and review again" }, 409);
 
   return json({ verified: true, restrictionId, verifiedAt: checkedAt });
 });
