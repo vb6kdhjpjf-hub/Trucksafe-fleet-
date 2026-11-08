@@ -1,0 +1,144 @@
+name: Restore TruckSafe schema to isolated test database
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_restore:
+        description: "Type RESTORE to confirm rebuilding the empty TruckSafe Fleet Test database"
+        required: true
+        type: choice
+        options:
+          - NO
+          - RESTORE
+        default: NO
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trucksafe-test-schema-restore
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    if: ${{ inputs.confirm_restore == 'RESTORE' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      SUPABASE_TEST_DB_URL: ${{ secrets.SUPABASE_TEST_DB_URL }}
+      EXPECTED_TEST_HOST: db.yxxrgblpqzhnnyojbwcr.supabase.co
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Validate source and isolated test credentials
+        shell: bash
+        run: |
+          set +x
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlparse
+
+          source = os.environ.get("SUPABASE_DB_URL", "")
+          target = os.environ.get("SUPABASE_TEST_DB_URL", "")
+          expected = os.environ["EXPECTED_TEST_HOST"]
+
+          if not source or not target:
+              raise SystemExit("Required GitHub Actions secrets are missing: SUPABASE_DB_URL and/or SUPABASE_TEST_DB_URL.")
+
+          source_url = urlparse(source)
+          target_url = urlparse(target)
+          if source_url.scheme not in ("postgres", "postgresql") or not source_url.hostname:
+              raise SystemExit("SUPABASE_DB_URL is not a valid PostgreSQL connection URL.")
+          if target_url.scheme not in ("postgres", "postgresql") or not target_url.hostname:
+              raise SystemExit("SUPABASE_TEST_DB_URL is not a valid PostgreSQL connection URL.")
+          if target_url.hostname != expected:
+              raise SystemExit("Refusing to run: target host is not the dedicated TruckSafe Fleet Test project.")
+          if source_url.hostname == target_url.hostname:
+              raise SystemExit("Refusing to run: source and target databases resolve to the same host.")
+          print("Connection checks passed. Source credentials will be used for schema-only export; target is the dedicated test project.")
+          PY
+
+      - name: Install Supabase CLI and PostgreSQL client
+        uses: supabase/setup-cli@v3
+        with:
+          version: v2.stable
+
+      - name: Install PostgreSQL client
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Export schema only from source (no table data)
+        shell: bash
+        run: |
+          set +x
+          supabase db dump --db-url="$SUPABASE_DB_URL" --file=schema.sql
+          test -s schema.sql
+          if grep -Eq '^(COPY |INSERT INTO )' schema.sql; then
+            echo "::error::The export contains data-loading statements. Refusing to restore."
+            exit 1
+          fi
+          echo "Schema-only export created; no COPY or top-level INSERT statements found."
+
+      - name: Confirm the test database is empty
+        shell: bash
+        run: |
+          set +x
+          table_count="$(psql "$SUPABASE_TEST_DB_URL" -X -v ON_ERROR_STOP=1 -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE';")"
+          if [ "$table_count" != "0" ]; then
+            echo "::error::Refusing to overwrite a test database that already contains public tables."
+            exit 1
+          fi
+          echo "Test database preflight passed: public schema contains no application tables."
+
+      - name: Restore schema atomically to the isolated test database
+        shell: bash
+        run: |
+          set +x
+          psql "$SUPABASE_TEST_DB_URL" -X -v ON_ERROR_STOP=1 --single-transaction --file=schema.sql
+
+      - name: Restore the custom auth.users profile trigger
+        shell: bash
+        run: |
+          set +x
+          psql "$SUPABASE_TEST_DB_URL" -X -v ON_ERROR_STOP=1 --single-transaction <<'SQL'
+          DO $restore$
+          BEGIN
+            IF to_regprocedure('public.handle_new_auth_user()') IS NULL THEN
+              RAISE EXCEPTION 'Required function public.handle_new_auth_user() is missing';
+            END IF;
+
+            IF NOT EXISTS (
+              SELECT 1
+              FROM pg_trigger
+              WHERE tgrelid = 'auth.users'::regclass
+                AND tgname = 'on_auth_user_created_profile'
+                AND NOT tgisinternal
+            ) THEN
+              CREATE TRIGGER on_auth_user_created_profile
+              AFTER INSERT ON auth.users
+              FOR EACH ROW
+              EXECUTE FUNCTION public.handle_new_auth_user();
+            END IF;
+          END
+          $restore$;
+          SQL
+
+      - name: Verify restored schema inventory
+        shell: bash
+        run: |
+          set +x
+          psql "$SUPABASE_TEST_DB_URL" -X -v ON_ERROR_STOP=1 -Atqc "
+            SELECT
+              (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE') || ',' ||
+              (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN ('public','private')) || ',' ||
+              (SELECT count(*) FROM pg_policies WHERE schemaname='public') || ',' ||
+              (SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE NOT t.tgisinternal AND n.nspname='public') || ',' ||
+              (SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE NOT t.tgisinternal AND n.nspname='auth');
+          " | grep -qx '12,17,32,15,1'
+          echo "Verified: 12 public tables, 17 application functions, 32 public RLS policies, 15 public triggers, and 1 custom auth.users trigger."
