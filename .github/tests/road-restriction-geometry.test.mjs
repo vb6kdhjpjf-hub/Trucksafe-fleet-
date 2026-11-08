@@ -344,3 +344,31 @@ test("does not select malformed geometry even if no restrictions were supplied",
   assert.equal(result.route, null);
   assert.equal(result.rejected[0].reason, "invalid_route_geometry");
 });
+
+
+test("treats reversed active dates as unresolved instead of silently ignoring the restriction", () => {
+  const result = evaluateFleetRestrictions({
+    sections: route([[31.999,34.8],[32.001,34.8]]),
+    restrictions: [{ ...verified, active_from: "2026-11-09", active_until: "2026-11-07" }],
+    vehicle,
+    currentWeightKg: 18000,
+    now: new Date("2026-11-08T10:00:00Z")
+  });
+  assert.equal(result.unresolved.length, 1);
+  assert.equal(result.unresolved[0].reason, "invalid_active_date_range");
+  assert.equal(result.validated, false);
+});
+
+test("rejects route candidates with missing or invalid distance and duration summaries", () => {
+  const polyline = route([[32.1,34.8],[32.101,34.8]])[0].polyline;
+  for (const summary of [undefined, { length: -1, duration: 60 }, { length: 100, duration: Number.NaN }]) {
+    const result = selectSafeTruckRoute({
+      routes: [{ sections: [{ polyline, ...(summary ? { summary } : {}) }] }],
+      restrictions: [],
+      vehicle,
+      currentWeightKg: 18000
+    });
+    assert.equal(result.route, null);
+    assert.equal(result.rejected[0].reason, "invalid_route_summary");
+  }
+});
