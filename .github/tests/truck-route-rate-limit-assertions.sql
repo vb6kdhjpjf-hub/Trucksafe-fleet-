@@ -33,6 +33,10 @@ BEGIN
   IF NOT (SELECT relrowsecurity FROM pg_catalog.pg_class WHERE oid = 'private.truck_route_requests'::regclass) THEN
     RAISE EXCEPTION 'Route quota rows must be protected by RLS';
   END IF;
+
+  -- Seed an expired row as the database owner; the first new request must prune it.
+  INSERT INTO private.truck_route_requests (user_id, requested_at)
+  VALUES (user_a, pg_catalog.now() - interval '11 minutes');
   IF has_table_privilege('authenticated', 'private.truck_route_requests', 'DELETE') THEN
     RAISE EXCEPTION 'Authenticated users must not delete quota history to reset their limit';
   END IF;
