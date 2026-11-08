@@ -133,13 +133,14 @@ export async function POST(request) {
     const { heightCm, widthCm, lengthCm, grossWeightKg, weightPerAxleKg, axleCount, trailerCount, vehicleType } = profile;
 
     stage = "read_fleet_road_restrictions";
-    const { data: fleetRestrictions, error: restrictionsError } = await db
+    const { data: fleetRestrictions, error: restrictionsError, count: restrictionsCount } = await db
       .from("road_restrictions")
-      .select("id,road_name,restriction_type,max_height_m,max_weight_t,max_width_m,max_length_m,valid_from,valid_until,active_from,active_until,is_active,latitude,longitude,radius_m,source_url,verification_status")
+      .select("id,road_name,restriction_type,max_height_m,max_weight_t,max_width_m,max_length_m,valid_from,valid_until,active_from,active_until,is_active,latitude,longitude,radius_m,source_url,verification_status,verified_at,verified_by", { count: "exact" })
       .eq("fleet_id", vehicle.fleet_id)
-      .eq("is_active", true);
-    if (restrictionsError) {
-      return response({ error: "לא ניתן לבדוק את מגבלות הדרך של הצי. לא הוצג מסלול כדי למנוע הסתמכות על בדיקה חלקית." }, 503);
+      .eq("is_active", true)
+      .limit(500);
+    if (restrictionsError || (restrictionsCount ?? 0) > 500) {
+      return response({ error: "לא ניתן לבדוק את כל מגבלות הדרך של הצי. לא הוצג מסלול כדי למנוע הסתמכות על בדיקה חלקית." }, 503);
     }
 
     stage = "read_routing_config";
