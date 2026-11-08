@@ -19,3 +19,23 @@ CREATE TABLE public.road_restrictions (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.road_restrictions ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.road_restrictions TO authenticated;
+
+CREATE POLICY road_restrictions_select_member
+ON public.road_restrictions FOR SELECT TO authenticated
+USING (private.is_fleet_member(fleet_id));
+
+CREATE POLICY road_restrictions_insert_managers
+ON public.road_restrictions FOR INSERT TO authenticated
+WITH CHECK (private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher']));
+
+CREATE POLICY road_restrictions_update_managers
+ON public.road_restrictions FOR UPDATE TO authenticated
+USING (private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher']))
+WITH CHECK (private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher']));
+
+CREATE POLICY road_restrictions_delete_managers
+ON public.road_restrictions FOR DELETE TO authenticated
+USING (private.has_fleet_role(fleet_id, ARRAY['owner','fleet_manager','dispatcher']));
