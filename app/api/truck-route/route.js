@@ -248,7 +248,7 @@ export async function POST(request) {
         }, 422);
       }
 
-      if (selection.rejected.length > 0 && selection.rejected.every(item => item.reason === "invalid_route_geometry")) {
+      if (selection.rejected.length > 0 && selection.rejected.every(item => ["invalid_route_geometry", "invalid_route_summary"].includes(item.reason))) {
         return response({ error: "נתוני הגיאומטריה של חלופות המסלול אינם תקינים. המסלול נחסם ולא יוצג לנהג." }, 502);
       }
       return response({ error: "לא נמצאה חלופת מסלול שניתן לאמת בבטחה. לא הוצג מסלול." }, 422);
@@ -269,8 +269,11 @@ export async function POST(request) {
         duration: Number.isFinite(action.duration) && action.duration >= 0 ? action.duration : null
       })));
     const critical = notices.some(notice => notice.severity.toLowerCase() === "critical");
-    const distance = route.sections.reduce((sum, section) => sum + (Number(section.summary?.length) || 0), 0);
-    const duration = route.sections.reduce((sum, section) => sum + (Number(section.summary?.duration) || 0), 0);
+    const distance = route.sections.reduce((sum, section) => sum + section.summary.length, 0);
+    const duration = route.sections.reduce((sum, section) => sum + section.summary.duration, 0);
+    if (!Number.isFinite(distance) || !Number.isFinite(duration)) {
+      return response({ error: "סיכום המסלול שהתקבל אינו תקין. המסלול נחסם ולא יוצג לנהג." }, 502);
+    }
 
     return response({
       origin: origin.label,
