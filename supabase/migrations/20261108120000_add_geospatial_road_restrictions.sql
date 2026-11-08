@@ -78,7 +78,7 @@ begin
          or old.is_active is distinct from new.is_active
        )
      ) then
-    if coalesce(auth.role(), '') <> 'service_role' then
+    if coalesce(current_setting('request.jwt.claim.role', true), '') <> 'service_role' then
       raise exception 'Road restriction verification requires trusted administrative review';
     end if;
   end if;
