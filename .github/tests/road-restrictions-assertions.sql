@@ -55,6 +55,19 @@ BEGIN
     RAISE EXCEPTION 'Service role could not verify a restriction';
   END IF;
 
+  INSERT INTO public.road_restrictions (fleet_id, road_name, restriction_type, latitude, longitude, source_url)
+  VALUES (gen_random_uuid(), 'Incomplete test bridge', 'height', 32.0, 34.8, 'https://example.gov.il/bridge')
+  RETURNING id INTO restriction_id;
+  BEGIN
+    UPDATE public.road_restrictions
+    SET verification_status = 'verified', verified_at = now(), verified_by = gen_random_uuid(),
+        source_last_checked_at = now(), verification_note = 'Reviewed but deliberately missing height limit.'
+    WHERE id = restriction_id;
+    RAISE EXCEPTION 'Expected verified record without a numeric limit to be rejected';
+  EXCEPTION WHEN check_violation THEN
+    NULL;
+  END;
+
   PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
   BEGIN
     UPDATE public.road_restrictions SET latitude = 32.1 WHERE id = restriction_id;
