@@ -10,7 +10,7 @@ function encodeUnsigned(value) {
 }
 function encodeSigned(value) { return encodeUnsigned(value < 0 ? ~(value << 1) : value << 1); }
 function encodePolyline(points, precision = 5) {
-  let out = encodeUnsigned(1) + encodeUnsigned(precision) + encodeUnsigned(0);
+  let out = encodeUnsigned(1) + encodeUnsigned(precision);
   let lat = 0, lng = 0;
   for (const [a,b] of points) {
     const nextLat = Math.round(a * 10 ** precision);
