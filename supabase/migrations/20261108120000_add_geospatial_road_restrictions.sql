@@ -35,7 +35,7 @@ comment on column public.road_restrictions.verification_note is 'Reviewer audit 
 
 alter table public.road_restrictions
   add constraint road_restrictions_verified_provenance_check
-    check (verification_status <> 'verified' or (latitude is not null and longitude is not null and source_url is not null and source_url like 'https://%' and verified_at is not null and verified_by is not null and source_last_checked_at is not null and length(trim(coalesce(verification_note, ''))) >= 20 and (restriction_type not in ('height','weight','width','length') or (case restriction_type when 'height' then max_height_m when 'weight' then max_weight_t when 'width' then max_width_m when 'length' then max_length_m end) > 0) and (restriction_type <> 'time_window' or (valid_from is not null and valid_until is not null)));
+    check (verification_status <> 'verified' or (latitude is not null and longitude is not null and source_url is not null and source_url ~* '^https://' and verified_at is not null and verified_by is not null and source_last_checked_at is not null and length(trim(coalesce(verification_note, ''))) >= 20 and (restriction_type not in ('height','weight','width','length') or coalesce((case restriction_type when 'height' then max_height_m when 'weight' then max_weight_t when 'width' then max_width_m when 'length' then max_length_m end) > 0, false)) and (restriction_type <> 'time_window' or (valid_from is not null and valid_until is not null)));
 
 create or replace function private.guard_road_restriction_verification()
 returns trigger
