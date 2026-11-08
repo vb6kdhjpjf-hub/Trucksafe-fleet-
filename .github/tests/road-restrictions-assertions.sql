@@ -19,7 +19,9 @@ BEGIN
     SET verification_status = 'verified',
         source_url = 'https://example.gov.il/bridge',
         verified_at = now(),
-        verified_by = gen_random_uuid()
+        verified_by = gen_random_uuid(),
+      source_last_checked_at = now(),
+      verification_note = $note$Checked official notice and verified dimensions against the source document.$note$
     WHERE id = restriction_id;
     RAISE EXCEPTION 'Expected authenticated verification to be blocked';
   EXCEPTION WHEN raise_exception THEN
