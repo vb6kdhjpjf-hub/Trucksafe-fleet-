@@ -114,4 +114,5 @@ BEGIN
   EXCEPTION WHEN raise_exception THEN
     IF SQLERRM NOT LIKE '%requires trusted administrative review%' THEN RAISE; END IF;
   END;
-END$$;
+EEND;
+$$;
