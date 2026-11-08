@@ -287,8 +287,7 @@ test("does not block ordinary informational route notices", async () => {
 
 
 test("selects a safe alternative when the fastest candidate crosses a verified restriction", () => {
-  const blocked = { sections: route([[31.999,34.8],[32.001,34.8]])[0].polyline
-    ? route([[31.999,34.8],[32.001,34.8]]) : [], notices: [] };
+  const blocked = { sections: route([[31.999,34.8],[32.001,34.8]]), notices: [] };
   const safe = { sections: route([[32.1,34.8],[32.101,34.8]]), notices: [] };
   const result = selectSafeTruckRoute({
     routes: [blocked, safe],
