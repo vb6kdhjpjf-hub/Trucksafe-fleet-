@@ -655,11 +655,15 @@ export type Database = {
       vehicles: {
         Row: {
           assigned_driver_id: string | null
+          axle_count: number | null
           capacity_kg: number | null
           created_at: string
           fleet_id: string
+          gross_weight_kg: number | null
+          height_cm: number | null
           id: string
           insurance_due_at: string | null
+          length_cm: number | null
           make: string | null
           model: string | null
           next_service_at: string | null
@@ -667,19 +671,27 @@ export type Database = {
           odometer_km: number | null
           registration_due_at: string | null
           registration_number: string
+          routing_vehicle_type: string | null
           status: string
           test_due_at: string | null
+          trailer_count: number
           updated_at: string
           vehicle_type: string
+          weight_per_axle_kg: number | null
+          width_cm: number | null
           year: number | null
         }
         Insert: {
           assigned_driver_id?: string | null
+          axle_count?: number | null
           capacity_kg?: number | null
           created_at?: string
           fleet_id: string
+          gross_weight_kg?: number | null
+          height_cm?: number | null
           id?: string
           insurance_due_at?: string | null
+          length_cm?: number | null
           make?: string | null
           model?: string | null
           next_service_at?: string | null
@@ -687,19 +699,27 @@ export type Database = {
           odometer_km?: number | null
           registration_due_at?: string | null
           registration_number: string
+          routing_vehicle_type?: string | null
           status?: string
           test_due_at?: string | null
+          trailer_count?: number
           updated_at?: string
           vehicle_type?: string
+          weight_per_axle_kg?: number | null
+          width_cm?: number | null
           year?: number | null
         }
         Update: {
           assigned_driver_id?: string | null
+          axle_count?: number | null
           capacity_kg?: number | null
           created_at?: string
           fleet_id?: string
+          gross_weight_kg?: number | null
+          height_cm?: number | null
           id?: string
           insurance_due_at?: string | null
+          length_cm?: number | null
           make?: string | null
           model?: string | null
           next_service_at?: string | null
@@ -707,10 +727,14 @@ export type Database = {
           odometer_km?: number | null
           registration_due_at?: string | null
           registration_number?: string
+          routing_vehicle_type?: string | null
           status?: string
           test_due_at?: string | null
+          trailer_count?: number
           updated_at?: string
           vehicle_type?: string
+          weight_per_axle_kg?: number | null
+          width_cm?: number | null
           year?: number | null
         }
         Relationships: [
