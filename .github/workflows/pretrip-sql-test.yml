@@ -57,10 +57,6 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108120000_add_geospatial_road_restrictions.sql
-      - name: Verify road restriction provenance and constraints
-        env:
-          PGPASSWORD: postgres
-        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f .github/tests/road-restrictions-assertions.sql
       - name: Apply verified restriction immutability hardening
         env:
           PGPASSWORD: postgres
@@ -69,6 +65,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108220000_restrict_security_definer_function_execution.sql
+      - name: Verify road restriction provenance and constraints
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f .github/tests/road-restrictions-assertions.sql
       - name: Verify protected fields and function grants
         env:
           PGPASSWORD: postgres
