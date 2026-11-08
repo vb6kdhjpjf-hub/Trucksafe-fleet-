@@ -53,11 +53,9 @@ A release candidate requires:
 - Documented source/licence/coverage approval for each external restriction feed.
 - Explicit owner approval before enabling Preview, merging, applying production migrations, or deploying Production.
 
-
 ## HERE provider notice handling
 
 The route API discards a route if any HERE notice has `severity=critical`, including future/unknown critical codes. It also discards a route for any notice whose code begins with `violated`, because HERE documents administrative-area-wide truck restriction violations as `info` notices even though they describe an actual vehicle restriction violation. Ordinary informational notices remain displayable. The request includes `instructions` because the client uses maneuver instruction text.
-
 
 ## HERE credential and paid-usage safety gates
 
@@ -69,3 +67,15 @@ The server-side routing configuration now requires all of the following before i
 - A non-empty server-side `HERE_API_KEY`.
 
 The two new approval variables are intentionally absent until those prerequisites are met. Do not add them, make HERE requests, or use older Preview builds before explicit owner approval.
+
+## Isolated database baseline — current findings
+
+A one-time schema-only export from the original Supabase project completed successfully. It contains no exported table rows or `COPY` data sections and was inspected locally; the SQL file is not committed to this repository.
+
+The export includes the current application tables, functions, policies, indexes, and constraints, but the dump did not include trigger-creation statements. A read-only catalog comparison against the original database confirmed 12 application tables, 17 application functions, 32 RLS policies, and 15 triggers on application tables. The custom `auth.users` trigger `on_auth_user_created_profile` is also absent from the dump, although its function is present. These trigger definitions must be restored from the live catalog before the snapshot can be used as a faithful test baseline.
+
+The dedicated `TruckSafe Fleet Test` Supabase project is active and currently has no application tables or migrations. Its standard Supabase-managed schemas/extensions are initialized. Do not apply the incomplete dump or the feature-branch incremental migrations to it until the complete baseline, including app triggers and the custom auth trigger, has been reviewed and assembled. Do not copy production rows, auth users, storage objects, or secrets.
+
+The production project has 22 recorded migrations, while the feature branch does not contain the full original migration history. The isolated test baseline therefore needs to be treated as a reviewed schema snapshot rather than pretending the missing historical migration files have been recovered.
+
+On feature branch head `1eb5f2d28d084a445a5882c3cee6eb33ee8ea7a5`, the Build/dependency audit and Pre-trip SQL integration workflows both completed successfully. The one-time export workflow was removed immediately after it started; its run completed successfully. PR #14 remains Draft and unmerged. No Vercel environment changes, HERE calls, production schema changes, or deployment were made during this export.
