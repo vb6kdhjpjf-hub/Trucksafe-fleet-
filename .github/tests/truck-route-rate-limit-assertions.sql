@@ -91,6 +91,21 @@ BEGIN
     NULL;
   END;
 
+  BEGIN
+    INSERT INTO private.truck_route_requests (user_id, requested_at)
+    VALUES (user_b, pg_catalog.now() + interval '1 day');
+    RAISE EXCEPTION 'Future-dated quota row was not blocked by RLS';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+  BEGIN
+    INSERT INTO private.truck_route_requests (user_id, requested_at)
+    VALUES (user_b, pg_catalog.now() - interval '1 day');
+    RAISE EXCEPTION 'Old-dated quota row was not blocked by RLS';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
   PERFORM set_config('request.jwt.claim.sub', '', true);
   SELECT public.consume_truck_route_quota() INTO allowed;
   IF allowed IS DISTINCT FROM false THEN
