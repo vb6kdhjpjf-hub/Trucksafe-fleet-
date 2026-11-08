@@ -62,7 +62,7 @@ Deno.serve(async (request: Request) => {
   });
   const { data: row, error: readError } = await admin
     .from("road_restrictions")
-    .select("id,road_name,restriction_type,max_height_m,max_weight_t,max_width_m,max_length_m,valid_from,valid_until,active_from,active_until,is_active,latitude,longitude,radius_m,source_url,verification_status")
+    .select("id,fleet_id,road_name,restriction_type,max_height_m,max_weight_t,max_width_m,max_length_m,valid_from,valid_until,active_from,active_until,is_active,latitude,longitude,radius_m,source_url,verification_status")
     .eq("id", restrictionId)
     .maybeSingle();
   if (readError || !row) return json({ error: "Restriction not found" }, 404);
@@ -97,8 +97,15 @@ Deno.serve(async (request: Request) => {
     return json({ error: "This restriction type requires a separate specialist review" }, 422);
   }
 
+  // Compare every safety-relevant field in the UPDATE itself. This makes approval
+  // conditional on the exact snapshot reviewed above and closes the read/update race.
+  const snapshotFields = [
+    "fleet_id", "road_name", "restriction_type", "max_height_m", "max_weight_t",
+    "max_width_m", "max_length_m", "valid_from", "valid_until", "active_from",
+    "active_until", "is_active", "latitude", "longitude", "radius_m", "source_url"
+  ] as const;
   const checkedAt = new Date().toISOString();
-  const { data: updated, error: updateError } = await admin
+  let updateQuery = admin
     .from("road_restrictions")
     .update({
       verification_status: "verified",
@@ -108,11 +115,18 @@ Deno.serve(async (request: Request) => {
       verification_note: reviewNote
     })
     .eq("id", restrictionId)
-    .eq("verification_status", "unverified")
-    .select("id")
-    .maybeSingle();
+    .eq("verification_status", "unverified");
+
+  for (const field of snapshotFields) {
+    const value = row[field];
+    updateQuery = value === null
+      ? updateQuery.is(field, null)
+      : updateQuery.eq(field, value);
+  }
+
+  const { data: updated, error: updateError } = await updateQuery.select("id").maybeSingle();
   if (updateError) return json({ error: "Verification update failed" }, 500);
-  if (!updated) return json({ error: "Restriction was changed by another reviewer; refresh and review again" }, 409);
+  if (!updated) return json({ error: "Restriction changed during review; refresh and review the current data again" }, 409);
 
   return json({ verified: true, restrictionId, verifiedAt: checkedAt });
 });
