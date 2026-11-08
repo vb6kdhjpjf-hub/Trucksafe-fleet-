@@ -41,26 +41,28 @@ jobs:
         run: |
           set +x
           python3 - <<'PY'
-          import os, re
+          import os
           target = os.environ.get("SUPABASE_TEST_DB_URL", "").strip()
-          # Accept either the raw URI or the quoted URI copied from a psql command.
-          target = re.sub(r"^psql\\s+", "", target)
-          target = target.strip().strip("'").strip('"')
-          match = re.fullmatch(r"postgres(?:ql)?://([^/?#]+)(/[^?#]*)(?:\\?[^#]*)?", target)
-          if not match:
+          if target.startswith("psql "):
+              target = target[5:].strip()
+          target = target.strip("'").strip('"')
+          if "://" not in target:
               raise SystemExit("Expected a PostgreSQL URI. In Supabase Connect, copy the URI itself (not the psql command).")
-          authority, path = match.groups()
-          if "@" not in authority or ":" not in authority.rsplit("@", 1)[0]:
-              raise SystemExit("Connection URI must include username and password.")
+          scheme, rest = target.split("://", 1)
+          if scheme not in ("postgres", "postgresql"):
+              raise SystemExit("Connection URI must use the PostgreSQL scheme.")
+          rest = rest.split("#", 1)[0].split("?", 1)[0]
+          if "/" not in rest or "@" not in rest:
+              raise SystemExit("Connection URI must include a database path and username/password.")
+          authority, path = rest.split("/", 1)
           userinfo, endpoint = authority.rsplit("@", 1)
+          if ":" not in userinfo or ":" not in endpoint:
+              raise SystemExit("Pooler URI must include a password, host, and port.")
           username, password = userinfo.split(":", 1)
-          endpoint_match = re.fullmatch(r"([^:/?#]+):(\\d+)", endpoint)
-          if not endpoint_match:
-              raise SystemExit("Pooler host and port could not be parsed. Copy the Session pooler URI exactly.")
-          host, port = endpoint_match.groups()
+          host, port = endpoint.rsplit(":", 1)
           if not host.endswith(".pooler.supabase.com"):
               raise SystemExit("Refusing connection: expected the Supabase Session pooler host.")
-          if port != "5432" or username != "postgres.yxxrgblpqzhnnyojbwcr" or path != "/postgres":
+          if port != "5432" or username != "postgres.yxxrgblpqzhnnyojbwcr" or path != "postgres":
               raise SystemExit("Refusing connection: expected this test project's Session pooler on port 5432 and database postgres.")
           if not password:
               raise SystemExit("Connection URI is missing its password.")
