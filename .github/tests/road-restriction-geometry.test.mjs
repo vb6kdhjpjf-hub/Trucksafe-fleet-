@@ -163,3 +163,50 @@ test("flags a time-window restriction with missing hours as unresolved", () => {
   assert.equal(result.unresolved.length, 1);
   assert.equal(result.validated, false);
 });
+
+
+test("evaluates a restriction that becomes active during the estimated route", () => {
+  const scheduled = {
+    ...verified,
+    restriction_type: "time_window",
+    valid_from: "03:00:00",
+    valid_until: "04:00:00"
+  };
+  const result = evaluateFleetRestrictions({
+    sections: [{ ...route([[31.999,34.8],[32.001,34.8]])[0], summary: { duration: 7200 } }],
+    restrictions: [scheduled],
+    vehicle,
+    currentWeightKg: 18000,
+    now: new Date("2026-11-08T00:30:00Z")
+  });
+  assert.equal(result.conflicts.length, 1);
+});
+
+test("does not block a time-window restriction after the route has passed its active period", () => {
+  const scheduled = {
+    ...verified,
+    restriction_type: "time_window",
+    valid_from: "01:00:00",
+    valid_until: "02:00:00"
+  };
+  const result = evaluateFleetRestrictions({
+    sections: [{ ...route([[31.999,34.8],[32.001,34.8]])[0], summary: { duration: 1800 } }],
+    restrictions: [scheduled],
+    vehicle,
+    currentWeightKg: 18000,
+    now: new Date("2026-11-08T03:00:00Z")
+  });
+  assert.equal(result.conflicts.length, 0);
+});
+
+test("fails closed when route duration cannot be evaluated safely", () => {
+  const result = evaluateFleetRestrictions({
+    sections: [{ ...route([[31.999,34.8],[32.001,34.8]])[0], summary: { duration: 200000 } }],
+    restrictions: [verified],
+    vehicle,
+    currentWeightKg: 18000,
+    now: new Date("2026-11-08T10:00:00Z")
+  });
+  assert.equal(result.unresolved.length, 1);
+  assert.equal(result.validated, false);
+});
