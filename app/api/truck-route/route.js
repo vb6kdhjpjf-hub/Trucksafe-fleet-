@@ -123,7 +123,7 @@ export async function POST(request) {
 
     const profile = getSavedTruckRoutingProfile(vehicle);
     if (!profile) {
-      return response({ error: "חסרים נתוני רכב תקינים בפרופיל השמור. יש לעדכן מידות, משקל וסרנים לפי רישיון הרכב לפני חישוב מסלול." }, 422);
+      return response({ error: "חסרים נתוני רכב תקינים בפרופיל השמור. יש לעדכן מידות, משקל כולל, מספר סרנים ועומס בפועל על הסרן הכבד ביותר לפי רישיון הרכב, מסמכי היצרן או שקילה מאומתת לפני חישוב מסלול." }, 422);
     }
 
     const currentWeightKg = Number(raw.currentWeightKg);
