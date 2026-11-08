@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm_restore:
-        description: "Type RESTORE to confirm rebuilding the empty TruckSafe Fleet Test database"
+        description: "Type RESTORE to confirm restoring the verified schema-only snapshot to the empty TruckSafe Fleet Test database"
         required: true
         type: choice
         options:
@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: trucksafe-test-schema-restore
@@ -26,64 +27,57 @@ jobs:
     timeout-minutes: 25
     permissions:
       contents: read
+      actions: read
     env:
-      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
       SUPABASE_TEST_DB_URL: ${{ secrets.SUPABASE_TEST_DB_URL }}
       EXPECTED_TEST_HOST: db.yxxrgblpqzhnnyojbwcr.supabase.co
+      SCHEMA_ARTIFACT_RUN_ID: "42468539345"
+      SCHEMA_ARTIFACT_NAME: trucksafe-schema-only-temporary
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
 
-      - name: Validate source and isolated test credentials
+      - name: Validate isolated test credentials
         shell: bash
         run: |
           set +x
           python3 - <<'PY'
-          import os
-          from urllib.parse import urlparse
-
-          source = os.environ.get("SUPABASE_DB_URL", "")
+          import os, re
           target = os.environ.get("SUPABASE_TEST_DB_URL", "")
           expected = os.environ["EXPECTED_TEST_HOST"]
-
-          if not source or not target:
-              raise SystemExit("Required GitHub Actions secrets are missing: SUPABASE_DB_URL and/or SUPABASE_TEST_DB_URL.")
-
-          source_url = urlparse(source)
-          target_url = urlparse(target)
-          if source_url.scheme not in ("postgres", "postgresql") or not source_url.hostname:
-              raise SystemExit("SUPABASE_DB_URL is not a valid PostgreSQL connection URL.")
-          if target_url.scheme not in ("postgres", "postgresql") or not target_url.hostname:
-              raise SystemExit("SUPABASE_TEST_DB_URL is not a valid PostgreSQL connection URL.")
-          if target_url.hostname != expected:
+          match = re.match(r"^postgres(?:ql)?://[^@]+@([^:/?#]+)(?::[0-9]+)?/[^?#]+(?:\?.*)?$", target)
+          if not match:
+              raise SystemExit("SUPABASE_TEST_DB_URL is not a valid PostgreSQL connection URI.")
+          if match.group(1) != expected:
               raise SystemExit("Refusing to run: target host is not the dedicated TruckSafe Fleet Test project.")
-          if source_url.hostname == target_url.hostname:
-              raise SystemExit("Refusing to run: source and target databases resolve to the same host.")
-          print("Connection checks passed. Source credentials will be used for schema-only export; target is the dedicated test project.")
+          print("Target credential format and dedicated test host verified.")
           PY
 
-      - name: Install Supabase CLI and PostgreSQL client
-        uses: supabase/setup-cli@v3
+      - name: Download previously verified schema-only snapshot
+        uses: actions/download-artifact@v4
         with:
-          version: v2.stable
+          name: trucksafe-schema-only-temporary
+          path: schema-artifact
+          repository: vb6kdhjpjf-hub/Trucksafe-fleet-
+          run-id: 42468539345
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate schema-only snapshot
+        shell: bash
+        run: |
+          set +x
+          test -s schema-artifact/schema.sql
+          if grep -Eq '^[[:space:]]*(COPY |INSERT INTO )' schema-artifact/schema.sql; then
+            echo "::error::Snapshot contains data-loading statements. Refusing to restore."
+            exit 1
+          fi
+          echo "Schema snapshot present; no top-level data-loading statements found."
 
       - name: Install PostgreSQL client
         shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install --yes postgresql-client
-
-      - name: Export schema only from source (no table data)
-        shell: bash
-        run: |
-          set +x
-          supabase db dump --db-url="$SUPABASE_DB_URL" --file=schema.sql
-          test -s schema.sql
-          if grep -Eq '^(COPY |INSERT INTO )' schema.sql; then
-            echo "::error::The export contains data-loading statements. Refusing to restore."
-            exit 1
-          fi
-          echo "Schema-only export created; no COPY or top-level INSERT statements found."
 
       - name: Confirm the test database is empty
         shell: bash
@@ -96,11 +90,11 @@ jobs:
           fi
           echo "Test database preflight passed: public schema contains no application tables."
 
-      - name: Restore schema atomically to the isolated test database
+      - name: Restore schema to the isolated test database
         shell: bash
         run: |
           set +x
-          psql "$SUPABASE_TEST_DB_URL" -X -v ON_ERROR_STOP=1 --single-transaction --file=schema.sql
+          psql "$SUPABASE_TEST_DB_URL" -X -v ON_ERROR_STOP=1 --single-transaction --file=schema-artifact/schema.sql
 
       - name: Restore the custom auth.users profile trigger
         shell: bash
@@ -112,18 +106,15 @@ jobs:
             IF to_regprocedure('public.handle_new_auth_user()') IS NULL THEN
               RAISE EXCEPTION 'Required function public.handle_new_auth_user() is missing';
             END IF;
-
             IF NOT EXISTS (
-              SELECT 1
-              FROM pg_trigger
+              SELECT 1 FROM pg_trigger
               WHERE tgrelid = 'auth.users'::regclass
                 AND tgname = 'on_auth_user_created_profile'
                 AND NOT tgisinternal
             ) THEN
               CREATE TRIGGER on_auth_user_created_profile
               AFTER INSERT ON auth.users
-              FOR EACH ROW
-              EXECUTE FUNCTION public.handle_new_auth_user();
+              FOR EACH ROW EXECUTE FUNCTION public.handle_new_auth_user();
             END IF;
           END
           $restore$;
