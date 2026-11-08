@@ -65,6 +65,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108220000_restrict_security_definer_function_execution.sql
+      - name: Protect verified restrictions from deletion
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108230000_block_verified_road_restriction_deletion.sql
       - name: Verify road restriction provenance and constraints
         env:
           PGPASSWORD: postgres
