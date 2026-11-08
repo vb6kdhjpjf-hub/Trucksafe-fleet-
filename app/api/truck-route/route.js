@@ -1,4 +1,5 @@
 import { getTruckRoutingConfig } from "../../../lib/truck-routing-config.mjs";
+import { getSavedTruckRoutingProfile } from "../../../lib/truck-routing-profile.mjs";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -63,20 +64,6 @@ export async function POST(request) {
     const { data: authData, error: authError } = await db.auth.getUser(token);
     if (authError || !authData?.user) return response({ error: "החיבור אינו תקף. יש להתחבר מחדש." }, 401);
 
-    stage = "check_fleet_membership";
-    const { data: membership, error: membershipError } = await db
-      .from("fleet_members")
-      .select("fleet_id")
-      .eq("user_id", authData.user.id)
-      .limit(1)
-      .maybeSingle();
-    if (membershipError || !membership) return response({ error: "אין לחשבון הרשאה לתכנון מסלולים בצי." }, 403);
-
-    stage = "read_routing_config";
-    const routing = getTruckRoutingConfig();
-    const apiKey = routing.apiKey;
-    if (!apiKey) return response({ error: "מנוע ניתוב המשאיות מושבת או לא הוגדר במלואו. אין להשתמש במסלול עד להשלמת אישור הספק, הגדרה ובדיקות בטיחות." }, 503);
-
     stage = "read_request_body";
     const rawBody = await request.text();
     if (new TextEncoder().encode(rawBody).byteLength > 16000) {
@@ -105,28 +92,49 @@ export async function POST(request) {
       return response({ error: "המיקום הנוכחי אינו תקין או נמצא מחוץ לישראל. אפשר להזין מוצא ידני." }, 400);
     }
 
-    const heightCm = Number(raw.heightCm);
-    const widthCm = Number(raw.widthCm);
-    const lengthCm = Number(raw.lengthCm);
-    const grossWeightKg = Number(raw.grossWeightKg);
-    const currentWeightKg = Number(raw.currentWeightKg);
-    const weightPerAxleKg = raw.weightPerAxleKg === "" || raw.weightPerAxleKg == null ? null : Number(raw.weightPerAxleKg);
-    const axleCount = Number(raw.axleCount);
-    const trailerCount = Number(raw.trailerCount);
-    const vehicleType = raw.vehicleType;
-
-    if (!numberInRange(heightCm, 100, 600) ||
-        !numberInRange(widthCm, 100, 350) ||
-        !numberInRange(lengthCm, 200, 3000) ||
-        !numberInRange(grossWeightKg, 1000, 100000) ||
-        !numberInRange(currentWeightKg, 1000, 100000) ||
-        currentWeightKg > grossWeightKg ||
-        !Number.isInteger(axleCount) || axleCount < 2 || axleCount > 12 ||
-        !Number.isInteger(trailerCount) || trailerCount < 0 || trailerCount > 3 ||
-        !["StraightTruck", "Tractor"].includes(vehicleType) ||
-        (weightPerAxleKg !== null && !numberInRange(weightPerAxleKg, 500, 30000))) {
-      return response({ error: "יש לבדוק את סוג המשאית, מספר הסרנים והנגררים, המידות והמשקלים. המשקל בפועל חייב להיות קטן או שווה למשקל הכולל המותר." }, 400);
+    const vehicleId = typeof raw.vehicleId === "string" ? raw.vehicleId : "";
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(vehicleId)) {
+      return response({ error: "יש לבחור רכב שמור מהצי לפני חישוב מסלול." }, 400);
     }
+
+    stage = "load_saved_vehicle_profile";
+    const { data: vehicle, error: vehicleError } = await db
+      .from("vehicles")
+      .select("id,fleet_id,is_demo,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,axle_count,trailer_count,weight_per_axle_kg")
+      .eq("id", vehicleId)
+      .eq("is_demo", false)
+      .maybeSingle();
+    if (vehicleError || !vehicle) {
+      return response({ error: "הרכב לא נמצא בצי שלך או שאין לך הרשאה להשתמש בו." }, 403);
+    }
+
+    stage = "check_fleet_membership";
+    const { data: membership, error: membershipError } = await db
+      .from("fleet_members")
+      .select("fleet_id")
+      .eq("user_id", authData.user.id)
+      .eq("fleet_id", vehicle.fleet_id)
+      .maybeSingle();
+    if (membershipError || !membership) {
+      return response({ error: "אין לחשבון הרשאה לתכנון מסלולים עבור הרכב שנבחר." }, 403);
+    }
+
+    const profile = getSavedTruckRoutingProfile(vehicle);
+    if (!profile) {
+      return response({ error: "חסרים נתוני רכב תקינים בפרופיל השמור. יש לעדכן מידות, משקל וסרנים לפי רישיון הרכב לפני חישוב מסלול." }, 422);
+    }
+
+    const currentWeightKg = Number(raw.currentWeightKg);
+    if (!numberInRange(currentWeightKg, 1000, 100000) || currentWeightKg > profile.grossWeightKg) {
+      return response({ error: "המשקל בפועל חייב להיות תקין וקטן או שווה למשקל הכולל המותר בפרופיל הרכב." }, 400);
+    }
+
+    const { heightCm, widthCm, lengthCm, grossWeightKg, weightPerAxleKg, axleCount, trailerCount, vehicleType } = profile;
+
+    stage = "read_routing_config";
+    const routing = getTruckRoutingConfig();
+    const apiKey = routing.apiKey;
+    if (!apiKey) return response({ error: "מנוע ניתוב המשאיות מושבת או לא הוגדר במלואו. אין להשתמש במסלול עד להשלמת אישור הספק, הגדרה ובדיקות בטיחות." }, 503);
 
     stage = "geocode_addresses";
     const [origin, destination] = await Promise.all([
