@@ -1,5 +1,6 @@
 import { getTruckRoutingConfig } from "../../../lib/truck-routing-config.mjs";
 import { getSavedTruckRoutingProfile } from "../../../lib/truck-routing-profile.mjs";
+import { evaluateFleetRestrictions } from "../../../lib/road-restriction-geometry.mjs";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -131,6 +132,16 @@ export async function POST(request) {
 
     const { heightCm, widthCm, lengthCm, grossWeightKg, weightPerAxleKg, axleCount, trailerCount, vehicleType } = profile;
 
+    stage = "read_fleet_road_restrictions";
+    const { data: fleetRestrictions, error: restrictionsError } = await db
+      .from("road_restrictions")
+      .select("id,road_name,restriction_type,max_height_m,max_weight_t,max_width_m,max_length_m,valid_from,valid_until,active_from,active_until,is_active,latitude,longitude,radius_m,source_url,verification_status")
+      .eq("fleet_id", vehicle.fleet_id)
+      .eq("is_active", true);
+    if (restrictionsError) {
+      return response({ error: "לא ניתן לבדוק את מגבלות הדרך של הצי. לא הוצג מסלול כדי למנוע הסתמכות על בדיקה חלקית." }, 503);
+    }
+
     stage = "read_routing_config";
     const routing = getTruckRoutingConfig();
     const apiKey = routing.apiKey;
@@ -191,6 +202,21 @@ export async function POST(request) {
         duration: Number.isFinite(action.duration) ? action.duration : null
       })));
     const critical = notices.some(notice => notice.severity.toLowerCase() === "critical");
+    const restrictionCheck = evaluateFleetRestrictions({
+      sections: route.sections,
+      restrictions: fleetRestrictions || [],
+      vehicle: profile,
+      currentWeightKg
+    });
+    if (restrictionCheck.conflicts.length > 0) {
+      return response({
+        error: "המסלול חוצה מגבלת דרך מאומתת שאינה מתאימה לרכב. לא הוצג מסלול לנסיעה.",
+        restrictionConflicts: restrictionCheck.conflicts.map(item => ({
+          roadName: item.roadName,
+          restrictionType: item.restrictionType
+        }))
+      }, 422);
+    }
     const distance = route.sections.reduce((sum, section) => sum + (Number(section.summary?.length) || 0), 0);
     const duration = route.sections.reduce((sum, section) => sum + (Number(section.summary?.duration) || 0), 0);
 
@@ -200,6 +226,11 @@ export async function POST(request) {
       distanceMeters: distance,
       durationSeconds: duration,
       hasCriticalNotices: critical,
+      restrictionValidation: {
+        manualRestrictionsValidated: restrictionCheck.validated,
+        unresolvedNearbyRestrictions: restrictionCheck.unresolved.length,
+        officialNationalRestrictionsIntegrated: false
+      },
       notices,
       actions,
       sections: route.sections.map(section => ({ polyline: section.polyline || "" }))
