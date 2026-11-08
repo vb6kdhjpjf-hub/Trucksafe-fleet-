@@ -131,7 +131,6 @@ export async function POST(request) {
       return response({ error: "המשקל בפועל חייב להיות תקין וקטן או שווה למשקל הכולל המותר בפרופיל הרכב." }, 400);
     }
 
-    const { heightCm, widthCm, lengthCm, grossWeightKg, weightPerAxleKg, axleCount, trailerCount, vehicleType } = profile;
 
     stage = "read_fleet_road_restrictions";
     const { data: fleetRestrictions, error: restrictionsError, count: restrictionsCount } = await db
