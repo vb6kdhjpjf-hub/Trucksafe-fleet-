@@ -1,6 +1,7 @@
 import { getTruckRoutingConfig } from "../../../lib/truck-routing-config.mjs";
 import { getSavedTruckRoutingProfile } from "../../../lib/truck-routing-profile.mjs";
 import { evaluateFleetRestrictions } from "../../../lib/road-restriction-geometry.mjs";
+import { buildHereTruckVehicleParams } from "../../../lib/here-truck-parameters.mjs";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -160,25 +161,18 @@ export async function POST(request) {
     }
 
     const url = new URL("https://router.hereapi.com/v8/routes");
+    const departureAt = new Date();
     const params = {
+      ...buildHereTruckVehicleParams(profile, currentWeightKg),
       transportMode: "truck",
       origin: `${origin.lat},${origin.lng}`,
       destination: `${destination.lat},${destination.lng}`,
-      departureTime: new Date().toISOString(),
+      departureTime: departureAt.toISOString(),
       return: "polyline,summary,actions",
       lang: "he-IL",
       "avoid[features]": "dirtRoad,uTurns",
-      "vehicle[height]": (heightCm / 100).toFixed(2),
-      "vehicle[width]": (widthCm / 100).toFixed(2),
-      "vehicle[length]": (lengthCm / 100).toFixed(2),
-      "vehicle[grossWeight]": String(Math.round(grossWeightKg)),
-      "vehicle[currentWeight]": String(Math.round(currentWeightKg)),
-      "vehicle[type]": vehicleType,
-      "vehicle[axleCount]": String(axleCount),
-      "vehicle[trailerCount]": String(trailerCount),
       apiKey
     };
-    if (weightPerAxleKg !== null) params["vehicle[weightPerAxle]"] = String(Math.round(weightPerAxleKg));
     url.search = new URLSearchParams(params).toString();
 
     stage = "call_here_truck_router";
@@ -213,7 +207,8 @@ export async function POST(request) {
       sections: route.sections,
       restrictions: fleetRestrictions || [],
       vehicle: profile,
-      currentWeightKg
+      currentWeightKg,
+      now: departureAt
     });
     if (restrictionCheck.unresolved.length > 0) {
       return response({
