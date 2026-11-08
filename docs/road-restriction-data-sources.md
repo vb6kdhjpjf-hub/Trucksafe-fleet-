@@ -46,6 +46,8 @@ If any required field is absent, keep the record as an unverified candidate or r
 
 HERE currently lists Israel under full truck-restriction data coverage, with the caveat that very small local roads may be exceptions and routes can still be calculated where truck-restriction data is unavailable. A successful HERE response is therefore not proof of complete local coverage. TruckSafe must keep its own provenance/validation status and treat critical notices as a hard stop.
 
+The HERE API reference accepts dimensions in `cm`, `m` or `in`, and weights in `kg`, metric tons or pounds. TruckSafe sends explicit `cm` values for height/width/length and explicit `kg` values for gross/current/axle weights to avoid unit ambiguity.
+
 Official docs:
 - [Truck-routing country coverage](https://docs.here.com/routing/docs/routing-v8-truck-routing-coverage)
 - [Truck-routing restrictions and vehicle properties](https://docs.here.com/routing/docs/routing-v8-truck-routing)
@@ -68,3 +70,8 @@ Required Edge Function secrets:
 The function verifies the caller's Supabase JWT, checks the reviewer UUID allowlist, requires explicit source and field-check confirmations plus a written review note, validates the source hostname and restriction fields, then writes the verification timestamp/reviewer/audit note using the service role. It refuses re-verification of already verified rows; those need a separate controlled correction workflow.
 
 Do not deploy the function or set reviewer IDs until the organization has formally appointed reviewers and approved the source-host allowlist.
+
+
+## Supabase key lifecycle note
+
+The reviewer function currently uses the project's legacy `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` environment variables, which remain supported through the end of 2026. Before deployment, migrate this function to Supabase's current publishable/secret key model (prefer `@supabase/server` with `auth: 'user'` and `ctx.supabaseAdmin`) or confirm the legacy-key transition window with the project owner. A secret/service-role key must remain server-side and must never be exposed to the browser.
