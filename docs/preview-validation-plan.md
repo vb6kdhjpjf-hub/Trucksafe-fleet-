@@ -22,6 +22,7 @@ GitHub Actions performs:
 
 Unit coverage includes:
 - HERE Flexible Polyline 2D/3D decoding.
+- HERE provider notice handling, including administrative-wide vehicle violations reported with informational severity.
 - Route/restriction geofence matching.
 - Vehicle dimensions and weight checks.
 - Israeli time-zone windows and overnight windows.
@@ -49,3 +50,8 @@ A release candidate requires:
 - Human review of HERE notices and representative Israel truck routes.
 - Documented source/licence/coverage approval for each external restriction feed.
 - Explicit owner approval before enabling Preview, merging, applying production migrations, or deploying Production.
+
+
+## HERE provider notice handling
+
+The route API discards a route if any HERE notice has `severity=critical`, including future/unknown critical codes. It also discards a route for any notice whose code begins with `violated`, because HERE documents administrative-area-wide truck restriction violations as `info` notices even though they describe an actual vehicle restriction violation. Ordinary informational notices remain displayable. The request includes `instructions` because the client uses maneuver instruction text.
