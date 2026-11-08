@@ -1,6 +1,6 @@
 import { getTruckRoutingConfig } from "../../../lib/truck-routing-config.mjs";
 import { getSavedTruckRoutingProfile } from "../../../lib/truck-routing-profile.mjs";
-import { evaluateFleetRestrictions, decodeFlexiblePolyline, hasBlockingHereNotice } from "../../../lib/road-restriction-geometry.mjs";
+import { selectSafeTruckRoute } from "../../../lib/road-restriction-geometry.mjs";
 import { buildHereTruckVehicleParams } from "../../../lib/here-truck-parameters.mjs";
 import { createClient } from "@supabase/supabase-js";
 
@@ -180,6 +180,7 @@ export async function POST(request) {
       return: "polyline,summary,actions,instructions,potentialTimeDependentViolations",
       lang: "he-IL",
       "avoid[features]": "dirtRoad,uTurns",
+      alternatives: "3",
       apiKey
     };
     url.search = new URLSearchParams(params).toString();
@@ -190,65 +191,79 @@ export async function POST(request) {
     const routeData = await routeResponse.json().catch(() => null);
     if (!routeResponse.ok) return response({ error: "ספק הניווט לא הצליח לחשב מסלול. בדוק את פרטי הרכב ונסה שוב." }, 502);
 
-    const route = routeData?.routes?.[0];
-    if (!route?.sections?.length) return response({ error: "לא נמצא מסלול למשאית לפי הנתונים שהוזנו. אין להחליף למסלול רכב פרטי." }, 422);
-    try {
-      if (route.sections.some(section => typeof section.polyline !== "string" || !section.polyline)) {
-        throw new Error("Missing route geometry");
-      }
-      for (const section of route.sections) {
-        const coordinates = decodeFlexiblePolyline(section.polyline);
-        if (coordinates.length < 2) throw new Error("Incomplete route geometry");
-      }
-    } catch {
-      return response({ error: "נתוני הגיאומטריה של המסלול אינם תקינים. המסלול נחסם ולא יוצג לנהג." }, 502);
-    }
+    const routes = Array.isArray(routeData?.routes) ? routeData.routes : [];
+    if (routes.length === 0) return response({ error: "לא נמצא מסלול למשאית לפי הנתונים שהוזנו. אין להחליף למסלול רכב פרטי." }, 422);
 
-    const notices = [...(route.notices || []), ...route.sections.flatMap(section => section.notices || [])].map(notice => ({
-      code: String(notice.code || "notice").slice(0, 100),
-      severity: String(notice.severity || "info").slice(0, 30),
-      title: String(notice.title || notice.code || "הודעת ניווט").slice(0, 240)
-    }));
-    const actions = route.sections.flatMap(section => (section.actions || [])
-      .filter(action => typeof action.instruction === "string" && action.instruction.trim())
-      .map(action => ({
-        instruction: action.instruction.slice(0, 300),
-        length: Number.isFinite(action.length) ? action.length : null,
-        duration: Number.isFinite(action.duration) ? action.duration : null
-      })));
-    const critical = notices.some(notice => notice.severity.toLowerCase() === "critical");
-    const blockingProviderNotice = notices.some(hasBlockingHereNotice);
-    if (blockingProviderNotice) {
-      return response({
-        error: "ספק הניווט דיווח על הפרת מגבלת משאית קריטית במסלול. המסלול נחסם ולא יוצג לנהג.",
-        criticalNotices: notices
-      }, 422);
-    }
-    const restrictionCheck = evaluateFleetRestrictions({
-      sections: route.sections,
+    const selection = selectSafeTruckRoute({
+      routes,
       restrictions: fleetRestrictions || [],
       vehicle: profile,
       currentWeightKg,
       now: departureAt
     });
-    if (restrictionCheck.unresolved.length > 0) {
-      return response({
-        error: "לא ניתן לאמת את כל מגבלות הדרך הרלוונטיות למסלול. המסלול לא יוצג עד להשלמת בדיקת המידע.",
-        unresolvedRestrictions: restrictionCheck.unresolved.map(item => ({
-          roadName: item.roadName,
-          reason: item.reason
-        }))
-      }, 409);
+    if (!selection.route) {
+      const unresolved = selection.rejected
+        .filter(item => item.reason === "unresolved_fleet_restrictions")
+        .flatMap(item => item.restrictionCheck.unresolved);
+      if (unresolved.length > 0) {
+        return response({
+          error: "לא ניתן לאמת את כל מגבלות הדרך הרלוונטיות באף אחת מהחלופות. לא הוצג מסלול.",
+          unresolvedRestrictions: unresolved.map(item => ({
+            roadName: item.roadName,
+            reason: item.reason
+          }))
+        }, 409);
+      }
+
+      const conflicts = selection.rejected
+        .filter(item => item.reason === "fleet_restriction_conflict")
+        .flatMap(item => item.restrictionCheck.conflicts);
+      if (conflicts.length > 0) {
+        return response({
+          error: "כל חלופות המסלול שנבדקו מתנגשות במגבלת דרך מאומתת. לא הוצג מסלול לנסיעה.",
+          restrictionConflicts: conflicts.map(item => ({
+            roadName: item.roadName,
+            restrictionType: item.restrictionType
+          }))
+        }, 422);
+      }
+
+      const providerNotices = selection.rejected
+        .filter(item => item.reason === "provider_restriction_notice")
+        .flatMap(item => item.notices)
+        .map(notice => ({
+          code: String(notice?.code || "notice").slice(0, 100),
+          severity: String(notice?.severity || "info").slice(0, 30),
+          title: String(notice?.title || notice?.code || "הודעת ניווט").slice(0, 240)
+        }));
+      if (providerNotices.length > 0) {
+        return response({
+          error: "ספק הניווט דיווח על הפרת מגבלת משאית בכל החלופות שנבדקו. לא הוצג מסלול.",
+          criticalNotices: providerNotices
+        }, 422);
+      }
+
+      if (selection.rejected.length > 0 && selection.rejected.every(item => item.reason === "invalid_route_geometry")) {
+        return response({ error: "נתוני הגיאומטריה של חלופות המסלול אינם תקינים. המסלול נחסם ולא יוצג לנהג." }, 502);
+      }
+      return response({ error: "לא נמצאה חלופת מסלול שניתן לאמת בבטחה. לא הוצג מסלול." }, 422);
     }
-    if (restrictionCheck.conflicts.length > 0) {
-      return response({
-        error: "המסלול חוצה מגבלת דרך מאומתת שאינה מתאימה לרכב. לא הוצג מסלול לנסיעה.",
-        restrictionConflicts: restrictionCheck.conflicts.map(item => ({
-          roadName: item.roadName,
-          restrictionType: item.restrictionType
-        }))
-      }, 422);
-    }
+
+    const route = selection.route;
+    const restrictionCheck = selection.restrictionCheck;
+    const notices = selection.notices.map(notice => ({
+      code: String(notice?.code || "notice").slice(0, 100),
+      severity: String(notice?.severity || "info").slice(0, 30),
+      title: String(notice?.title || notice?.code || "הודעת ניווט").slice(0, 240)
+    }));
+    const actions = route.sections.flatMap(section => (Array.isArray(section.actions) ? section.actions : [])
+      .filter(action => typeof action?.instruction === "string" && action.instruction.trim())
+      .map(action => ({
+        instruction: action.instruction.slice(0, 300),
+        length: Number.isFinite(action.length) && action.length >= 0 ? action.length : null,
+        duration: Number.isFinite(action.duration) && action.duration >= 0 ? action.duration : null
+      })));
+    const critical = notices.some(notice => notice.severity.toLowerCase() === "critical");
     const distance = route.sections.reduce((sum, section) => sum + (Number(section.summary?.length) || 0), 0);
     const duration = route.sections.reduce((sum, section) => sum + (Number(section.summary?.duration) || 0), 0);
 
