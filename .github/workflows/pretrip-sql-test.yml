@@ -48,3 +48,15 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f .github/tests/pretrip-assertions.sql
+      - name: Prepare isolated road restriction schema
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f .github/tests/road-restrictions-fixture.sql
+      - name: Apply geospatial road restrictions migration in isolation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108120000_add_geospatial_road_restrictions.sql
+      - name: Verify road restriction provenance and constraints
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f .github/tests/road-restrictions-assertions.sql
