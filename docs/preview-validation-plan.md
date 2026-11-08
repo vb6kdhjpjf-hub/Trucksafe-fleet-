@@ -103,3 +103,9 @@ The route API no longer logs raw exception messages from HERE/network failures. 
 - A candidate with an unresolved restriction, a verified restriction conflict, invalid geometry, or a critical/violation notice is never displayed. If no candidate passes, the API returns a blocked/unresolved response instead of falling back to a car route.
 - HERE documents that avoid requests may still be violated when no compliant route can be found; therefore provider avoidance is not treated as proof of safety. Local validation remains mandatory.
 - No live HERE requests have been made; alternatives are covered by deterministic local tests only.
+
+
+### Route endpoint resource and input guards
+- The server route endpoint has a 60-second execution ceiling; upstream geocoding and routing requests each have shorter explicit timeouts.
+- The request handler validates JSON content type, checks declared and actual body size, and requires the current trip weight to be a JSON number rather than coercing arbitrary values.
+- No provider requests were made while adding these guards.
