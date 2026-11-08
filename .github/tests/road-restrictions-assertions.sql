@@ -44,7 +44,9 @@ BEGIN
       source_url = 'https://example.gov.il/bridge',
       verification_status = 'verified',
       verified_at = now(),
-      verified_by = gen_random_uuid()
+      verified_by = gen_random_uuid(),
+      source_last_checked_at = now(),
+      verification_note = $note$Checked official notice and verified dimensions against the source document.$note$
   WHERE id = restriction_id;
 
   SELECT verification_status INTO current_status
