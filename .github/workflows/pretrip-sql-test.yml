@@ -101,6 +101,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108270000_validate_truck_route_quota_timestamps.sql
+      - name: Add route quota ledger primary key
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108290000_add_route_quota_primary_key.sql
       - name: Verify rolling truck route quota and grants
         env:
           PGPASSWORD: postgres
