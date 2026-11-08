@@ -72,13 +72,15 @@ export async function POST(request) {
     if (Number.isFinite(declaredLength) && declaredLength > 16000) {
       return response({ error: "הבקשה גדולה מדי." }, 413);
     }
-    const rawBody = await request.text();
-    if (new TextEncoder().encode(rawBody).byteLength > 16000) {
-      return response({ error: "הבקשה גדולה מדי." }, 413);
+    const { readBoundedBody } = await import("../../../lib/read-bounded-body.mjs");
+    const bodyResult = await readBoundedBody(request.body, 16000);
+    if (!bodyResult.ok) {
+      if (bodyResult.reason === "too_large") return response({ error: "הבקשה גדולה מדי." }, 413);
+      return response({ error: "לא ניתן לקרוא את נתוני הבקשה בפורמט תקין." }, 400);
     }
     let raw;
     try {
-      raw = JSON.parse(rawBody);
+      raw = JSON.parse(bodyResult.text);
     } catch {
       return response({ error: "נתוני הבקשה אינם JSON תקין." }, 400);
     }
