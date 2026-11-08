@@ -33,6 +33,19 @@ BEGIN
   IF NOT (SELECT relrowsecurity FROM pg_catalog.pg_class WHERE oid = 'private.truck_route_requests'::regclass) THEN
     RAISE EXCEPTION 'Route quota rows must be protected by RLS';
   END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_constraint
+    WHERE conrelid = 'private.truck_route_requests'::regclass
+      AND contype = 'p'
+      AND conkey = ARRAY[(SELECT attnum FROM pg_catalog.pg_attribute
+                          WHERE attrelid = 'private.truck_route_requests'::regclass
+                            AND attname = 'id')]::smallint[]
+  ) THEN
+    RAISE EXCEPTION 'Private route quota ledger must have a primary key on id';
+  END IF;
+  IF has_column_privilege('authenticated', 'private.truck_route_requests', 'id', 'INSERT') THEN
+    RAISE EXCEPTION 'Authenticated users must not choose quota ledger IDs';
+  END IF;
 
   -- Seed an expired row as the database owner; the first new request must prune it.
   INSERT INTO private.truck_route_requests (user_id, requested_at)
