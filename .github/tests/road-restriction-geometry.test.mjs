@@ -23,7 +23,7 @@ function encodePolyline(points, precision = 5) {
 const route = (points) => [{ polyline: encodePolyline(points) }];
 const vehicle = { heightCm: 420, widthCm: 250, lengthCm: 900 };
 const verified = {
-  id: "r1", road_name: "Bridge A", is_active: true, verification_status: "verified",
+  id: "r1", road_name: "Bridge A", is_active: true, verification_status: "verified", verified_at: "2026-11-01T00:00:00Z", verified_by: "00000000-0000-4000-8000-000000000001",
   source_url: "https://example.gov.il/restriction", restriction_type: "height",
   max_height_m: 4.0, latitude: 32.0, longitude: 34.8, radius_m: 100
 };
