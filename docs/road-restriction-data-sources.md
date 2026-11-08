@@ -39,7 +39,7 @@ If any required field is absent, keep the record as an unverified candidate or r
 2. Pilot one bounded geography (Migdal/Tiberias and adjoining routes) only after a source supplies actual restriction attributes.
 3. Import to a staging/candidate table with raw source payload and checksum; do not write directly to the enforced fleet table.
 4. Compare a sample against signed traffic orders / field signage and have an authorized reviewer approve it.
-5. Monitor freshness and automatically expire stale temporary records; do not keep them active indefinitely.
+5. Monitor freshness and automatically expire stale temporary records; do not keep them active indefinitely. The route evaluator now treats any verification older than 30 days (or with invalid/future timestamps) as unresolved. A separate reviewer-only revalidation function is prepared to refresh the source-check timestamp after explicit source and field review.
 6. Expand only after measured completeness, false-negative testing and written approval.
 
 ## HERE integration
@@ -75,3 +75,6 @@ Do not deploy the function or set reviewer IDs until the organization has formal
 ## Supabase key lifecycle note
 
 The reviewer function currently uses the project's legacy `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` environment variables, which remain supported through the end of 2026. Before deployment, migrate this function to Supabase's current publishable/secret key model (prefer `@supabase/server` with `auth: 'user'` and `ctx.supabaseAdmin`) or confirm the legacy-key transition window with the project owner. A secret/service-role key must remain server-side and must never be exposed to the browser.
+
+## Controlled re-review and freshness
+Verified restriction records are accepted for route evaluation only while their source was last checked within the previous 30 days. Stale or inconsistent timestamps fail closed and block a route that passes near the record. The separate `revalidate-road-restriction` Edge Function can re-review previously verified or expired records using the same reviewer UUID allowlist and exact source-host allowlist. It requires explicit source/field confirmations, a written note, and a conditional update against the reviewed field snapshot. It is prepared in source control only; it has not been deployed or configured.
