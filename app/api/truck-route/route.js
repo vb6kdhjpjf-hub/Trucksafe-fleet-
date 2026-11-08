@@ -168,9 +168,9 @@ export async function POST(request) {
       return: "polyline,summary,actions",
       lang: "he-IL",
       "avoid[features]": "dirtRoad,uTurns",
-      "vehicle[height]": String(Math.round(heightCm)),
-      "vehicle[width]": String(Math.round(widthCm)),
-      "vehicle[length]": String(Math.round(lengthCm)),
+      "vehicle[height]": (heightCm / 100).toFixed(2),
+      "vehicle[width]": (widthCm / 100).toFixed(2),
+      "vehicle[length]": (lengthCm / 100).toFixed(2),
       "vehicle[grossWeight]": String(Math.round(grossWeightKg)),
       "vehicle[currentWeight]": String(Math.round(currentWeightKg)),
       "vehicle[type]": vehicleType,
@@ -203,12 +203,27 @@ export async function POST(request) {
         duration: Number.isFinite(action.duration) ? action.duration : null
       })));
     const critical = notices.some(notice => notice.severity.toLowerCase() === "critical");
+    if (critical) {
+      return response({
+        error: "ספק הניווט דיווח על הפרת מגבלת משאית קריטית במסלול. המסלול נחסם ולא יוצג לנהג.",
+        criticalNotices: notices
+      }, 422);
+    }
     const restrictionCheck = evaluateFleetRestrictions({
       sections: route.sections,
       restrictions: fleetRestrictions || [],
       vehicle: profile,
       currentWeightKg
     });
+    if (restrictionCheck.unresolved.length > 0) {
+      return response({
+        error: "לא ניתן לאמת את כל מגבלות הדרך הרלוונטיות למסלול. המסלול לא יוצג עד להשלמת בדיקת המידע.",
+        unresolvedRestrictions: restrictionCheck.unresolved.map(item => ({
+          roadName: item.roadName,
+          reason: item.reason
+        }))
+      }, 409);
+    }
     if (restrictionCheck.conflicts.length > 0) {
       return response({
         error: "המסלול חוצה מגבלת דרך מאומתת שאינה מתאימה לרכב. לא הוצג מסלול לנסיעה.",
