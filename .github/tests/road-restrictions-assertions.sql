@@ -42,6 +42,7 @@ BEGIN
   SET latitude = 32.0,
       longitude = 34.8,
       radius_m = 100,
+      max_height_m = 4.2,
       source_url = 'https://example.gov.il/bridge',
       verification_status = 'verified',
       verified_at = now(),
