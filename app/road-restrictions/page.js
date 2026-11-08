@@ -150,7 +150,7 @@ export default function RoadRestrictionsPage() {
     {loading ? <p>טוען...</p> : rows.length === 0 ? <section style={card}>אין עדיין מגבלות דרך במאגר.</section> : rows.map(row => <article key={row.id} style={card}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div><b>{row.road_name}</b><div style={{ color: "#536176", marginTop: 5 }}>{labels[row.restriction_type] || row.restriction_type}{row.direction ? " · " + row.direction : ""}</div></div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: row.is_active ? "#16803c" : "#718096" }}>{row.is_active ? "פעילה" : "לא פעילה"}</span>{canEdit && <button disabled={busy} style={btn} onClick={() => toggle(row)}>{row.is_active ? "השבתה" : "הפעלה"}</button>}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: row.is_active ? "#16803c" : "#718096" }}>{row.is_active ? "פעילה" : "לא פעילה"}</span>{canEdit && row.verification_status !== "verified" && <button disabled={busy} style={btn} onClick={() => toggle(row)}>{row.is_active ? "השבתה" : "הפעלה"}</button>}{canEdit && row.verification_status === "verified" && <small style={{ color: "#718096" }}>שינוי מגבלה מאומתת דורש בדיקה מערכתית</small>}</div>
       </div>
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, fontSize: 13, color: "#536176" }}>
         {row.max_height_m && <span>גובה: {row.max_height_m} מ׳</span>}{row.max_weight_t && <span>משקל: {row.max_weight_t} טון</span>}{row.max_width_m && <span>רוחב: {row.max_width_m} מ׳</span>}{row.max_length_m && <span>אורך: {row.max_length_m} מ׳</span>}
