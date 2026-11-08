@@ -122,3 +122,20 @@ BEGIN
   END;
 END;
 $$;
+
+
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO public.road_restrictions (
+      fleet_id, road_name, restriction_type, active_from, active_until
+    ) VALUES (
+      '77777777-7777-4777-8777-777777777777',
+      'Invalid active date test', 'closed', DATE '2026-11-09', DATE '2026-11-07'
+    );
+    RAISE EXCEPTION 'Reversed road restriction active dates were accepted';
+  EXCEPTION WHEN check_violation THEN
+    NULL;
+  END;
+END;
+$$;
