@@ -115,3 +115,9 @@ The route API no longer logs raw exception messages from HERE/network failures. 
 - Reversed road-restriction active date ranges are now rejected by a database CHECK constraint and treated as unresolved by route evaluation, rather than silently considered inactive.
 - A route candidate must include finite, non-negative distance and duration summaries for every section; missing or malformed summaries are rejected before display.
 - These cases are covered by local regression tests and disposable PostgreSQL assertions.
+
+
+### Verification freshness
+- Verified road restrictions are accepted only if their source was checked within the previous 30 days. Missing, future-dated, inconsistent, or stale verification timestamps make a nearby restriction unresolved and block route display.
+- Added a separate reviewer-only `revalidate-road-restriction` Edge Function. It supports controlled re-review of verified/expired rows, validates the source host and restriction fields, requires explicit review confirmations and a note, and uses a conditional snapshot update to prevent races.
+- The revalidation function is source-controlled only. It is not deployed, and reviewer secrets/allowlists are not configured.
