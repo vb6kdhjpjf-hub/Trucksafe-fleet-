@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { decodeFlexiblePolyline, routePassesNearRestriction, evaluateFleetRestrictions, selectSafeTruckRoute } from "../../lib/road-restriction-geometry.mjs";
+import { decodeFlexiblePolyline, routePassesNearRestriction, evaluateFleetRestrictions, selectSafeTruckRoute, isRestrictionVerificationFresh } from "../../lib/road-restriction-geometry.mjs";
 
 const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 function encodeUnsigned(value) {
@@ -371,4 +371,35 @@ test("rejects route candidates with missing or invalid distance and duration sum
     assert.equal(result.route, null);
     assert.equal(result.rejected[0].reason, "invalid_route_summary");
   }
+});
+
+
+test("accepts a recently checked verified restriction", () => {
+  assert.equal(isRestrictionVerificationFresh(verified, new Date("2026-11-08T10:00:00Z")), true);
+});
+
+test("treats a verified restriction older than 30 days as unresolved", () => {
+  const stale = { ...verified, verified_at: "2026-09-01T00:00:00Z", source_last_checked_at: "2026-09-01T00:00:00Z" };
+  const result = evaluateFleetRestrictions({
+    sections: route([[31.999,34.8],[32.001,34.8]]),
+    restrictions: [stale],
+    vehicle,
+    currentWeightKg: 18000,
+    now: new Date("2026-11-08T10:00:00Z")
+  });
+  assert.equal(result.unresolved.length, 1);
+  assert.equal(result.unresolved[0].reason, "restriction_verification_stale_or_invalid");
+  assert.equal(result.validated, false);
+});
+
+test("rejects future-dated or inconsistent restriction verification timestamps", () => {
+  assert.equal(isRestrictionVerificationFresh({
+    ...verified,
+    source_last_checked_at: "2026-12-01T00:00:00Z"
+  }, new Date("2026-11-08T10:00:00Z")), false);
+  assert.equal(isRestrictionVerificationFresh({
+    ...verified,
+    verified_at: "2026-11-03T00:00:00Z",
+    source_last_checked_at: "2026-11-01T00:00:00Z"
+  }, new Date("2026-11-08T10:00:00Z")), false);
 });
