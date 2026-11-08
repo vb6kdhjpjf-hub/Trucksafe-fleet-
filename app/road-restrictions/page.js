@@ -32,9 +32,12 @@ export default function RoadRestrictionsPage() {
       if (!alive) return;
       if (error || !data.session) { router.replace("/"); return; }
       setSession(data.session);
-      const { data: member, error: memberError } = await supabase.from("fleet_members").select("fleet_id,role").eq("user_id", data.session.user.id).limit(1).maybeSingle();
+      const { data: members, error: memberError } = await supabase.from("fleet_members")
+        .select("fleet_id,role").eq("user_id", data.session.user.id).limit(2);
       if (!alive) return;
-      if (memberError || !member) { setMessage(memberError?.message || "לא נמצא צי לחשבון."); setLoading(false); return; }
+      if (memberError || !members?.length) { setMessage(memberError?.message || "לא נמצא צי לחשבון."); setLoading(false); return; }
+      if (members.length > 1) { setMessage("החשבון משויך ליותר מצי אחד. בחירת צי מרובה עדיין לא הוגדרה, ולכן לא נטען מאגר מגבלות אוטומטית."); setLoading(false); return; }
+      const member = members[0];
       setFleet({ id: member.fleet_id, role: member.role });
       await load(member.fleet_id);
       if (alive) setLoading(false);
