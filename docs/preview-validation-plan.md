@@ -31,6 +31,7 @@ Unit coverage includes:
 - Missing/unverified provenance and incomplete restrictions.
 - Explicit HERE parameter units (cm for dimensions; kg for weights).
 - Conservative source-data candidate ingestion (point geometry only, no automatic verification).
+- Bounded request-body reading (byte limit enforced while streaming, UTF-8 validation, and early cancellation on overflow).
 
 ## Preview prerequisites
 
@@ -96,7 +97,7 @@ The production migration ledger was queried read-only and contains these 22 vers
 
 The feature branch currently contains only five migration files, and their version IDs are not a complete match for the production ledger (some timestamps differ and the fix_driver_guard_private_role_helper migration is absent). The new 20261108120000_add_geospatial_road_restrictions.sql migration is feature-only and is not in the production ledger or baseline snapshot. The isolated test baseline therefore needs to be treated as a reviewed schema snapshot rather than pretending the missing historical migration files have been recovered.
 
-At the latest validation checkpoint, the application-code revision `9f68479f4c03d584a0c2c249e0d4892edcff09a0` and the subsequent documentation-only revision `86eee4ea7d2e9df039433bf89e6f0910bb3a1583` both passed Build/dependency-audit and Pre-trip SQL integration checks. On the latter revision, Build run `42519211272` and SQL run `42519211308` completed successfully. The Build run passed security regression tests, production dependency audit, exact dependency installation, and full Next.js build. The SQL run passed the pre-trip lifecycle suite, geospatial/provenance constraints, restriction immutability/deletion, RLS/tenant isolation, quota permissions, timestamp checks, and quota-ledger primary-key assertions. PR #14 remains Draft and unmerged. No Vercel environment changes, live HERE requests, Production schema changes, or deployment were made.
+At the latest validation checkpoint, application-code revision `82c080bd5f0293287e2fea92f89c1bd1d4b68c02` passed both CI workflows: Build/dependency-audit run `42519419422` and Pre-trip SQL integration run `42519419276`. The Build run passed security regression tests (including bounded streaming-body tests), production dependency audit, exact dependency installation, and full Next.js build. The SQL run passed the pre-trip lifecycle suite, geospatial/provenance constraints, restriction immutability/deletion, RLS/tenant isolation, quota permissions, timestamp checks, and quota-ledger primary-key assertions. PR #14 remains Draft and unmerged. No Vercel environment changes, live HERE requests, Production schema changes, or deployment were made.
 
 ## Current Production security-advisor findings
 
@@ -121,7 +122,7 @@ The private route-quota ledger now has a UUID primary key, and authenticated cli
 
 ### Route endpoint resource and input guards
 - The server route endpoint has a 60-second execution ceiling; upstream geocoding and routing requests each have shorter explicit timeouts.
-- The request handler validates JSON content type, checks declared and actual body size, and requires the current trip weight to be a JSON number rather than coercing arbitrary values.
+- The request handler validates JSON content type, checks declared body size, reads the body through a bounded stream (16 KB maximum before buffering), rejects malformed UTF-8, and requires the current trip weight to be a JSON number rather than coercing arbitrary values.
 - No provider requests were made while adding these guards.
 
 
