@@ -33,6 +33,26 @@ test("decodes a flexible polyline into WGS84 coordinates", () => {
   assert.deepEqual(decodeFlexiblePolyline(encodePolyline(points)), points.map(p=>p.map(v=>Math.round(v*1e5)/1e5)));
 });
 
+test("decodes HERE's published 2D flexible polyline example", () => {
+  const decoded = decodeFlexiblePolyline("BFoz5xJ67i1B1B7PzIhaxL7Y");
+  assert.deepEqual(decoded, [
+    [50.10228, 8.69821],
+    [50.10201, 8.69567],
+    [50.10063, 8.6915],
+    [50.09878, 8.68752]
+  ]);
+});
+
+test("decodes HERE's published 3D flexible polyline example", () => {
+  const decoded = decodeFlexiblePolyline("BlBoz5xJ67i1BU1B7PUzIhaUxL7YU");
+  assert.deepEqual(decoded, [
+    [50.10228, 8.69821, 10],
+    [50.10201, 8.69567, 20],
+    [50.10063, 8.6915, 30],
+    [50.09878, 8.68752, 40]
+  ]);
+});
+
 test("detects route proximity to a restriction geofence", () => {
   assert.equal(routePassesNearRestriction(route([[31.999,34.8],[32.001,34.8]]), verified), true);
   assert.equal(routePassesNearRestriction(route([[32.1,34.8],[32.101,34.8]]), verified), false);
