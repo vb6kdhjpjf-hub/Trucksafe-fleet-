@@ -202,7 +202,7 @@ test("does not block a time-window restriction after the route has passed its ac
 test("fails closed when route duration cannot be evaluated safely", () => {
   const result = evaluateFleetRestrictions({
     sections: [{ ...route([[31.999,34.8],[32.001,34.8]])[0], summary: { duration: 200000 } }],
-    restrictions: [verified],
+    restrictions: [{ ...verified, valid_from: "00:00:00", valid_until: "23:59:59" }],
     vehicle,
     currentWeightKg: 18000,
     now: new Date("2026-11-08T10:00:00Z")
