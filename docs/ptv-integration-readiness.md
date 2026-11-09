@@ -37,12 +37,11 @@ TruckSafe currently stores height, width, length, permitted gross weight, axle c
 - Added `.github/tests/ptv-routing-request.test.mjs`; the five tests passed in a local Node test run. This is not a GitHub Actions result and no PTV request was sent.
 - The request builder is not connected to the production/Preview route handler. It intentionally does not serialize vehicle parameters or parse provider geometry until profile compatibility, vehicle-field mapping, and polyline format are confirmed.
 
-## PTV geometry normalization (preparation only)
+## PTV geometry adapter (preparation only)
 
-- Added `lib/ptv-route-normalizer.mjs`. It first applies the provider route/leg/event safety gate, then parses the documented VECTOR GeoJSON response and accepts only a single LineString (or a Feature/one-feature FeatureCollection wrapping one LineString).
-- Coordinates are interpreted as GeoJSON [longitude, latitude], constrained to the current Israel coordinate envelope, and converted into the existing flexible-polyline format consumed by TruckSafe's route restriction geometry validator.
-- MultiLineString, multiple features, malformed JSON, missing coordinates, out-of-envelope points, and provider violation flags all fail closed. This is deliberately strict; it may reject valid but more complex PTV geometries until a richer mapping is verified.
-- Added `.github/tests/ptv-route-normalizer.test.mjs` for normalization, decoder compatibility, invalid geometry, and violation behavior. Tests are committed but have not yet been run in GitHub Actions.
+- Reused the existing `lib/ptv-route-adapter.mjs` rather than keeping a duplicate normalizer. It parses PTV VECTOR GeoJSON route and per-leg polylines and converts them into TruckSafe's flexible-polyline sections.
+- The adapter validates each leg's distance, duration, and geometry, validates coordinates against the current Israel envelope, rejects unsupported/malformed GeoJSON, checks provider route/leg violation flags and violation events, and blocks provider warnings that may indicate ignored truck parameters or profile mismatch.
+- Added `.github/tests/ptv-route-adapter.test.mjs` for route/leg conversion, flexible-polyline compatibility, invalid geometry, violations, and warnings. These tests are committed but have not yet been run in GitHub Actions.
 
 ## Preliminary response safety gate
 
@@ -54,7 +53,7 @@ TruckSafe currently stores height, width, length, permitted gross weight, axle c
 ## Work required before enabling PTV
 
 1. Confirm the exact PTV Vehicle schema and units for height, width, length, gross permitted weight, actual weight, axle count, and axle load. Do not assume HERE field names or unit suffixes transfer.
-2. Confirm live response examples and exact leg/event object details, violation-event geometry, alternatives, and warnings. Official PTV tutorials now confirm VECTOR output is a JSON-encoded GeoJSON polyline; the normalizer accepts only the verified single-LineString shape and fails closed for other shapes.
+2. Confirm live response examples and exact leg/event object details, violation-event geometry, alternatives, and warnings. Official PTV tutorials confirm VECTOR output is a JSON-encoded GeoJSON polyline; the adapter currently accepts LineString and Feature-wrapped LineString geometry and fails closed for unsupported shapes.
 3. Retrieve the actual predefined vehicle-profile list from `GET https://api.myptv.com/data/v1/vehicle-profiles/predefined` using the PTV key only as a server-side header. Do not assume the standard Routing API catalogue contains an IMEA truck profile: the published standard profile documentation describes regional predefined profiles and warns about American-vs-non-American mismatches, while IMEA-specific OSM profiles belong to the separate OSM API and are not interchangeable. Confirm the exact supported standard profile and baseline attributes for Israel from the live catalogue and PTV support before choosing. Then confirm map-data coverage for Israel with real-world checks on known restricted roads. Do not call this endpoint until test API usage has been explicitly approved.
 4. Use a dedicated PTV geocoding flow or coordinates. Do not keep the HERE geocoder in the PTV path unless a separately approved, rotated HERE credential is available.
 5. Implement a provider adapter that maps PTV results into the exact internal route shape only after schema verification.
