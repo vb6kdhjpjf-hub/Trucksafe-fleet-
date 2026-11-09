@@ -30,6 +30,12 @@ TruckSafe currently stores height, width, length, permitted gross weight, axle c
 - PTV must remain behind separate explicit gates. The presence of `PTV_API_KEY` must never enable requests by itself.
 - Do not reuse HERE approval flags or HERE credentials for PTV.
 
+## Request-builder progress (preparation only)
+
+- Added `lib/ptv-routing-request.mjs`, a pure request builder for the standard Routing API. It validates Israeli coordinates, requires an explicitly supplied profile, sends the API key only in the `ApiKey` header, and requests `POLYLINE`, `LEGS_POLYLINE`, `MANEUVER_EVENTS`, and `VIOLATION_EVENTS_POLYLINE` with average traffic.
+- Added `.github/tests/ptv-routing-request.test.mjs`; the five tests passed in a local Node test run. This is not a GitHub Actions result and no PTV request was sent.
+- The request builder is not connected to the production/Preview route handler. It intentionally does not serialize vehicle parameters or parse provider geometry until profile compatibility, vehicle-field mapping, and polyline format are confirmed.
+
 ## Work required before enabling PTV
 
 1. Confirm the exact PTV Vehicle schema and units for height, width, length, gross permitted weight, actual weight, axle count, and axle load. Do not assume HERE field names or unit suffixes transfer.
