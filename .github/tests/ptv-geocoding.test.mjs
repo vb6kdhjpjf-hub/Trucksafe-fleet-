@@ -33,12 +33,19 @@ test("PTV geocoding prefers road access position for truck routing", () => {
   assert.deepEqual(result, { lat: 32.841, lng: 35.501, label: "Migdal, Israel" });
 });
 
-test("PTV geocoding accepts the documented alpha-2 countryCode fallback", () => {
+test("PTV geocoding accepts the documented alpha-2 countryCode fallback only with road access", () => {
   const result = normalizePTVGeocodeResult({
     address: { countryCode: "IL" },
-    referencePosition: { latitude: 32.8, longitude: 35.4 }
+    roadAccessPosition: { latitude: 32.8, longitude: 35.4 }
   });
   assert.deepEqual(result, { lat: 32.8, lng: 35.4, label: "" });
+});
+
+test("PTV geocoding rejects reference-only locations without a road access point", () => {
+  assert.equal(normalizePTVGeocodeResult({
+    address: { countryCodeIsoAlpha2: "IL" },
+    referencePosition: { latitude: 32.8, longitude: 35.4 }
+  }), null);
 });
 
 test("PTV geocoding rejects non-Israeli and out-of-bounds results", () => {
