@@ -47,7 +47,7 @@ TruckSafe currently stores height, width, length, permitted gross weight, axle c
 
 - Added `lib/ptv-route-safety.mjs` to reject malformed route summaries, route-level `violated=true`, leg-level `violated=true`, and recognized violation events.
 - Added `.github/tests/ptv-route-safety.test.mjs`; all six tests passed in a local Node test run. This is not a GitHub Actions result and no provider request was made.
-- Critical guardrail: even when PTV's violation flags are clear, this helper returns `safe: false` with `geometry_not_validated`. It cannot authorize or display a route. PTV's exact polyline format and response representation still need to be confirmed, decoded, range-checked, and adapted to TruckSafe's existing geometry validator.
+- Critical guardrail: this helper alone never authorizes a route; it returns `safe: false` with `geometry_not_validated` even when provider flags are clear. The separate `ptv-route-adapter.mjs` must also validate route and per-leg GeoJSON geometry before any internal route can be evaluated by TruckSafe.
 - PTV's documentation confirms the route and leg `violated` flags, and explains that `VIOLATION_EVENTS_POLYLINE` provides geometry for violation events with ENTER access; EXIT does not repeat the geometry and PASS is a point event. Do not assume every violation event carries a polyline.
 
 ## Work required before enabling PTV
