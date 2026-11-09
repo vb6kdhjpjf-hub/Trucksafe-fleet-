@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run test:ptv && next build",
     "start": "next start",
     "lint": "next lint",
     "test:ptv": "node --test .github/tests/ptv-*.test.mjs .github/tests/truck-routing-profile.test.mjs .github/tests/road-restriction-geometry.test.mjs"
