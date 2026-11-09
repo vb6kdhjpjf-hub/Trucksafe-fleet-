@@ -1,3 +1,4 @@
+import { getTruckRoutingConfig } from "../../../lib/truck-routing-config.mjs";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -33,8 +34,9 @@ async function geocode(address, apiKey) {
 }
 
 export async function GET() {
-  const providerEnabled = process.env.TRUCK_ROUTING_PROVIDER === "here";
-  return response({ configured: providerEnabled && Boolean(process.env.HERE_API_KEY) });
+  // Use the exact same three-part readiness gate as POST. Otherwise the UI
+  // could enable routing while the explicit safety switch is still disabled.
+  return response({ configured: getTruckRoutingConfig().configured });
 }
 
 export async function POST(request) {
@@ -65,12 +67,20 @@ export async function POST(request) {
       .maybeSingle();
     if (membershipError || !membership) return response({ error: "אין לחשבון הרשאה לתכנון מסלולים בצי." }, 403);
 
-    const apiKey = process.env.TRUCK_ROUTING_PROVIDER === "here" ? process.env.HERE_API_KEY : null;
-    if (!apiKey) return response({ error: "מנוע ניתוב המשאיות עדיין לא הופעל. יש להשלים חיבור לספק מאושר ולבדוק אותו לפני שימוש." }, 503);
+    const routing = getTruckRoutingConfig();
+    const apiKey = routing.apiKey;
+    if (!apiKey) return response({ error: "מנוע ניתוב המשאיות מושבת או לא הוגדר במלואו. אין להשתמש במסלול עד להשלמת אישור הספק, הגדרה ובדיקות בטיחות." }, 503);
 
-    const contentLength = Number(request.headers.get("content-length") || 0);
-    if (contentLength > 16000) return response({ error: "הבקשה גדולה מדי." }, 413);
-    const raw = await request.json();
+    const rawBody = await request.text();
+    if (new TextEncoder().encode(rawBody).byteLength > 16000) {
+      return response({ error: "הבקשה גדולה מדי." }, 413);
+    }
+    let raw;
+    try {
+      raw = JSON.parse(rawBody);
+    } catch {
+      return response({ error: "נתוני הבקשה אינם JSON תקין." }, 400);
+    }
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
       return response({ error: "נתוני הנסיעה אינם תקינים." }, 400);
     }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+import { csvDocument } from "../../lib/csv.mjs";
 import { Truck, ArrowRight, Plus, Wrench, RefreshCw, CalendarDays } from "lucide-react";
 
 const blank = { vehicle_id: "", incident_id: "", maintenance_type: "טיפול תקופתי", description: "", scheduled_at: "", completed_at: "", cost: "", odometer_km: "", status: "scheduled" };
@@ -10,7 +11,7 @@ const blank = { vehicle_id: "", incident_id: "", maintenance_type: "טיפול �
 export default function MaintenancePage() {
   const router = useRouter();
   const [loading,setLoading]=useState(true), [busy,setBusy]=useState(false);
-  const [fleet,setFleet]=useState(null), [vehicles,setVehicles]=useState([]), [records,setRecords]=useState([]), [incidents,setIncidents]=useState([]);
+  const [fleet,setFleet]=useState(null), [role,setRole]=useState(""), [vehicles,setVehicles]=useState([]), [records,setRecords]=useState([]), [incidents,setIncidents]=useState([]);
   const [form,setForm]=useState(blank), [showForm,setShowForm]=useState(false), [message,setMessage]=useState("");
   const [compliance,setCompliance]=useState({});
 
@@ -34,13 +35,14 @@ export default function MaintenancePage() {
     const [v,r,i]=await Promise.all([
       supabase.from("vehicles").select("id,registration_number,make,model,odometer_km,next_service_at,test_due_at,insurance_due_at,registration_due_at").eq("fleet_id",id).order("registration_number"),
       supabase.from("maintenance_records").select("id,vehicle_id,incident_id,maintenance_type,description,scheduled_at,completed_at,cost,odometer_km,status,created_at").eq("fleet_id",id).order("scheduled_at",{ascending:true}),
-      supabase.from("incidents").select("id,vehicle_id,incident_type,description,status,reported_at").eq("fleet_id",id).neq("status","resolved").order("reported_at",{ascending:false})
+      supabase.from("incidents").select("id,vehicle_id,incident_type,description,status,reported_at").eq("fleet_id",id).in("status",["open","investigating"]).order("reported_at",{ascending:false})
     ]);
     if(v.error || r.error || i.error){setMessage("שגיאה בטעינת הנתונים: "+(v.error?.message||r.error?.message||i.error?.message));return;}
     setVehicles(v.data||[]);setIncidents(i.data||[]);setCompliance(Object.fromEntries((v.data||[]).map(x=>[x.id,{test_due_at:x.test_due_at||"",insurance_due_at:x.insurance_due_at||"",registration_due_at:x.registration_due_at||""}])));setRecords(r.data||[]);
   }
   async function save(e){
     e.preventDefault(); if(!fleet)return;
+    if(!canManageMaintenance){setMessage("רק בעלים או מנהל צי יכולים לנהל רישומי תחזוקה.");return;}
     if(!form.vehicle_id || !form.maintenance_type){setMessage("יש לבחור רכב וסוג טיפול.");return;}
     if(form.cost!==""&&(!Number.isFinite(Number(form.cost))||Number(form.cost)<0)){setMessage("יש להזין עלות תקינה שאינה שלילית.");return;}
     if(form.odometer_km!==""&&(!Number.isFinite(Number(form.odometer_km))||Number(form.odometer_km)<0)){setMessage("יש להזין קילומטראז׳ תקין שאינו שלילי.");return;}
@@ -68,12 +70,13 @@ export default function MaintenancePage() {
   function exportMaintenanceCosts(){
     const rows=[["רכב","סוג טיפול","תאריך ביצוע","עלות בשח","קילומטראז","סטטוס"]];
     completedRecords.forEach(r=>{const v=vehicles.find(x=>x.id===r.vehicle_id);rows.push([v?.registration_number||"",r.maintenance_type||"",r.completed_at||r.scheduled_at||"",Number(r.cost||0),r.odometer_km??"", "הושלם"]);});
-    const csv="\uFEFF"+rows.map(row=>row.map(value=>"\""+String(value??"").replace(/\"/g,"\"\"")+"\"").join(",")).join("\n");
+    const csv=csvDocument(rows);
     const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8;"}));
     const link=document.createElement("a");link.href=url;link.download="trucksafe-maintenance-costs.csv";document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
   async function markDone(record){
     if(!fleet||!record?.id)return;
+    if(!canManageMaintenance){setMessage("אין הרשאה לעדכן רישומי תחזוקה.");return;}
     setBusy(true);setMessage("");
     try{
       const {error}=await supabase.from("maintenance_records").update({status:"completed",completed_at:new Date().toISOString().slice(0,10)}).eq("id",record.id).eq("fleet_id",fleet.id);
@@ -92,6 +95,8 @@ export default function MaintenancePage() {
     }catch(error){setMessage("עדכון הטיפול נכשל: "+(error?.message||"שגיאה לא ידועה"));}
     finally{setBusy(false);}
   }
+  const canManageMaintenance=["owner","fleet_manager"].includes(role);
+  const canManageVehicles=["owner","fleet_manager"].includes(role);
   const today=new Date().toISOString().slice(0,10);
   const pending=records.filter(r=>r.status!=="completed");
   const overdue=pending.filter(r=>r.scheduled_at && r.scheduled_at<today);
@@ -127,7 +132,7 @@ export default function MaintenancePage() {
         {expiredCompliance.length>0&&<div className="notice" style={{background:"#fff0f0",color:"#9b1c1c"}}><strong>{expiredCompliance.length} מסמכים שפג תוקפם:</strong> {expiredCompliance.map(x=>x.vehicle.registration_number+" – "+x.label).join(" · ")}</div>}
         {soonCompliance.length>0&&<div className="notice" style={{background:"#fff7e6",color:"#8a5700"}}><strong>{soonCompliance.length} מסמכים שתוקפם מסתיים בתוך 30 יום:</strong> {soonCompliance.map(x=>x.vehicle.registration_number+" – "+x.label+" ("+x.days+" ימים)").join(" · ")}</div>}
       </section>}
-      {showForm&&<form className="form-card" onSubmit={save}><h3>רישום טיפול חדש</h3>
+      {showForm&&canManageMaintenance&&<form className="form-card" onSubmit={save}><h3>רישום טיפול חדש</h3>
         <label>רכב<select required value={form.vehicle_id} onChange={e=>setForm({...form,vehicle_id:e.target.value})}><option value="">בחירת רכב</option>{vehicles.map(v=><option key={v.id} value={v.id}>{v.registration_number} · {[v.make,v.model].filter(Boolean).join(" ")}</option>)}</select></label>
         <label>תקלה קשורה (לא חובה)<select value={form.incident_id} onChange={e=>{const selected=incidents.find(x=>x.id===e.target.value);setForm(old=>({...old,incident_id:e.target.value,description:old.description||selected?.description||"",maintenance_type:selected?.incident_type||old.maintenance_type}));}}><option value="">ללא קישור לתקלה</option>{incidents.filter(x=>x.vehicle_id===form.vehicle_id).map(x=><option key={x.id} value={x.id}>{x.incident_type} · {x.description?.slice(0,70)||"ללא תיאור"}</option>)}</select><small>בחירת תקלה תמלא אוטומטית את סוג הטיפול והתיאור, אם השדות עדיין ריקים.</small></label>
         <label>סוג טיפול<input required value={form.maintenance_type} onChange={e=>setForm({...form,maintenance_type:e.target.value})}/></label>

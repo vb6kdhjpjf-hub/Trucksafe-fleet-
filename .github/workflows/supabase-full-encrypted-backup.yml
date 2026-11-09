@@ -1,0 +1,95 @@
+name: Supabase encrypted full backup
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/pretrip-safe-integration
+    paths:
+      - .github/workflows/supabase-full-encrypted-backup.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-encrypted-backup
+  cancel-in-progress: false
+
+jobs:
+  full-backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: v2.stable
+
+      - name: Validate protected secrets
+        shell: bash
+        run: |
+          set +x
+          if [ -z "${SUPABASE_DB_URL:-}" ]; then
+            echo "::error::Repository secret SUPABASE_DB_URL is missing."
+            exit 1
+          fi
+          if [ -z "${BACKUP_ENCRYPTION_KEY:-}" ] || [ "${#BACKUP_ENCRYPTION_KEY}" -lt 32 ]; then
+            echo "::error::Repository secret BACKUP_ENCRYPTION_KEY is missing or shorter than 32 characters."
+            exit 1
+          fi
+          command -v openssl >/dev/null
+          command -v sha256sum >/dev/null
+
+      - name: Export roles, schema and data to temporary files
+        shell: bash
+        run: |
+          set +x
+          set -euo pipefail
+          umask 077
+          mkdir -p backup-tmp
+          trap 'rm -rf backup-tmp trucksafe-full-backup.tar.gz' EXIT
+          supabase db dump --db-url="$SUPABASE_DB_URL" --file=backup-tmp/roles.sql --role-only
+          supabase db dump --db-url="$SUPABASE_DB_URL" --file=backup-tmp/schema.sql
+          supabase db dump --db-url="$SUPABASE_DB_URL" --file=backup-tmp/data.sql --use-copy --data-only \
+            -x "storage.buckets_vectors" -x "storage.vector_indexes" -x "storage.bucket_lifecycle_states" -x "storage.lifecycle_abandoned_artifacts"
+          test -s backup-tmp/roles.sql
+          test -s backup-tmp/schema.sql
+          test -s backup-tmp/data.sql
+          (
+            cd backup-tmp
+            sha256sum roles.sql schema.sql data.sql > SHA256SUMS
+          )
+          tar -czf trucksafe-full-backup.tar.gz -C backup-tmp roles.sql schema.sql data.sql SHA256SUMS
+          openssl enc -aes-256-cbc -pbkdf2 -salt \
+            -in trucksafe-full-backup.tar.gz \
+            -out trucksafe-full-backup.tar.gz.enc \
+            -pass env:BACKUP_ENCRYPTION_KEY
+          test -s trucksafe-full-backup.tar.gz.enc
+          # Verify encryption/decryption and every exported file checksum without printing backup contents.
+          openssl enc -d -aes-256-cbc -pbkdf2 -in trucksafe-full-backup.tar.gz.enc \
+            -out trucksafe-verify.tar.gz -pass env:BACKUP_ENCRYPTION_KEY
+          mkdir -p backup-verify
+          tar -xzf trucksafe-verify.tar.gz -C backup-verify
+          (cd backup-verify && sha256sum -c SHA256SUMS)
+          test -s backup-verify/roles.sql
+          test -s backup-verify/schema.sql
+          test -s backup-verify/data.sql
+          rm -rf backup-verify trucksafe-verify.tar.gz
+          echo "Encrypted backup decrypted successfully; archive contents and SHA256 checksums verified. Plaintext exports are removed."
+          rm -rf backup-tmp
+
+      - name: Upload encrypted backup only
+        uses: actions/upload-artifact@v4
+        with:
+          name: trucksafe-encrypted-full-backup
+          path: trucksafe-full-backup.tar.gz.enc
+          if-no-files-found: error
+          retention-days: 7

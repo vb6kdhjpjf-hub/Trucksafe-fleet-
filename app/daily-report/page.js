@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+import { csvDocument } from "../../lib/csv.mjs";
 import { ArrowRight, RefreshCw, FileDown, Truck, AlertTriangle, Wrench, Clock3 } from "lucide-react";
 
 function localDayRange() {
@@ -56,7 +57,7 @@ export default function DailyReportPage() {
 
   function exportCsv() {
     const rows = [["סוג","שעה","פרטים","סטטוס"], ...trips.map(x => ["נסיעה", new Date(x.started_at).toLocaleTimeString("he-IL"), (x.origin_address || "") + " → " + (x.destination_address || ""), x.status]), ...incidents.map(x => ["אירוע בטיחות", new Date(x.reported_at).toLocaleTimeString("he-IL"), (x.incident_type || "") + " " + (x.description || ""), x.status]), ...maintenance.map(x => ["תחזוקה", x.completed_at || x.scheduled_at || "", (x.maintenance_type || "") + " " + (x.description || "") + " עלות " + (x.cost ?? 0), x.status])];
-    const csv = "\uFEFF" + rows.map(row => row.map(csvCell).join(",")).join("\r\n");
+    const csv = csvDocument(rows);
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a"); a.href = url; a.download = "trucksafe-daily-" + day.replace(/\D/g, "-") + ".csv"; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1500);
