@@ -41,7 +41,7 @@ TruckSafe currently stores height, width, length, permitted gross weight, axle c
 
 - Reused the existing `lib/ptv-route-adapter.mjs` rather than keeping a duplicate normalizer. It parses PTV VECTOR GeoJSON route and per-leg polylines and converts them into TruckSafe's flexible-polyline sections.
 - The adapter validates each leg's distance, duration, and geometry, validates coordinates against the current Israel envelope, rejects unsupported/malformed GeoJSON, checks provider route/leg violation flags and violation events, and blocks provider warnings that may indicate ignored truck parameters or profile mismatch.
-- Added `.github/tests/ptv-route-adapter.test.mjs` for route/leg conversion, flexible-polyline compatibility, invalid geometry, violations, and warnings. These tests are committed but have not yet been run in GitHub Actions.
+- Added `.github/tests/ptv-route-adapter.test.mjs` for route/leg conversion, flexible-polyline compatibility, invalid geometry, violations, and warnings. These tests are committed but have not yet been run in GitHub Actions. The flexible-polyline encoder/decoder round-trip was smoke-tested locally with sample Israel coordinates; this does not replace the full automated suite.
 
 ## Preliminary response safety gate
 
