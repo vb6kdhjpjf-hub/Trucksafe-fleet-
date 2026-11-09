@@ -41,6 +41,11 @@ test("blocks violation-specific events", () => {
   assert.equal(result.reason, "provider_violation_events");
 });
 
+test("blocks the documented PTV violationType field", () => {
+  const result = assessPTVRouteSafety({ ...safeResponse(), events: [{ violationType: "VEHICLE_PROPERTY" }] });
+  assert.equal(result.reason, "provider_violation_events");
+});
+
 test("fails closed for missing legs, events, summary, or malformed event data", () => {
   assert.equal(assessPTVRouteSafety(null).reason, "malformed_response");
   assert.equal(assessPTVRouteSafety({ ...safeResponse(), legs: [] }).reason, "missing_legs");
