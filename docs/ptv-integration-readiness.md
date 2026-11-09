@@ -21,7 +21,7 @@ Status: preparation only. This document does not enable routing and does not aut
 
 ## Vehicle profile mapping notes
 
-TruckSafe currently stores height, width, length, permitted gross weight, axle count, trailer count, and an axle-load field, plus a trip-time actual total weight. It does not currently store a separately verified empty vehicle weight and cargo/load weight. Do not silently invent that split or treat axle-load values as equivalent without checking PTV's exact field semantics. The vehicle profile schema must be reconciled before PTV requests are enabled.
+TruckSafe currently stores height, width, length, permitted gross weight, axle count, trailer count, and an axle-load field, plus a trip-time actual total weight. It does not currently store a separately verified empty vehicle weight and cargo/load weight. PTV requires actual weight to be represented as the sum of `emptyWeight + loadWeight`; do not silently invent that split. Also confirm whether TruckSafe's `weight_per_axle_kg` is the same semantic as PTV's `axleWeight` before mapping it. The vehicle profile schema must be reconciled before PTV requests are enabled.
 
 ## Existing TruckSafe constraints
 
@@ -52,7 +52,7 @@ TruckSafe currently stores height, width, length, permitted gross weight, axle c
 
 ## Work required before enabling PTV
 
-1. Confirm the exact PTV Vehicle schema and units for height, width, length, gross permitted weight, actual weight, axle count, and axle load. Do not assume HERE field names or unit suffixes transfer.
+1. Reconcile TruckSafe's vehicle data with PTV's documented fields and units: height/width/length in cm; permitted and actual weights and axleWeight in kg; actual weight as emptyWeight + loadWeight; numberOfAxles. Decide whether to add a verified empty-weight field and validate axleWeight semantics. Do not assume HERE field names or unit suffixes transfer.
 2. Confirm live response examples and exact leg/event object details, violation-event geometry, alternatives, and warnings. Official PTV tutorials confirm VECTOR output is a JSON-encoded GeoJSON polyline; the adapter currently accepts LineString and Feature-wrapped LineString geometry and fails closed for unsupported shapes.
 3. Retrieve the actual predefined vehicle-profile list from `GET https://api.myptv.com/data/v1/vehicle-profiles/predefined` using the PTV key only as a server-side header. Do not assume the standard Routing API catalogue contains an IMEA truck profile: the published standard profile documentation describes regional predefined profiles and warns about American-vs-non-American mismatches, while IMEA-specific OSM profiles belong to the separate OSM API and are not interchangeable. Confirm the exact supported standard profile and baseline attributes for Israel from the live catalogue and PTV support before choosing. Then confirm map-data coverage for Israel with real-world checks on known restricted roads. Do not call this endpoint until test API usage has been explicitly approved.
 4. Use a dedicated PTV geocoding flow or coordinates. Do not keep the HERE geocoder in the PTV path unless a separately approved, rotated HERE credential is available.
