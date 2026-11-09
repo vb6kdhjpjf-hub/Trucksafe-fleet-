@@ -14,6 +14,12 @@ Status: preparation only. This document does not enable routing and does not aut
 - Violation reasons can include `VEHICLE_PROPERTY`, which covers restrictions such as weight or height, as well as `PROHIBITED`, `RESTRICTED_ACCESS`, and other classes. PTV warns that road-restriction coverage and modeling vary by region.
 - PTV considers the date and time of travel when calculating routes and automatically considers vehicle-prohibited roads valid at that date/time. For a future departure, send `options[startTime]` in RFC 3339 format; do not combine it with `options[arrivalTime]`.
 
+## Vehicle profile mapping notes
+
+PTV's published predefined-profile example uses dimensions in centimeters and weights in kilograms. It exposes fields including `height`, `width`, `length`, `totalPermittedWeight`, `axleWeight`, and `numberOfAxles`. PTV defines actual vehicle weight as `emptyWeight + loadWeight`.
+
+TruckSafe currently stores height, width, length, permitted gross weight, axle count, trailer count, and an axle-load field, plus a trip-time actual total weight. It does not currently store a separately verified empty vehicle weight and cargo/load weight. Do not silently invent that split or treat axle-load values as equivalent without checking PTV's exact field semantics. The vehicle profile schema must be reconciled before PTV requests are enabled.
+
 ## Existing TruckSafe constraints
 
 - The current route handler is HERE-specific: HERE geocoding, HERE query format, HERE route sections/actions, and HERE notice semantics.
