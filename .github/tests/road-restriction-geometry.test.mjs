@@ -1,0 +1,90 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { encodePTVCoordinatesAsFlexiblePolyline } from "../../lib/ptv-route-adapter.mjs";
+import {
+  decodeFlexiblePolyline,
+  routePassesNearRestriction,
+  isRestrictionVerificationFresh,
+  evaluateFleetRestrictions
+} from "../../lib/road-restriction-geometry.mjs";
+
+const coordinates = [[32.84, 35.50], [32.84, 35.51], [32.84, 35.52]];
+const polyline = encodePTVCoordinatesAsFlexiblePolyline(coordinates);
+const sections = [{ polyline, summary: { length: 1800, duration: 180 } }];
+const now = new Date("2026-11-09T12:00:00.000Z");
+
+const verifiedRestriction = overrides => ({
+  id: "restriction-1",
+  road_name: "Test road",
+  latitude: 32.84,
+  longitude: 35.505,
+  radius_m: 75,
+  is_active: true,
+  verification_status: "verified",
+  source_url: "https://example.org/official-notice",
+  verified_at: "2026-11-07T12:00:00.000Z",
+  verified_by: "reviewer-1",
+  source_last_checked_at: "2026-11-08T12:00:00.000Z",
+  verification_note: "Verified test fixture",
+  restriction_type: "height",
+  max_height_m: 4,
+  ...overrides
+});
+
+const vehicle = { heightCm: 420, widthCm: 250, lengthCm: 900 };
+
+test("decodes the PTV adapter polyline and preserves Israel coordinates", () => {
+  const decoded = decodeFlexiblePolyline(polyline);
+  assert.equal(decoded.length, 3);
+  assert.ok(Math.abs(decoded[0][0] - 32.84) < 0.00001);
+  assert.ok(Math.abs(decoded[2][1] - 35.52) < 0.00001);
+});
+
+test("detects a route near a restriction and ignores a distant restriction", () => {
+  assert.equal(routePassesNearRestriction(sections, verifiedRestriction({})), true);
+  assert.equal(routePassesNearRestriction(sections, verifiedRestriction({
+    latitude: 32.85, longitude: 35.505
+  })), false);
+});
+
+test("fails closed when restriction location or route geometry is invalid", () => {
+  assert.equal(routePassesNearRestriction(sections, verifiedRestriction({ latitude: null })), null);
+  assert.equal(routePassesNearRestriction([{ polyline: "invalid" }], verifiedRestriction({})), null);
+});
+
+test("accepts recent verification and rejects stale or future verification timestamps", () => {
+  assert.equal(isRestrictionVerificationFresh(verifiedRestriction({}), now), true);
+  assert.equal(isRestrictionVerificationFresh(verifiedRestriction({
+    source_last_checked_at: "2026-10-01T12:00:00.000Z"
+  }), now), false);
+  assert.equal(isRestrictionVerificationFresh(verifiedRestriction({
+    source_last_checked_at: "2026-11-09T12:10:00.000Z"
+  }), now), false);
+});
+
+test("blocks a nearby verified height restriction that the truck exceeds", () => {
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [verifiedRestriction({})],
+    vehicle,
+    currentWeightKg: 10000,
+    now
+  });
+  assert.equal(result.validated, false);
+  assert.equal(result.conflicts.length, 1);
+  assert.equal(result.conflicts[0].restrictionType, "height");
+});
+
+test("does not reject a route for a distant restriction and validates an empty restriction set", () => {
+  const distant = verifiedRestriction({ latitude: 32.85, longitude: 35.505 });
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [distant],
+    vehicle,
+    currentWeightKg: 10000,
+    now
+  });
+  assert.equal(result.validated, true);
+  assert.deepEqual(result.conflicts, []);
+  assert.deepEqual(result.unresolved, []);
+});
