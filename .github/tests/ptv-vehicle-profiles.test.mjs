@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildPTVPredefinedProfilesRequest,
-  getPTVIMEATruckProfileCandidates,
-  selectUniquePTVIMEATruckProfile
+  getPTVTruckProfileCandidates,
+  selectUniquePTVTruckProfile
 } from "../../lib/ptv-vehicle-profiles.mjs";
 
 const profile = (name, region, description = "Typical truck") => ({
@@ -22,31 +22,42 @@ test("rejects missing API key", () => {
   assert.throws(() => buildPTVPredefinedProfilesRequest("  "), /Missing PTV API key/);
 });
 
-test("returns only IMEA profiles identified as trucks", () => {
-  const result = getPTVIMEATruckProfileCandidates({
+test("returns truck-like profiles from the provider catalogue without assuming a region", () => {
+  const result = getPTVTruckProfileCandidates({
     profiles: [
-      profile("IMEA_TRUCK_EXAMPLE", "IMEA"),
-      profile("EUR_TRUCK_EXAMPLE", "EUROPE"),
-      profile("IMEA_CAR_EXAMPLE", "IMEA", "Passenger car"),
-      { name: "IMEA_TRUCK_BAD", region: "IMEA", description: "Truck" }
+      profile("EUR_TRAILER_TRUCK", "EUROPE", "Typical semi-trailer truck"),
+      profile("USA_TRUCK", "AMERICA"),
+      profile("EUR_CAR", "EUROPE", "Passenger car"),
+      { name: "MALFORMED_TRUCK", region: "EUROPE", description: "Truck" }
     ]
   });
-  assert.equal(result.length, 1);
-  assert.equal(result[0].name, "IMEA_TRUCK_EXAMPLE");
+  assert.equal(result.length, 2);
+  assert.deepEqual(result.map(item => item.region), ["EUROPE", "AMERICA"]);
 });
 
-test("does not guess when no IMEA truck profile exists", () => {
-  assert.equal(selectUniquePTVIMEATruckProfile({ profiles: [profile("EUR_TRUCK", "EUROPE")] }), null);
+test("requires an explicit region before selecting a profile", () => {
+  assert.equal(selectUniquePTVTruckProfile({ profiles: [profile("EUR_TRUCK", "EUROPE")] }), null);
 });
 
-test("does not guess when multiple IMEA truck profiles exist", () => {
-  const result = selectUniquePTVIMEATruckProfile({
-    profiles: [profile("IMEA_TRUCK_A", "IMEA"), profile("IMEA_TRUCK_B", "IMEA")]
-  });
+test("does not guess when no truck profile exists for the requested region", () => {
+  assert.equal(selectUniquePTVTruckProfile({ profiles: [profile("EUR_TRUCK", "EUROPE")] }, "IMEA"), null);
+});
+
+test("does not guess when multiple truck profiles exist in requested region", () => {
+  const result = selectUniquePTVTruckProfile({
+    profiles: [profile("EUR_TRUCK_A", "EUROPE"), profile("EUR_TRUCK_B", "EUROPE")]
+  }, "EUROPE");
   assert.equal(result, null);
 });
 
+test("selects exactly one candidate only for explicitly matched region", () => {
+  const result = selectUniquePTVTruckProfile({
+    profiles: [profile("EUR_TRAILER_TRUCK", "EUROPE"), profile("USA_TRUCK", "AMERICA")]
+  }, "EUROPE");
+  assert.equal(result.name, "EUR_TRAILER_TRUCK");
+});
+
 test("malformed provider payload fails closed", () => {
-  assert.deepEqual(getPTVIMEATruckProfileCandidates(null), []);
-  assert.deepEqual(getPTVIMEATruckProfileCandidates({ profiles: {} }), []);
+  assert.deepEqual(getPTVTruckProfileCandidates(null), []);
+  assert.deepEqual(getPTVTruckProfileCandidates({ profiles: {} }), []);
 });
