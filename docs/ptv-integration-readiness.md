@@ -11,7 +11,8 @@ Status: preparation only. This document does not enable routing and does not aut
 - Request `POLYLINE`, `VIOLATION_EVENTS`, and `VIOLATION_EVENTS_POLYLINE` for safety-oriented evaluation. The latter includes the former.
 - Request `ALTERNATIVE_ROUTES` only for a two-waypoint route; PTV documents up to three alternatives in addition to the optimal route.
 - PTV's `violated` flag can be true when a prohibited road must be used. Violation events describe the reason and location. A route must not be returned as safe if it is marked violated or if required event/geometry data is missing or malformed.
-- Violation reasons can include `VEHICLE_PROPERTY`, which covers restrictions such as weight and height, as well as `PROHIBITED`, `RESTRICTED_ACCESS`, and other classes. PTV warns that road-restriction coverage and modeling vary by region.
+- Violation reasons can include `VEHICLE_PROPERTY`, which covers restrictions such as weight or height, as well as `PROHIBITED`, `RESTRICTED_ACCESS`, and other classes. PTV warns that road-restriction coverage and modeling vary by region.
+- PTV considers the date and time of travel when calculating routes and automatically considers vehicle-prohibited roads valid at that date/time. For a future departure, send `options[startTime]` in RFC 3339 format; do not combine it with `options[arrivalTime]`.
 
 ## Existing TruckSafe constraints
 
