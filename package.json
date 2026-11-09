@@ -9,7 +9,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:ptv": "node --test .github/tests/ptv-*.test.mjs .github/tests/truck-routing-profile.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
