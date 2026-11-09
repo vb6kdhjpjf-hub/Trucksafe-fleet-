@@ -95,7 +95,15 @@ test("allows only a non-safety maneuver-language warning", () => {
 });
 
 test("blocks malformed or non-Israeli provider events", () => {
-  const malformed = base();
-  malformed.events[0].countryCode = "US";
-  assert.equal(normalizePTVRouteResponse(malformed).reason, "malformed_event");
+  const nonIsraeli = base();
+  nonIsraeli.events[0].countryCode = "US";
+  assert.equal(normalizePTVRouteResponse(nonIsraeli).reason, "malformed_event");
+
+  const missingCoordinates = base();
+  delete missingCoordinates.events[0].latitude;
+  assert.equal(normalizePTVRouteResponse(missingCoordinates).reason, "malformed_event");
+
+  const outOfBounds = base();
+  outOfBounds.events[0].longitude = 40;
+  assert.equal(normalizePTVRouteResponse(outOfBounds).reason, "malformed_event");
 });
