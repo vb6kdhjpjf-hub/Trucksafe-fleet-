@@ -32,3 +32,6 @@ Status: isolated preparation only. This branch is based directly on the current 
 ## Safety note
 
 The PTV adapter is experimental and must not be treated as proof that a route is safe. A clean provider response is only one input. TruckSafe must independently validate vehicle dimensions/weight, local restrictions, road geometry, and time windows. Missing or uncertain data must block route approval.
+
+
+Temporary PTV catalog probe: completed one authentication check and removed the probe endpoint. The configured PTV credential was rejected with HTTP 401; no route calls were made. The probe token environment variable is cleared.
