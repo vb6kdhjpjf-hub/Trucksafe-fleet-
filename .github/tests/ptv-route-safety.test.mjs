@@ -10,9 +10,9 @@ const safeResponse = () => ({
   events: [{ latitude: 32.84, longitude: 35.5, distanceFromStart: 100, travelTimeFromStart: 10 }]
 });
 
-test("accepts only a structurally complete route with clear provider flags", () => {
+test("keeps route blocked even when provider flags are clear until geometry is validated", () => {
   assert.deepEqual(assessPTVRouteSafety(safeResponse()), {
-    valid: true, safe: true, reason: "provider_flags_clear",
+    valid: true, safe: false, providerFlagsClear: true, reason: "geometry_not_validated",
     distanceMeters: 12500, durationSeconds: 900, eventCount: 1
   });
 });
