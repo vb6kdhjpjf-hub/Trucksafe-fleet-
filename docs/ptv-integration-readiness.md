@@ -9,7 +9,8 @@ Status: preparation only. This document does not enable routing and does not aut
 - Supply at least two WGS84 waypoints as latitude,longitude.
 - The simple routing response is a root object with `distance` (meters), `travelTime` (seconds), and `violated` (boolean); it is not a HERE-style `routes[]` array.
 - The response can additionally contain `events`. PTV documents them as chronologically ordered and each event has basic location/progress fields such as latitude, longitude, distanceFromStart and travelTimeFromStart, plus event-specific data.
-- Request `POLYLINE`, `LEGS`, `MANEUVER_EVENTS`, `VIOLATION_EVENTS`, and `VIOLATION_EVENTS_POLYLINE` for safety-oriented evaluation. `VIOLATION_EVENTS_POLYLINE` automatically includes `VIOLATION_EVENTS`; `LEGS_POLYLINE` automatically includes `LEGS`.
+- Request `POLYLINE`, `LEGS_POLYLINE`, `MANEUVER_EVENTS`, and `VIOLATION_EVENTS_POLYLINE` for safety-oriented evaluation. `VIOLATION_EVENTS_POLYLINE` automatically includes `VIOLATION_EVENTS`; `LEGS_POLYLINE` automatically includes `LEGS`.
+- Set `options[polylineMapType]=VECTOR`. PTV's official tutorials demonstrate that the returned `polyline` is a JSON-encoded GeoJSON string and is parsed with `JSON.parse`. TruckSafe converts the supported GeoJSON LineString into its existing flexible-polyline format for the current geometry validator.
 - Request `ALTERNATIVE_ROUTES` only for a two-waypoint route; PTV documents up to three alternatives in addition to the optimal route and warns that additional calculations degrade performance.
 - PTV's route-level and leg-level `violated` flags must be treated as unsafe. Violation events identify location and reason. A route must not be returned as safe if it is marked violated or if required event/geometry data is missing or malformed.
 - PTV documents violation types `PROHIBITED`, `DELIVERY_ONLY`, `RESTRICTED_ACCESS`, `VEHICLE_PROPERTY`, `COMBINED_TRANSPORT`, `SCHEDULE`, and `BLOCKED_ROAD_BY_INTERSECTION`. `VEHICLE_PROPERTY` includes weight/height restrictions. PTV warns that restriction data and modeling vary worldwide.
@@ -32,11 +33,18 @@ TruckSafe currently stores height, width, length, permitted gross weight, axle c
 
 ## Request-builder progress (preparation only)
 
-- Added `lib/ptv-routing-request.mjs`, a pure request builder for the standard Routing API. It validates Israeli coordinates, requires an explicitly supplied profile, sends the API key only in the `ApiKey` header, and requests `POLYLINE`, `LEGS_POLYLINE`, `MANEUVER_EVENTS`, and `VIOLATION_EVENTS_POLYLINE` with average traffic.
+- Added `lib/ptv-routing-request.mjs`, a pure request builder for the standard Routing API. It validates Israeli coordinates, requires an explicitly supplied profile, sends the API key only in the `ApiKey` header, requests `POLYLINE`, `LEGS_POLYLINE`, `MANEUVER_EVENTS`, and `VIOLATION_EVENTS_POLYLINE` with average traffic, and explicitly requests VECTOR GeoJSON geometry.
 - Added `.github/tests/ptv-routing-request.test.mjs`; the five tests passed in a local Node test run. This is not a GitHub Actions result and no PTV request was sent.
 - The request builder is not connected to the production/Preview route handler. It intentionally does not serialize vehicle parameters or parse provider geometry until profile compatibility, vehicle-field mapping, and polyline format are confirmed.
 
-## Preliminary response safety gate (not a route adapter)
+## PTV geometry normalization (preparation only)
+
+- Added `lib/ptv-route-normalizer.mjs`. It first applies the provider route/leg/event safety gate, then parses the documented VECTOR GeoJSON response and accepts only a single LineString (or a Feature/one-feature FeatureCollection wrapping one LineString).
+- Coordinates are interpreted as GeoJSON [longitude, latitude], constrained to the current Israel coordinate envelope, and converted into the existing flexible-polyline format consumed by TruckSafe's route restriction geometry validator.
+- MultiLineString, multiple features, malformed JSON, missing coordinates, out-of-envelope points, and provider violation flags all fail closed. This is deliberately strict; it may reject valid but more complex PTV geometries until a richer mapping is verified.
+- Added `.github/tests/ptv-route-normalizer.test.mjs` for normalization, decoder compatibility, invalid geometry, and violation behavior. Tests are committed but have not yet been run in GitHub Actions.
+
+## Preliminary response safety gate
 
 - Added `lib/ptv-route-safety.mjs` to reject malformed route summaries, route-level `violated=true`, leg-level `violated=true`, and recognized violation events.
 - Added `.github/tests/ptv-route-safety.test.mjs`; all six tests passed in a local Node test run. This is not a GitHub Actions result and no provider request was made.
@@ -46,7 +54,7 @@ TruckSafe currently stores height, width, length, permitted gross weight, axle c
 ## Work required before enabling PTV
 
 1. Confirm the exact PTV Vehicle schema and units for height, width, length, gross permitted weight, actual weight, axle count, and axle load. Do not assume HERE field names or unit suffixes transfer.
-2. Confirm the exact response schema for polyline encoding/format, legs, maneuver events, violation events, violation-event geometry, alternatives, and warnings. The public quick-start confirms the root response and violation/event behavior but does not provide enough geometry detail to safely normalize route shape.
+2. Confirm live response examples and exact leg/event object details, violation-event geometry, alternatives, and warnings. Official PTV tutorials now confirm VECTOR output is a JSON-encoded GeoJSON polyline; the normalizer accepts only the verified single-LineString shape and fails closed for other shapes.
 3. Retrieve the actual predefined vehicle-profile list from `GET https://api.myptv.com/data/v1/vehicle-profiles/predefined` using the PTV key only as a server-side header. Do not assume the standard Routing API catalogue contains an IMEA truck profile: the published standard profile documentation describes regional predefined profiles and warns about American-vs-non-American mismatches, while IMEA-specific OSM profiles belong to the separate OSM API and are not interchangeable. Confirm the exact supported standard profile and baseline attributes for Israel from the live catalogue and PTV support before choosing. Then confirm map-data coverage for Israel with real-world checks on known restricted roads. Do not call this endpoint until test API usage has been explicitly approved.
 4. Use a dedicated PTV geocoding flow or coordinates. Do not keep the HERE geocoder in the PTV path unless a separately approved, rotated HERE credential is available.
 5. Implement a provider adapter that maps PTV results into the exact internal route shape only after schema verification.
