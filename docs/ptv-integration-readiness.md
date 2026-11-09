@@ -36,6 +36,13 @@ TruckSafe currently stores height, width, length, permitted gross weight, axle c
 - Added `.github/tests/ptv-routing-request.test.mjs`; the five tests passed in a local Node test run. This is not a GitHub Actions result and no PTV request was sent.
 - The request builder is not connected to the production/Preview route handler. It intentionally does not serialize vehicle parameters or parse provider geometry until profile compatibility, vehicle-field mapping, and polyline format are confirmed.
 
+## Preliminary response safety gate (not a route adapter)
+
+- Added `lib/ptv-route-safety.mjs` to reject malformed route summaries, route-level `violated=true`, leg-level `violated=true`, and recognized violation events.
+- Added `.github/tests/ptv-route-safety.test.mjs`; all six tests passed in a local Node test run. This is not a GitHub Actions result and no provider request was made.
+- Critical guardrail: even when PTV's violation flags are clear, this helper returns `safe: false` with `geometry_not_validated`. It cannot authorize or display a route. PTV's exact polyline format and response representation still need to be confirmed, decoded, range-checked, and adapted to TruckSafe's existing geometry validator.
+- PTV's documentation confirms the route and leg `violated` flags, and explains that `VIOLATION_EVENTS_POLYLINE` provides geometry for violation events with ENTER access; EXIT does not repeat the geometry and PASS is a point event. Do not assume every violation event carries a polyline.
+
 ## Work required before enabling PTV
 
 1. Confirm the exact PTV Vehicle schema and units for height, width, length, gross permitted weight, actual weight, axle count, and axle load. Do not assume HERE field names or unit suffixes transfer.
