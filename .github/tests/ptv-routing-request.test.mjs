@@ -15,6 +15,7 @@ test("builds PTV route request with two Israeli waypoints and safety results", (
   assert.deepEqual(url.searchParams.getAll("waypoints"), ["32.84,35.5", "32.8,35.52"]);
   assert.equal(url.searchParams.get("profile"), "EUR_TRAILER_TRUCK");
   assert.equal(url.searchParams.get("options[trafficMode]"), "AVERAGE");
+  assert.equal(url.searchParams.get("options[polylineMapType]"), "VECTOR");
   assert.deepEqual(url.searchParams.get("results").split(","), [
     "POLYLINE", "LEGS_POLYLINE", "MANEUVER_EVENTS", "VIOLATION_EVENTS_POLYLINE"
   ]);
