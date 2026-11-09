@@ -34,7 +34,7 @@ TruckSafe currently stores height, width, length, permitted gross weight, axle c
 
 1. Confirm the exact PTV Vehicle schema and units for height, width, length, gross permitted weight, actual weight, axle count, and axle load. Do not assume HERE field names or unit suffixes transfer.
 2. Confirm the exact response schema for polyline encoding/format, legs, maneuver events, violation events, violation-event geometry, alternatives, and warnings. The public quick-start confirms the root response and violation/event behavior but does not provide enough geometry detail to safely normalize route shape.
-3. Confirm the appropriate regional profile and map-data coverage for Israel, including real-world checks on known restricted roads.
+3. Retrieve the actual predefined vehicle-profile list from `GET https://api.myptv.com/data/v1/vehicle-profiles/predefined` using the PTV key only as a server-side header; identify the exact IMEA truck profile, region, and baseline attributes. Then confirm map-data coverage for Israel with real-world checks on known restricted roads. Do not call this endpoint until test API usage has been explicitly approved.
 4. Use a dedicated PTV geocoding flow or coordinates. Do not keep the HERE geocoder in the PTV path unless a separately approved, rotated HERE credential is available.
 5. Implement a provider adapter that maps PTV results into the exact internal route shape only after schema verification.
 6. Add unit tests for request serialization, response normalization, missing/malformed geometry, violations, alternatives, and fail-closed behavior.
@@ -46,6 +46,7 @@ TruckSafe currently stores height, width, length, permitted gross weight, axle c
 - Keep `TRUCK_ROUTING_ENABLED=false` until a separate approval.
 - Keep `TRUCK_ROUTING_PROVIDER` unchanged until the adapter and tests are ready.
 - Keep `PTV_PROVIDER_USAGE_APPROVED=false` and `PTV_FREE_PLAN_CONFIRMED=false` until the account's actual free-tier terms and request quota have been confirmed.
+- PTV documents regional vehicle-profile families, including IMEA profiles for the Middle East. The exact identifier and vehicle defaults must be read from the Data API, not inferred from naming conventions.
 - PTV's free subscription is intended for testing/integration rather than commercial/productive operation. API rate limits apply; verify the account's usage monitor before any test batch.
 - Never print, copy, or log `PTV_API_KEY`.
 - No card, upgrade, paid subscription, Production environment change, merge, or deployment without explicit approval.
