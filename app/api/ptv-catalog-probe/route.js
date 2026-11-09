@@ -27,9 +27,9 @@ function summarizeProfile(profile) {
   return Object.keys(summary).length ? summary : { availableFields: Object.keys(profile).slice(0, 40) };
 }
 
-export async function POST(request) {
+export async function GET(request) {
   const expectedToken = process.env.PTV_CATALOG_PROBE_TOKEN;
-  const suppliedToken = request.headers.get("x-ptv-probe-token");
+  const suppliedToken = new URL(request.url).searchParams.get("token");
   if (!tokenMatches(expectedToken, suppliedToken)) {
     return NextResponse.json({ ok: false, error: "not_found" }, { status: 404, headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
   }
