@@ -113,7 +113,7 @@ export default function TasksPage() {
     setBusy(true); setMessage("");
     const checklist = Object.fromEntries(preTripItems.map((item, i) => [item, Boolean(preTripChecks[i])]));
     try {
-      const { error } = await supabase.rpc("start_trip_with_inspection", {
+      const { data: startedTripId, error } = await supabase.rpc("start_trip_with_inspection", {
         p_fleet_id: fleet.id, p_task_id: task.id, p_driver_id: task.assigned_driver_id,
         p_vehicle_id: task.assigned_vehicle_id, p_origin_address: task.pickup_address,
         p_destination_address: task.delivery_address, p_checklist: checklist
@@ -124,6 +124,10 @@ export default function TasksPage() {
       }
       setPreTripTask(null);
       await loadWorkspace(session.user);
+      if (!startedTripId) {
+        setMessage("בדיקת הרכב נשמרה, אך הנסיעה לא נפתחה. נמצאו ליקויים או שהרכב אינו מאושר לנסיעה. יש לטפל בנושא לפני יציאה.");
+        return;
+      }
       setMessage("בדיקת הרכב נשמרה והנסיעה נפתחה בהצלחה.");
     } catch (error) {
       setMessage("אירעה שגיאה בפתיחת הנסיעה: " + (error?.message || "שגיאה לא ידועה"));
