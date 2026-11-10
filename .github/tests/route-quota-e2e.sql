@@ -1,6 +1,7 @@
 -- Rollback-only integration test for the authenticated per-user route quota.
 -- Uses synthetic identities only and never calls the paid routing provider.
 begin;
+set local role authenticated;
 
 do $test$
 declare
@@ -9,7 +10,6 @@ declare
   i integer;
   visible_count integer;
 begin
-  set local role authenticated;
   perform set_config('request.jwt.claim.role', 'authenticated', true);
   perform set_config('request.jwt.claim.sub', user_a::text, true);
 
