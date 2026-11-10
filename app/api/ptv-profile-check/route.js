@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { buildPTVPredefinedProfilesRequest, getPTVTruckProfileCandidates } from "../../../../lib/ptv-vehicle-profiles.mjs";
+import { buildPTVPredefinedProfilesRequest, getPTVTruckProfileCandidates } from "../../../lib/ptv-vehicle-profiles.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
