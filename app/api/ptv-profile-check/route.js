@@ -56,12 +56,24 @@ export async function POST(request) {
       signal: AbortSignal.timeout(12000)
     });
     if (!upstream.ok) {
+      const requestedAt = new Date().toISOString();
+      const upstreamBody = await upstream.text().catch(() => "");
+      let parsedError = null;
+      try { parsedError = JSON.parse(upstreamBody); } catch {}
+      const traceId = typeof parsedError?.traceId === "string"
+        ? parsedError.traceId
+        : typeof parsedError?.error?.traceId === "string"
+          ? parsedError.error.traceId
+          : null;
       return response({
         ok: false,
         reason: upstream.status === 401 || upstream.status === 403
           ? "ptv_authentication_rejected"
           : "ptv_data_api_unavailable",
-        upstreamStatus: upstream.status
+        upstreamStatus: upstream.status,
+        traceId,
+        requestedAt,
+        upstreamBody: upstreamBody.slice(0, 5000)
       }, 502);
     }
 
