@@ -91,7 +91,7 @@ test("does not reject a route for a distant, verified restriction", () => {
   assert.deepEqual(result.unresolved, []);
 });
 
-test("fails closed when the restriction catalogue is empty or unavailable", () => {
+test("fails closed when the restriction catalogue is unavailable and accepts a successfully loaded empty catalogue", () => {
   for (const restrictions of [undefined, null]) {
     const result = evaluateFleetRestrictions({ sections, restrictions, restrictionCatalogLoaded: true, vehicle, currentWeightKg: 10000, now });
     assert.equal(result.validated, false);
@@ -115,6 +115,7 @@ test("fails closed when the restriction catalogue was not successfully loaded", 
 test("fails closed when the truck profile or current weight is incomplete", () => {
   const missingDimension = evaluateFleetRestrictions({
     sections, restrictions: [verifiedRestriction({})],
+    restrictionCatalogLoaded: true,
     vehicle: { ...vehicle, heightCm: null }, currentWeightKg: 10000, now
   });
   assert.equal(missingDimension.validated, false);
