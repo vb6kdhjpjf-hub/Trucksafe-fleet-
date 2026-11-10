@@ -112,6 +112,10 @@ begin
 
   if has_function_privilege('anon','public.consume_truck_route_quota()','EXECUTE')
      or not has_function_privilege('authenticated','public.consume_truck_route_quota()','EXECUTE')
+     or has_function_privilege('anon','public.start_trip_with_inspection(uuid,uuid,uuid,uuid,text,text,jsonb)','EXECUTE')
+     or not has_function_privilege('authenticated','public.start_trip_with_inspection(uuid,uuid,uuid,uuid,text,text,jsonb)','EXECUTE')
+     or has_function_privilege('anon','public.finish_trip(uuid,uuid)','EXECUTE')
+     or not has_function_privilege('authenticated','public.finish_trip(uuid,uuid)','EXECUTE')
      or not has_table_privilege('authenticated','private.truck_route_requests','SELECT')
      or not has_column_privilege('authenticated','private.truck_route_requests','user_id','INSERT') then
     raise exception 'Route quota privileges are not correctly scoped to authenticated users';
@@ -141,6 +145,7 @@ declare
   fleet_id uuid := 'b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d51';
   other_fleet_id uuid := 'b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d52';
   driver_id uuid := 'd1d0f66b-52e6-4e7e-a641-5c0f2f8eaf54';
+  task_id uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf54';
   other_vehicle_id uuid := 'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf55';
   vehicle_id uuid := 'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51';
   untrusted_vehicle_id uuid := 'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf53';
@@ -274,6 +279,12 @@ begin
   ) values(
     vehicle_id,fleet_id,'CI-PARITY-001','Test','Truck','truck','available',
     current_date+365,current_date+365,current_date+365,false,driver_id
+  );
+
+  insert into public.tasks(
+    id,fleet_id,title,assigned_driver_id,assigned_vehicle_id,status,created_by
+  ) values(
+    task_id,fleet_id,'CI authenticated driver RPC task',driver_id,vehicle_id,'assigned',owner_id
   );
 
   update public.vehicles set height_cm=320 where id=vehicle_id;
@@ -427,6 +438,60 @@ $rls_other_fleet_checks$;
 reset role;
 insert into pg_temp.road_vehicle_security_results
 values('second fleet isolation','PASS','Second fleet owner cannot read first fleet vehicles');
+
+-- Exercise the SECURITY DEFINER trip RPCs as an authenticated assigned driver.
+-- The RPCs are intentionally callable by authenticated users, so their internal
+-- fleet/driver checks must reject cross-fleet attempts and permit only the assigned driver.
+select set_config('request.jwt.claim.sub','f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf54',true);
+select set_config('request.jwt.claim.role','authenticated',true);
+set local role authenticated;
+
+do $rpc_cross_fleet_check$
+begin
+  begin
+    perform public.start_trip_with_inspection(
+      'b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d52',
+      'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf54',
+      'd1d0f66b-52e6-4e7e-a641-5c0f2f8eaf54',
+      'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51',
+      'A','B','{}'::jsonb
+    );
+    raise exception 'Driver unexpectedly started a trip in another fleet';
+  exception when others then
+    if sqlerrm not ilike '%רק חבר צי פעיל%' then
+      raise;
+    end if;
+  end;
+end
+$rpc_cross_fleet_check$;
+
+select set_config(
+  'trucksafe.test_driver_trip_id',
+  public.start_trip_with_inspection(
+    'b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d51',
+    'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf54',
+    'd1d0f66b-52e6-4e7e-a641-5c0f2f8eaf54',
+    'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51',
+    'CI origin','CI destination',
+    jsonb_build_object(
+      'צמיגים ולחץ אוויר תקינים',true,
+      'בלמים ובלם חניה תקינים',true,
+      'אורות, איתותים וצופר תקינים',true,
+      'מראות, שמשות ומגבים תקינים',true,
+      'אין נזילות או נזק גלוי',true,
+      'המטען מאובטח והמשקל מתאים',true,
+      'מסמכי רכב ורישיון נהיגה בתוקף',true
+    )
+  )::text,
+  true
+);
+select public.finish_trip(
+  'b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d51',
+  current_setting('trucksafe.test_driver_trip_id')::uuid
+);
+reset role;
+insert into pg_temp.road_vehicle_security_results
+values('authenticated driver trip RPC','PASS','Assigned driver starts and finishes own trip; cross-fleet start is rejected');
 
 -- Exercise the RPC with the real authenticated database role, not the postgres
 -- owner used to create rollback-only fixtures. This verifies grants and RLS.
