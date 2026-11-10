@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { stageCandidate } from "../../scripts/stage-restriction-source.mjs";
+import { MAX_SOURCE_BYTES, stageCandidate } from "../../scripts/stage-restriction-source.mjs";
 
 const source = {
   source_id: "synthetic-source",
@@ -20,7 +20,7 @@ async function fixture(t, raw = '{"id":"bridge-test","clearance_m":4.2}') {
   const quarantineDir = path.join(root, "quarantine");
   await mkdir(quarantineDir);
   await writeFile(input, raw, "utf8");
-  return { input, quarantineDir };
+  return { root, input, quarantineDir };
 }
 
 test("stages a valid payload only as an unapproved candidate", async t => {
@@ -54,4 +54,32 @@ test("requires licence and publisher metadata", async t => {
 test("rejects timezone-ambiguous retrieval timestamps", async t => {
   const paths = await fixture(t);
   await assert.rejects(stageCandidate({ ...paths, source, retrievedAt: "2026-11-10T12:00:00" }), /validation failed/);
+});
+
+test("rejects an oversized source before parsing it", async t => {
+  const paths = await fixture(t);
+  await writeFile(paths.input, Buffer.alloc(MAX_SOURCE_BYTES + 1, 0x20));
+  await assert.rejects(stageCandidate({ ...paths, source }), /5 MiB safety limit/);
+});
+
+test("requires an existing quarantine directory", async t => {
+  const paths = await fixture(t);
+  await rm(paths.quarantineDir, { recursive: true });
+  await assert.rejects(stageCandidate({ ...paths, quarantineDir: paths.quarantineDir, source }), { code: "ENOENT" });
+});
+
+test("rejects a symlink used as the quarantine directory", async t => {
+  const paths = await fixture(t);
+  const realDir = path.join(paths.root, "real-quarantine");
+  await mkdir(realDir);
+  const linkDir = path.join(paths.root, "quarantine-link");
+  await symlink(realDir, linkDir);
+  await assert.rejects(stageCandidate({ ...paths, quarantineDir: linkDir, source }), /non-symlink directory/);
+});
+
+test("rejects a symlink used as the input file", async t => {
+  const paths = await fixture(t);
+  const linkInput = path.join(paths.root, "source-link.json");
+  await symlink(paths.input, linkInput);
+  await assert.rejects(stageCandidate({ ...paths, input: linkInput, source }), { code: "ELOOP" });
 });
