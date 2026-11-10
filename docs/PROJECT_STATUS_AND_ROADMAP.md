@@ -17,7 +17,7 @@ TruckSafe has a substantial fleet-management application and an isolated validat
 
 | Workstream | Current status | Evidence / remaining gate |
 |---|---|---|
-| Fleet workspace and dashboard | Implemented in the application | Login, fleet membership, fleet dashboard and operational modules exist; complete user-acceptance testing is still required. |
+| Fleet workspace and dashboard | Implemented in the application | Login, fleet membership, fleet dashboard and operational modules exist; dashboard loading now fails closed when an account has multiple fleet memberships or multiple owned fleets instead of selecting one arbitrarily. Complete user-acceptance testing is still required. |
 | Drivers, vehicles and tasks | Implemented; safety checks added | Driver eligibility, vehicle lifecycle and task/pre-trip flows have automated tests. Real-user acceptance and edge-case review remain. |
 | Maintenance, incidents, history and reports | Implemented in the application | Pages and data workflows exist; full operational acceptance and permissions review remain. |
 | Vehicle registration verification | Guarded workflow implemented in the development branch | Private registration document and authorized review are required; material technical-profile, registration-number, make/model and vehicle-type edits invalidate prior approval; a database INSERT trigger clears any client-supplied approval or document metadata. SQL integration tests cover forged INSERT metadata and re-review after a registration identity change. Rollout to Production has not been authorized. |
@@ -31,11 +31,11 @@ TruckSafe has a substantial fleet-management application and an isolated validat
 
 ## Verified engineering baseline
 
-The latest verified isolated validation run is [GitHub Actions run 42873597407](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/42873597407), on commit `6f089d7884bed4716254c63c7428d9b7c8923fca`.
+The latest verified isolated validation run is [GitHub Actions run 42873983249](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/42873983249), on commit `77f73b30ac20cfbaeed9de3bc2489973475d77fc`.
 
 Recorded results:
 - Application and safety unit-test step passed (161 tests), including streamed request-body limit and routing-profile validation tests.
-- Vehicle-registration security integration test passed: direct vehicle INSERT cannot forge a verified status or inject document/approval metadata; technical-profile edits and registration-identity changes invalidate prior approval and clear reviewer metadata.
+- Vehicle-registration security integration test passed: direct vehicle INSERT cannot forge a verified status or inject document/approval metadata; technical-profile edits and registration-identity changes invalidate prior approval and clear reviewer metadata. Fleet dashboard code also rejects ambiguous multi-fleet selection rather than silently choosing a workspace.
 - Isolated database integration job passed; its connection was verified to target only the dedicated test project.
 - Next.js production build passed.
 - Production dependency audit reported 0 vulnerabilities.
