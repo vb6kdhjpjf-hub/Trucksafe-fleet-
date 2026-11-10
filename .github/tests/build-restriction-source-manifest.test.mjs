@@ -12,8 +12,8 @@ async function fixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), "trucksafe-manifest-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const reviewsDir = path.join(root, "reviews"); await mkdir(reviewsDir);
-  const payload = JSON.stringify({ restrictions: [{ id: "synthetic-1" }] });
-  const payloadHash = hash(payload);
+  const payload = { restrictions: [{ id: "synthetic-1" }] };
+  const payloadHash = hash(JSON.stringify(payload));
   const candidateFile = path.join(root, "candidate-" + payloadHash + ".json");
   const assessmentFile = path.join(root, "candidate-" + payloadHash + ".assessment.json");
   await writeFile(candidateFile, JSON.stringify({
