@@ -37,3 +37,54 @@ jobs:
         run: npm run test:ptv
       - name: Build Next.js application
         run: npx next build
+
+  database-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      SUPABASE_TEST_DB_URL: ${{ secrets.SUPABASE_TEST_DB_URL }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Check for isolated test database secret
+        id: test-db
+        shell: bash
+        run: |
+          if [ -z "$SUPABASE_TEST_DB_URL" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Database integration tests skipped because SUPABASE_TEST_DB_URL is not configured."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Validate that the connection targets only the isolated test project
+        if: steps.test-db.outputs.available == 'true'
+        shell: bash
+        run: |
+          set +x
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlsplit, unquote
+          raw = os.environ["SUPABASE_TEST_DB_URL"].strip()
+          if raw.startswith("psql "):
+              raw = raw[5:].strip()
+          raw = raw.strip("'").strip('"')
+          parsed = urlsplit(raw)
+          if parsed.scheme not in ("postgres", "postgresql"):
+              raise SystemExit("Expected a PostgreSQL URI.")
+          identity = (parsed.hostname or "") + " " + unquote(parsed.username or "")
+          if "yxxrgblpqzhnnyojbwcr" not in identity:
+              raise SystemExit("Refusing to run: database URI does not identify the dedicated TruckSafe Fleet Test project.")
+          if "jqebxlhhffwiebijiugx" in identity:
+              raise SystemExit("Refusing to run: production project detected.")
+          PY
+      - name: Install PostgreSQL client
+        if: steps.test-db.outputs.available == 'true'
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Run rollback-only lifecycle and safety integration tests
+        if: steps.test-db.outputs.available == 'true'
+        shell: bash
+        run: |
+          set +x
+          psql "$SUPABASE_TEST_DB_URL" -X -v ON_ERROR_STOP=1 -f .github/tests/lifecycle-e2e.sql
