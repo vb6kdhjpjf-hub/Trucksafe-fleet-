@@ -3,6 +3,7 @@ import { selectSafeTruckRoute } from "../../../lib/road-restriction-geometry.mjs
 import { isTruckRouteConfigured } from "../../../lib/truck-route-readiness.mjs";
 import { getSavedTruckRoutingProfile } from "../../../lib/truck-routing-profile.mjs";
 import { checkTruckRouteQuota } from "../../../lib/truck-route-quota.mjs";
+import { readJsonBodyLimited } from "../../../lib/request-body-limits.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -80,9 +81,13 @@ export async function POST(request) {
     const apiKey = process.env.TRUCK_ROUTING_PROVIDER === "here" ? process.env.HERE_API_KEY : null;
     if (!apiKey) return response({ error: "מנוע ניתוב המשאיות עדיין לא הופעל. יש להשלים חיבור לספק מאושר ולבדוק אותו לפני שימוש." }, 503);
 
-    const contentLength = Number(request.headers.get("content-length") || 0);
-    if (contentLength > 16000) return response({ error: "הבקשה גדולה מדי." }, 413);
-    const raw = await request.json();
+    const parsedBody = await readJsonBodyLimited(request, 16000);
+    if (!parsedBody.ok) {
+      return response({
+        error: parsedBody.status === 413 ? "הבקשה גדולה מדי." : "גוף הבקשה אינו תקין."
+      }, parsedBody.status);
+    }
+    const raw = parsedBody.value;
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
       return response({ error: "נתוני הנסיעה אינם תקינים." }, 400);
     }
