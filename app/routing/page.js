@@ -80,6 +80,8 @@ export default function TruckRoutingPage() {
   const [message, setMessage] = useState("");
   const [mapMessage, setMapMessage] = useState("");
   const [providerReady, setProviderReady] = useState(false);
+  const [ptvChecking, setPtvChecking] = useState(false);
+  const [ptvCheckResult, setPtvCheckResult] = useState(null);
   const [locating, setLocating] = useState(false);
 
   useEffect(() => {
@@ -142,6 +144,40 @@ export default function TruckRoutingPage() {
       if (map) map.remove();
     };
   }, [result]);
+
+  async function checkPTVProfiles() {
+    setPtvChecking(true);
+    setPtvCheckResult(null);
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.access_token) {
+        setPtvCheckResult({ ok: false, reason: "יש להתחבר מחדש למערכת." });
+        return;
+      }
+      const response = await fetch("/api/ptv-profile-check", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + session.access_token }
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        const messages = {
+          ptv_key_not_configured: "מפתח PTV לא מוגדר בסביבת הבדיקות.",
+          ptv_authentication_rejected: "PTV דחתה את המפתח. צריך לבדוק שהחשבון הופעל והמפתח תקין.",
+          ptv_data_api_unavailable: "שירות הנתונים של PTV אינו זמין כרגע.",
+          ptv_profile_catalog_malformed: "PTV החזירה קטלוג פרופילים במבנה לא צפוי.",
+          ptv_request_timeout: "הבדיקה מול PTV חרגה מזמן ההמתנה.",
+          ptv_request_failed: "לא ניתן להשלים את הבדיקה מול PTV."
+        };
+        setPtvCheckResult({ ok: false, reason: messages[data.reason] || "בדיקת PTV נכשלה." });
+        return;
+      }
+      setPtvCheckResult({ ok: true, ...data });
+    } catch {
+      setPtvCheckResult({ ok: false, reason: "לא ניתן להתחבר לבדיקת PTV." });
+    } finally {
+      setPtvChecking(false);
+    }
+  }
 
   function update(key, value) {
     setForm(current => ({ ...current, [key]: value, ...(key === "origin" ? { originCoordinates: null } : {}) }));
@@ -228,6 +264,18 @@ export default function TruckRoutingPage() {
       </section>
 
       {message && <div role="status" style={{ background: result?.hasCriticalNotices ? "#fff0f0" : "#eef4ff", border: "1px solid #dce6f7", borderRadius: 10, padding: 12, marginBottom: 14, lineHeight: 1.5 }}>{message}</div>}
+
+      <section style={{ background: "white", border: "1px solid #e5eaf1", borderRadius: 14, padding: 14, marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div><b>בדיקת חיבור PTV</b><p style={{ margin: "5px 0 0", color: "#718096", fontSize: 12 }}>בדיקה מאובטחת של קטלוג פרופילי המשאיות בלבד. אינה מחשבת מסלול ואינה מפעילה ניווט.</p></div>
+          <button type="button" onClick={checkPTVProfiles} disabled={ptvChecking || busy} style={{ ...field, width: "auto", margin: 0, cursor: "pointer" }}>{ptvChecking ? "בודק מול PTV..." : "בדוק חיבור PTV"}</button>
+        </div>
+        {ptvCheckResult && <div role="status" style={{ marginTop: 10, padding: 10, borderRadius: 9, background: ptvCheckResult.ok ? "#edf8f0" : "#fff0f0", lineHeight: 1.5 }}>
+          {ptvCheckResult.ok ? <><b>החיבור ל־PTV עובד.</b><div>נמצאו {ptvCheckResult.profileCount} פרופילים בסך הכול, מתוכם {ptvCheckResult.truckCandidateCount} פרופילי משאית.</div>
+            {ptvCheckResult.truckProfiles.length > 0 && <ul style={{ margin: "6px 0", paddingRight: 20 }}>{ptvCheckResult.truckProfiles.map(profile => <li key={profile.name}><b>{profile.name}</b> · {profile.region} · גובה {profile.vehicle.height ?? "לא ידוע"} ס״מ · רוחב {profile.vehicle.width ?? "לא ידוע"} ס״מ · אורך {profile.vehicle.length ?? "לא ידוע"} ס״מ</li>)}</ul>}
+          </> : ptvCheckResult.reason}
+        </div>}
+      </section>
 
       <form onSubmit={calculate} style={{ background: "white", border: "1px solid #e5eaf1", borderRadius: 16, padding: 18, boxShadow: "0 5px 20px #17233808" }}>
         <h2 style={{ margin: "0 0 14px", fontSize: 18 }}>פרטי הנסיעה והרכב</h2>
