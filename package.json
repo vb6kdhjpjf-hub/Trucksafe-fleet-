@@ -10,7 +10,7 @@
     "build": "npm run test:ptv && next build",
     "start": "next start",
     "lint": "next lint",
-    "test:ptv": "node --test .github/tests/ptv-*.test.mjs .github/tests/truck-routing-profile.test.mjs .github/tests/road-restriction-geometry.test.mjs .github/tests/truck-route-readiness.test.mjs .github/tests/road-restriction-sources.test.mjs .github/tests/driver-eligibility.test.mjs .github/tests/pre-trip-checklist.test.mjs"
+    "test:ptv": "node --test .github/tests/ptv-*.test.mjs .github/tests/truck-routing-profile.test.mjs .github/tests/truck-route-quota.test.mjs .github/tests/road-restriction-geometry.test.mjs .github/tests/truck-route-readiness.test.mjs .github/tests/road-restriction-sources.test.mjs .github/tests/driver-eligibility.test.mjs .github/tests/pre-trip-checklist.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
