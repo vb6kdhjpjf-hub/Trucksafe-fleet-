@@ -2,15 +2,13 @@
   "name": "trucksafe-fleet-v1",
   "version": "1.0.0",
   "private": true,
-  "engines": {
-    "node": ">=24 <25"
-  },
+  "engines": { "node": ">=24 <25" },
   "scripts": {
     "dev": "next dev",
     "build": "npm run test:ptv && next build",
     "start": "next start",
     "lint": "next lint",
-    "test:ptv": "node --test .github/tests/ptv-*.test.mjs .github/tests/truck-routing-profile.test.mjs .github/tests/truck-route-quota.test.mjs .github/tests/road-restriction-geometry.test.mjs .github/tests/truck-route-readiness.test.mjs .github/tests/road-restriction-sources.test.mjs .github/tests/driver-eligibility.test.mjs .github/tests/pre-trip-checklist.test.mjs .github/tests/restriction-source-envelope.test.mjs .github/tests/stage-restriction-source.test.mjs .github/tests/restriction-source-assessment.test.mjs .github/tests/assess-staged-restriction-source.test.mjs .github/tests/record-restriction-source-review.test.mjs .github/tests/verify-restriction-source-review.test.mjs"
+    "test:ptv": "node --test .github/tests/ptv-*.test.mjs .github/tests/truck-routing-profile.test.mjs .github/tests/truck-route-quota.test.mjs .github/tests/road-restriction-geometry.test.mjs .github/tests/truck-route-readiness.test.mjs .github/tests/road-restriction-sources.test.mjs .github/tests/driver-eligibility.test.mjs .github/tests/pre-trip-checklist.test.mjs .github/tests/restriction-source-envelope.test.mjs .github/tests/stage-restriction-source.test.mjs .github/tests/restriction-source-assessment.test.mjs .github/tests/assess-staged-restriction-source.test.mjs .github/tests/record-restriction-source-review.test.mjs .github/tests/verify-restriction-source-review.test.mjs .github/tests/build-restriction-source-manifest.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
@@ -19,7 +17,5 @@
     "react-dom": "18.3.1",
     "lucide-react": "0.468.0"
   },
-  "overrides": {
-    "postcss": "^8.5.32"
-  }
+  "overrides": { "postcss": "^8.5.32" }
 }
