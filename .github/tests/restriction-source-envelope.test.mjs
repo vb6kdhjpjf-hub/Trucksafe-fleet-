@@ -45,7 +45,7 @@ test("rejects malformed or timezone-ambiguous timestamps", () => {
 
 test("rejects a payload hash mismatch", () => {
   const envelope = validEnvelope({ payload_sha256: "0".repeat(64) });
-  assert.ok(validateCandidateRestrictionEnvelope(envelope, rawPayload).errors.includes("payload_sha256 does not match rawPayload"));
+  assert.ok(validateCandidateRestrictionEnvelope(envelope, rawPayload).errors.includes("payload_sha256 does not match canonicalPayload"));
 });
 
 test("rejects records that attempt to self-approve for routing", () => {
@@ -65,7 +65,7 @@ test("rejects absent raw source bytes and malformed hashes", () => {
   const envelope = validEnvelope({ payload_sha256: "not-a-hash" });
   const result = validateCandidateRestrictionEnvelope(envelope, undefined);
   assert.equal(result.valid, false);
-  assert.ok(result.errors.includes("rawPayload must be the exact original UTF-8 JSON string"));
+  assert.ok(result.errors.includes("canonicalPayload must be JSON.stringify(envelope.payload)"));
   assert.ok(result.errors.includes("payload_sha256 must be a 64-character SHA-256 hex digest"));
 });
 
