@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, open, readFile, realpath, rm } from "node:fs/promises";
+import { lstat, open, realpath, rm } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { validateCandidateRestrictionEnvelope } from "../lib/restriction-source-envelope.mjs";
@@ -73,7 +73,7 @@ export async function stageCandidate({ input, quarantineDir, source, retrievedAt
 
   const handle = await open(output, "wx", 0o600);
   try {
-    await handle.writeFile(`${JSON.stringify(envelope, null, 2)}\\n`, "utf8");
+    await handle.writeFile(`${JSON.stringify(envelope, null, 2)}\n`, "utf8");
     await handle.sync();
   } catch (error) {
     await handle.close();
@@ -97,13 +97,13 @@ async function main() {
       licence_reference: args["licence-reference"]
     }
   });
-  process.stdout.write(`Staged unapproved candidate: ${output}\\n`);
-  process.stdout.write("Routing approval remains false; this tool does not import into any database.\\n");
+  process.stdout.write(`Staged unapproved candidate: ${output}\n`);
+  process.stdout.write("Routing approval remains false; this tool does not import into any database.\n");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   main().catch(error => {
-    process.stderr.write(`Staging failed: ${error.message}\\n`);
+    process.stderr.write(`Staging failed: ${error.message}\n`);
     process.exitCode = 1;
   });
 }
