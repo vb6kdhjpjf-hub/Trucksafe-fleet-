@@ -3,22 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
-import { getPTVProfileFormValues } from "../../lib/ptv-vehicle-profiles.mjs";
+import { getSavedTruckRoutingProfile } from "../../lib/truck-routing-profile.mjs";
 import { ArrowRight, MapPin, Navigation, Route, ShieldAlert, Truck } from "lucide-react";
 
 const initial = {
   origin: "",
   destination: "",
-  heightCm: "",
-  widthCm: "",
-  lengthCm: "",
-  grossWeightKg: "",
   currentWeightKg: "",
-  emptyWeightKg: "",
-  weightPerAxleKg: "",
-  vehicleType: "StraightTruck",
-  axleCount: "",
-  trailerCount: "0",
   originCoordinates: null
 };
 
@@ -76,6 +67,8 @@ export default function TruckRoutingPage() {
   const router = useRouter();
   const mapElement = useRef(null);
   const [form, setForm] = useState(initial);
+  const [vehicles, setVehicles] = useState([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
@@ -94,6 +87,20 @@ export default function TruckRoutingPage() {
     supabase.auth.getSession().then(({ data, error }) => {
       if (!alive) return;
       if (error || !data.session) { router.replace("/"); return; }
+      const { data: vehicleRows, error: vehicleError } = await supabase
+        .from("vehicles")
+        .select("id,registration_number,make,model,status,is_demo,registration_verification_status,registration_document_path,registration_verified_at,registration_verified_by,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,empty_weight_kg,axle_count,trailer_count,weight_per_axle_kg")
+        .in("status", ["available", "assigned"])
+        .order("registration_number", { ascending: true });
+      if (!alive) return;
+      if (vehicleError) {
+        setMessage("לא ניתן לטעון את כלי הרכב המורשים לניווט. נסה לטעון מחדש.");
+        setVehicles([]);
+      } else {
+        const eligibleVehicles = (vehicleRows || []).filter(vehicle => getSavedTruckRoutingProfile(vehicle));
+        setVehicles(eligibleVehicles);
+        if (eligibleVehicles.length === 1) setSelectedVehicleId(eligibleVehicles[0].id);
+      }
       setLoading(false);
       fetch("/api/truck-route").then(response => response.json()).then(status => {
         if (!alive) return;
@@ -229,6 +236,12 @@ export default function TruckRoutingPage() {
     setForm(current => ({ ...current, [key]: value, ...(key === "origin" ? { originCoordinates: null } : {}) }));
   }
 
+  function selectVehicle(vehicleId) {
+    setSelectedVehicleId(vehicleId);
+    setForm(current => ({ ...current, currentWeightKg: "" }));
+    setResult(null);
+  }
+
   function useCurrentLocation() {
     if (!navigator.geolocation) { setMessage("הדפדפן אינו תומך באיתור מיקום."); return; }
     setLocating(true);
@@ -249,6 +262,18 @@ export default function TruckRoutingPage() {
 
   async function calculate(event) {
     event.preventDefault();
+    if (!selectedVehicleId || !vehicles.some(vehicle => vehicle.id === selectedVehicleId)) {
+      setMessage("יש לבחור רכב שמור, זמין ומאומת מתוך הצי.");
+      return;
+    }
+    const selectedVehicle = vehicles.find(vehicle => vehicle.id === selectedVehicleId);
+    const currentWeightKg = Number(form.currentWeightKg);
+    const savedProfile = getSavedTruckRoutingProfile(selectedVehicle);
+    if (!savedProfile || !Number.isFinite(currentWeightKg) ||
+        currentWeightKg < savedProfile.emptyWeightKg || currentWeightKg > savedProfile.grossWeightKg) {
+      setMessage("יש להזין משקל בפועל תקין, בין משקל הרכב הריק למשקל הכולל המותר לפי הנתונים המאומתים.");
+      return;
+    }
     if (!providerReady) { setMessage("מנוע ניתוב המשאיות עדיין לא הופעל. אין לחשב מסלול עד להשלמת החיבור והבדיקות."); return; }
     setBusy(true);
     setMessage("");
@@ -266,17 +291,10 @@ export default function TruckRoutingPage() {
           Authorization: "Bearer " + session.access_token
         },
         body: JSON.stringify({
-          ...form,
-          heightCm: Number(form.heightCm),
-          widthCm: Number(form.widthCm),
-          lengthCm: Number(form.lengthCm),
-          grossWeightKg: Number(form.grossWeightKg),
-          currentWeightKg: Number(form.currentWeightKg),
-          emptyWeightKg: form.emptyWeightKg ? Number(form.emptyWeightKg) : null,
-          weightPerAxleKg: form.weightPerAxleKg ? Number(form.weightPerAxleKg) : null,
-          vehicleType: form.vehicleType,
-          axleCount: Number(form.axleCount),
-          trailerCount: Number(form.trailerCount),
+          origin: form.origin,
+          destination: form.destination,
+          vehicleId: selectedVehicleId,
+          currentWeightKg,
           originCoordinates: form.originCoordinates
         })
       });
@@ -301,6 +319,8 @@ export default function TruckRoutingPage() {
 
   if (loading) return <main dir="rtl" style={{ padding: 24 }}>טוען...</main>;
 
+  const selectedVehicle = vehicles.find(vehicle => vehicle.id === selectedVehicleId) || null;
+  const selectedProfile = selectedVehicle ? getSavedTruckRoutingProfile(selectedVehicle) : null;
   const field = { width: "100%", padding: 12, border: "1px solid #dce3ee", borderRadius: 10, marginTop: 6, background: "white", color: "#172338" };
   const label = { display: "block", fontSize: 13, fontWeight: 600, color: "#344054" };
   const button = { border: 0, borderRadius: 10, background: "#245bd7", color: "white", padding: "12px 18px", fontWeight: 700, cursor: "pointer", opacity: busy ? 0.65 : 1 };
@@ -326,7 +346,7 @@ export default function TruckRoutingPage() {
         </div>
         {ptvCheckResult && <div role="status" style={{ marginTop: 10, padding: 10, borderRadius: 9, background: ptvCheckResult.ok ? "#edf8f0" : "#fff0f0", lineHeight: 1.5 }}>
           {ptvCheckResult.ok ? <><b>החיבור ל־PTV עובד.</b><div>נמצאו {ptvCheckResult.profileCount} פרופילים בסך הכול, מתוכם {ptvCheckResult.truckCandidateCount} פרופילי משאית.</div>
-            {ptvCheckResult.truckProfiles.length > 0 && <><div style={{ marginTop: 8, color: "#7c4a03", fontSize: 12 }}>המידות הן נתוני פרופיל כלליים של PTV. יש לאמת אותן מול רישיון הרכב או מדידה בפועל לפני שימוש.</div><ul style={{ margin: "6px 0", paddingRight: 20 }}>{ptvCheckResult.truckProfiles.map(profile => <li key={profile.name} style={{ marginBottom: 10 }}><div><b>{profile.name}</b> · {profile.region} · גובה {profile.vehicle.height ?? "לא ידוע"} ס״מ · רוחב {profile.vehicle.width ?? "לא ידוע"} ס״מ · אורך {profile.vehicle.length ?? "לא ידוע"} ס״מ · משקל כולל מותר {profile.vehicle.totalPermittedWeight ?? "לא ידוע"} ק״ג · סרנים {profile.vehicle.numberOfAxles ?? "לא ידוע"} · נגררים {profile.vehicle.numberOfTrailers ?? "לא ידוע"}</div><button type="button" disabled={!([profile.vehicle.height, profile.vehicle.width, profile.vehicle.length].every(Number.isFinite) && Object.keys(getPTVProfileFormValues(profile)).length >= 3)} onClick={() => setForm(current => ({ ...current, ...getPTVProfileFormValues(profile) }))} style={{ marginTop: 6, border: "1px solid #cbd5e1", background: "#f8fafc", borderRadius: 8, padding: "6px 10px", cursor: "pointer" }}>העתק מידות ונתוני מבנה לטופס</button></li>)}</ul></>}
+            {ptvCheckResult.truckProfiles.length > 0 && <><div style={{ marginTop: 8, color: "#7c4a03", fontSize: 12 }}>המידות הן נתוני פרופיל כלליים של PTV. יש לאמת אותן מול רישיון הרכב או מדידה בפועל לפני שימוש.</div><ul style={{ margin: "6px 0", paddingRight: 20 }}>{ptvCheckResult.truckProfiles.map(profile => <li key={profile.name} style={{ marginBottom: 10 }}><div><b>{profile.name}</b> · {profile.region} · גובה {profile.vehicle.height ?? "לא ידוע"} ס״מ · רוחב {profile.vehicle.width ?? "לא ידוע"} ס״מ · אורך {profile.vehicle.length ?? "לא ידוע"} ס״מ · משקל כולל מותר {profile.vehicle.totalPermittedWeight ?? "לא ידוע"} ק״ג · סרנים {profile.vehicle.numberOfAxles ?? "לא ידוע"} · נגררים {profile.vehicle.numberOfTrailers ?? "לא ידוע"}</div><small style={{ color: "#7c4a03" }}>פרופיל כללי בלבד — אינו מחליף נתוני רכב מאומתים ואינו מועתק לרכב השמור.</small></li>)}</ul></>}
           </> : <>{ptvCheckResult.reason}{ptvCheckResult.upstreamStatus !== null && <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>קוד תגובת PTV: HTTP {ptvCheckResult.upstreamStatus} · קוד אבחון: {ptvCheckResult.diagnosticCode}</div>}{ptvCheckResult.traceId && <div style={{ marginTop: 6, fontSize: 12 }}>traceId: <code>{ptvCheckResult.traceId}</code></div>}{ptvCheckResult.requestedAt && <div style={{ fontSize: 12 }}>שעת הבדיקה: {ptvCheckResult.requestedAt}</div>}</>}
         </div>}
       </section>
@@ -344,22 +364,21 @@ export default function TruckRoutingPage() {
       <form onSubmit={calculate} style={{ background: "white", border: "1px solid #e5eaf1", borderRadius: 16, padding: 18, boxShadow: "0 5px 20px #17233808" }}>
         <h2 style={{ margin: "0 0 14px", fontSize: 18 }}>פרטי הנסיעה והרכב</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 14 }}>
+          <label style={label}>רכב שמור ומאומת מהצי<select required style={field} value={selectedVehicleId} onChange={event => selectVehicle(event.target.value)}><option value="">בחר רכב מאומת</option>{vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.id}>{vehicle.registration_number}{vehicle.make ? " · " + vehicle.make : ""}</option>)}</select></label>
           <label style={label}>מוצא בישראל<div style={{ display: "flex", gap: 7, marginTop: 6 }}><input required maxLength={180} style={{ ...field, marginTop: 0, minWidth: 0 }} value={form.origin} onChange={e => update("origin", e.target.value)} placeholder="כתובת, יישוב או אזור"/><button type="button" onClick={useCurrentLocation} disabled={locating || busy} style={{ ...field, width: "auto", whiteSpace: "nowrap", marginTop: 0, cursor: "pointer" }}><MapPin size={15} style={{ verticalAlign: "middle" }}/> {locating ? "מאתר..." : "המיקום שלי"}</button></div></label>
           <label style={label}>יעד בישראל<input required maxLength={180} style={field} value={form.destination} onChange={e => update("destination", e.target.value)} placeholder="כתובת, יישוב או אזור"/></label>
-          <label style={label}>גובה כולל (ס״מ)<input required type="number" min="100" max="600" step="1" style={field} value={form.heightCm} onChange={e => update("heightCm", e.target.value)} placeholder="לדוגמה: 400"/></label>
-          <label style={label}>רוחב כולל (ס״מ)<input required type="number" min="100" max="350" step="1" style={field} value={form.widthCm} onChange={e => update("widthCm", e.target.value)} placeholder="לדוגמה: 250"/></label>
-          <label style={label}>אורך כולל (ס״מ)<input required type="number" min="200" max="3000" step="1" style={field} value={form.lengthCm} onChange={e => update("lengthCm", e.target.value)} placeholder="כולל נגרר"/></label>
-          <label style={label}>משקל כולל מותר (ק״ג)<input required type="number" min="1000" max="100000" step="100" style={field} value={form.grossWeightKg} onChange={e => update("grossWeightKg", e.target.value)} placeholder="לפי רישיון הרכב"/></label>
-          <label style={label}>משקל בפועל בנסיעה (ק״ג)<input required type="number" min="1000" max="100000" step="100" style={field} value={form.currentWeightKg} onChange={e => update("currentWeightKg", e.target.value)} placeholder="רכב + מטען + נגרר"/></label>
-          <label style={label}>משקל רכב ריק כולל נגרר (ק״ג)<input required type="number" min="500" max="100000" step="100" style={field} value={form.emptyWeightKg} onChange={e => update("emptyWeightKg", e.target.value)} placeholder="ללא מטען · נדרש להתאמת PTV"/></label>
-          <label style={label}>סוג משאית<select required style={field} value={form.vehicleType} onChange={e => update("vehicleType", e.target.value)}><option value="StraightTruck">משאית קשיחה</option><option value="Tractor">גורר / ראש גורר</option></select></label>
-          <label style={label}>מספר סרנים<input required type="number" min="2" max="12" step="1" style={field} value={form.axleCount} onChange={e => update("axleCount", e.target.value)} placeholder="לפי רישיון הרכב"/></label>
-          <label style={label}>מספר נגררים<input required type="number" min="0" max="3" step="1" style={field} value={form.trailerCount} onChange={e => update("trailerCount", e.target.value)}/></label>
-          <label style={label}>משקל מרבי לסרן (ק״ג, אם ידוע)<input type="number" min="500" max="30000" step="100" style={field} value={form.weightPerAxleKg} onChange={e => update("weightPerAxleKg", e.target.value)} placeholder="אופציונלי"/></label>
+          <label style={label}>משקל בפועל בנסיעה (ק״ג)<input required type="number" min={selectedProfile?.emptyWeightKg || 1} max={selectedProfile?.grossWeightKg || 100000} step="1" style={field} value={form.currentWeightKg} onChange={e => update("currentWeightKg", e.target.value)} placeholder={selectedProfile ? `בין ${selectedProfile.emptyWeightKg} ל־${selectedProfile.grossWeightKg}` : "בחר רכב תחילה"} disabled={!selectedProfile}/></label>
         </div>
+        {selectedVehicle && selectedProfile ? <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: "#f5f8fc", border: "1px solid #e1e8f0", lineHeight: 1.7, fontSize: 13 }}>
+          <b>פרופיל מאומת של הרכב</b>
+          <div>גובה: {selectedProfile.heightCm} ס״מ · רוחב: {selectedProfile.widthCm} ס״מ · אורך: {selectedProfile.lengthCm} ס״מ</div>
+          <div>משקל ריק: {selectedProfile.emptyWeightKg.toLocaleString("he-IL")} ק״ג · משקל כולל מותר: {selectedProfile.grossWeightKg.toLocaleString("he-IL")} ק״ג</div>
+          <div>סרנים: {selectedProfile.axleCount} · נגררים: {selectedProfile.trailerCount} · משקל סרן שמור: {selectedProfile.weightPerAxleKg.toLocaleString("he-IL")} ק״ג</div>
+          <small style={{ color: "#667085" }}>המידות והנתונים נלקחים מפרופיל הרכב השמור שאומת מול מסמכי הרכב. נתוני הנסיעה אינם משנים את פרופיל הרכב.</small>
+        </div> : <p style={{ color: "#8a4b12", fontSize: 13 }}>לא נמצאו כלי רכב זמינים עם פרופיל ניתוב מלא ואימות רישיון. יש להשלים את פרטי הרכב ואימות המסמכים בלוח הבקרה לפני תכנון מסלול.</p>}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 18 }}>
-          <button type="submit" disabled={busy || !providerReady} style={button}><Route size={17} style={{ verticalAlign: "middle" }}/> {busy ? "מחשב מסלול..." : providerReady ? "חשב מסלול למשאית" : "ממתין לחיבור שירות הניווט"}</button>
-          <span style={{ color: "#718096", fontSize: 12 }}>המשקלים והמידות נדרשים כדי למנוע חישוב לפי פרופיל משאית שגוי.</span>
+          <button type="submit" disabled={busy || !providerReady || !selectedVehicleId || !selectedProfile} style={button}><Route size={17} style={{ verticalAlign: "middle" }}/> {busy ? "מחשב מסלול..." : providerReady ? "חשב מסלול למשאית" : "ממתין לחיבור שירות הניווט"}</button>
+          <span style={{ color: "#718096", fontSize: 12 }}>המערכת משתמשת רק בפרופיל רכב שמור ומאומת; יש להזין את המשקל בפועל לנסיעה הנוכחית.</span>
         </div>
       </form>
 
