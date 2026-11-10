@@ -32,12 +32,15 @@ export async function POST(request) {
 
     const { data: membership, error: membershipError } = await db
       .from("fleet_members")
-      .select("fleet_id")
+      .select("fleet_id,role")
       .eq("user_id", authData.user.id)
       .limit(1)
       .maybeSingle();
     if (membershipError || !membership) {
       return response({ ok: false, reason: "fleet_membership_required" }, 403);
+    }
+    if (!["owner", "fleet_manager"].includes(membership.role)) {
+      return response({ ok: false, reason: "fleet_manager_required" }, 403);
     }
 
     const apiKey = process.env.PTV_API_KEY;

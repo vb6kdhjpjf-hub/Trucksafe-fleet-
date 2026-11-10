@@ -162,6 +162,7 @@ export default function TruckRoutingPage() {
       if (!response.ok || !data.ok) {
         const messages = {
           ptv_key_not_configured: "מפתח PTV לא מוגדר בסביבת הבדיקות.",
+          fleet_manager_required: "בדיקת החיבור זמינה לבעלים או למנהל צי בלבד.",
           ptv_authentication_rejected: "PTV דחתה את המפתח. צריך לבדוק שהחשבון הופעל והמפתח תקין.",
           ptv_data_api_unavailable: "שירות הנתונים של PTV אינו זמין כרגע.",
           ptv_profile_catalog_malformed: "PTV החזירה קטלוג פרופילים במבנה לא צפוי.",
