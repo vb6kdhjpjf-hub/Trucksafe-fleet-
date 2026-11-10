@@ -56,3 +56,9 @@ test("rejects assessment report carrying unknown decision fields", async t => {
   const f = await fixture(t, { valid: true, approved_for_routing: false, reviewer: "auto", dimensions: {} });
   await assert.rejects(createHumanReviewEvent(base(f)), /review-event fields/);
 });
+
+
+test("rejects array-shaped assessment dimensions", async t => {
+  const f = await fixture(t, { valid: true, approved_for_routing: false, dimensions: [] });
+  await assert.rejects(createHumanReviewEvent(base(f)), /malformed or not explicitly unapproved/);
+});
