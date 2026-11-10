@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mapVehicleToPTVProfile } from "../../lib/ptv-profile-mapping.mjs";
+import { buildPTVRoutingRequest } from "../../lib/ptv-routing-request.mjs";
 
 const profiles = [
   { name: "IMEA_TRUCK_40T", region: "IMEA", vehicle: { totalPermittedWeight: 40000 } },
@@ -62,4 +63,23 @@ test("returns separate actual and permitted weight overrides", () => {
     numberOfAxles: 4, numberOfTrailers: 0, axleWeight: 9000
   });
   assert.equal(result.requiresManualVehicleVerification, true);
+});
+
+test("maps a validated vehicle profile into the documented PTV routing request", () => {
+  const mapped = mapVehicleToPTVProfile(profiles, vehicle, "IMEA");
+  assert.equal(mapped.ok, true);
+  const request = buildPTVRoutingRequest({
+    origin: { lat: 32.84, lng: 35.5 },
+    destination: { lat: 32.8, lng: 35.52 },
+    profile: mapped.profileName,
+    apiKey: "private-test-key",
+    vehicle: mapped.vehicleOverrides
+  });
+  const url = new URL(request.url);
+  assert.equal(url.searchParams.get("profile"), "IMEA_TRUCK_40T");
+  assert.equal(url.searchParams.get("vehicle[emptyWeight]"), "9000");
+  assert.equal(url.searchParams.get("vehicle[loadWeight]"), "6000");
+  assert.equal(url.searchParams.get("vehicle[totalPermittedWeight]"), "18000");
+  assert.equal(url.searchParams.get("vehicle[numberOfAxles]"), "4");
+  assert.equal(url.searchParams.has("apiKey"), false);
 });
