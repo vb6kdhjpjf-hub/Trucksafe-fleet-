@@ -301,7 +301,7 @@ export default function Home() {
   }
 
   async function markVehicleAsDemo(vehicle) {
-    if (!fleet?.id || !["owner", "fleet_manager", "dispatcher"].includes(fleet.role)) {
+    if (!fleet?.id || !["owner", "fleet_manager"].includes(fleet.role)) {
       setMessage("אין לחשבון הרשאה לעדכן את פרטי הרכב.");
       return;
     }
