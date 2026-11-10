@@ -1,0 +1,40 @@
+name: Isolated TruckSafe validation
+
+on:
+  push:
+    branches:
+      - test/isolated-e2e-ci
+  pull_request:
+    branches:
+      - main
+      - feat/ptv-safe-integration-v1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: isolated-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Generate lockfile without running install scripts
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - name: Run application and safety unit tests
+        run: npm run test:ptv
+      - name: Build Next.js application
+        run: npx next build
