@@ -118,10 +118,15 @@ export async function buildRestrictionSourceManifest({ quarantineDir, outputDir 
       const info = await lstat(assessmentFile);
       if (!info.isFile() || info.isSymbolicLink()) throw new Error("Assessment path must be a regular, non-symlink file");
       assessmentExists = true;
-      const assessmentBytes = await readBounded(assessmentFile, 1024 * 1024);
-      const assessment = parseJson(assessmentBytes, "Assessment report");
-      assessmentHash = sha256(assessmentBytes);
-      assessmentValid = isValidAssessmentReport(assessment);
+      try {
+        const assessmentBytes = await readBounded(assessmentFile, 1024 * 1024);
+        const assessment = parseJson(assessmentBytes, "Assessment report");
+        assessmentHash = sha256(assessmentBytes);
+        assessmentValid = isValidAssessmentReport(assessment);
+      } catch (error) {
+        if (error.code === "ELOOP" || error.code === "EACCES") throw error;
+        assessmentValid = false;
+      }
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
