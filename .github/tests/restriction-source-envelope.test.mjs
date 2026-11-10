@@ -68,3 +68,32 @@ test("rejects absent raw source bytes and malformed hashes", () => {
   assert.ok(result.errors.includes("rawPayload must be the exact original UTF-8 JSON string"));
   assert.ok(result.errors.includes("payload_sha256 must be a 64-character SHA-256 hex digest"));
 });
+
+
+test("rejects impossible calendar dates even when the timestamp has a timezone", () => {
+  const envelope = validEnvelope({ retrieved_at: "2026-02-30T12:00:00Z" });
+  assert.ok(validateCandidateRestrictionEnvelope(envelope, rawPayload).errors.includes("retrieved_at must be an ISO-8601 timestamp with an explicit timezone"));
+});
+
+test("enforces source metadata length limits from the schema", () => {
+  const envelope = validEnvelope();
+  envelope.source.publisher = "p".repeat(201);
+  envelope.source.coverage_description = "c".repeat(2001);
+  const errors = validateCandidateRestrictionEnvelope(envelope, rawPayload).errors;
+  assert.ok(errors.includes("source.publisher must be a string of at most 200 characters"));
+  assert.ok(errors.includes("source.coverage_description must be a string of at most 2000 characters"));
+});
+
+test("enforces optional reviewer and notes length limits", () => {
+  const envelope = validEnvelope({
+    review: {
+      status: "unreviewed",
+      approved_for_routing: false,
+      reviewer: "r".repeat(201),
+      notes: "n".repeat(4001)
+    }
+  });
+  const errors = validateCandidateRestrictionEnvelope(envelope, rawPayload).errors;
+  assert.ok(errors.includes("review.reviewer must be a string of at most 200 characters"));
+  assert.ok(errors.includes("review.notes must be a string of at most 4000 characters"));
+});
