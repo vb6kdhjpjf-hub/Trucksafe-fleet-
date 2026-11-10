@@ -182,6 +182,47 @@ export default function TruckRoutingPage() {
     }
   }
 
+  async function checkPTVRouting() {
+    setPtvRouteChecking(true);
+    setPtvRouteResult(null);
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.access_token) {
+        setPtvRouteResult({ ok: false, reason: "יש להתחבר מחדש למערכת." });
+        return;
+      }
+      const response = await fetch("/api/ptv-routing-check", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + session.access_token }
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        const messages = {
+          ptv_key_not_configured: "מפתח PTV אינו מוגדר בסביבת הבדיקות.",
+          fleet_manager_required: "הבדיקה זמינה לבעלים או למנהל צי בלבד.",
+          ptv_routing_auth_rejected: "PTV דחתה את ההרשאה ל־Routing API.",
+          ptv_routing_unavailable: "שירות Routing API אינו זמין כרגע.",
+          ptv_routing_response_invalid: "PTV החזירה תשובת מסלול במבנה לא צפוי.",
+          ptv_routing_timeout: "בדיקת Routing API חרגה מזמן ההמתנה.",
+          ptv_routing_request_failed: "לא ניתן להשלים בדיקת Routing API."
+        };
+        setPtvRouteResult({
+          ok: false,
+          reason: messages[data.reason] || "בדיקת Routing API נכשלה.",
+          diagnosticCode: data.reason || "unknown",
+          upstreamStatus: Number.isInteger(data.upstreamStatus) ? data.upstreamStatus : null,
+          traceId: typeof data.traceId === "string" ? data.traceId : null
+        });
+        return;
+      }
+      setPtvRouteResult({ ok: true, ...data });
+    } catch {
+      setPtvRouteResult({ ok: false, reason: "לא ניתן להתחבר לבדיקת Routing API." });
+    } finally {
+      setPtvRouteChecking(false);
+    }
+  }
+
   function update(key, value) {
     setForm(current => ({ ...current, [key]: value, ...(key === "origin" ? { originCoordinates: null } : {}) }));
   }
@@ -285,6 +326,16 @@ export default function TruckRoutingPage() {
           {ptvCheckResult.ok ? <><b>החיבור ל־PTV עובד.</b><div>נמצאו {ptvCheckResult.profileCount} פרופילים בסך הכול, מתוכם {ptvCheckResult.truckCandidateCount} פרופילי משאית.</div>
             {ptvCheckResult.truckProfiles.length > 0 && <><div style={{ marginTop: 8, color: "#7c4a03", fontSize: 12 }}>המידות הן נתוני פרופיל כלליים של PTV. יש לאמת אותן מול רישיון הרכב או מדידה בפועל לפני שימוש.</div><ul style={{ margin: "6px 0", paddingRight: 20 }}>{ptvCheckResult.truckProfiles.map(profile => <li key={profile.name} style={{ marginBottom: 10 }}><div><b>{profile.name}</b> · {profile.region} · גובה {profile.vehicle.height ?? "לא ידוע"} ס״מ · רוחב {profile.vehicle.width ?? "לא ידוע"} ס״מ · אורך {profile.vehicle.length ?? "לא ידוע"} ס״מ · משקל כולל מותר {profile.vehicle.totalPermittedWeight ?? "לא ידוע"} ק״ג · סרנים {profile.vehicle.numberOfAxles ?? "לא ידוע"} · נגררים {profile.vehicle.numberOfTrailers ?? "לא ידוע"}</div><button type="button" disabled={!([profile.vehicle.height, profile.vehicle.width, profile.vehicle.length].every(Number.isFinite) && Object.keys(getPTVProfileFormValues(profile)).length >= 3)} onClick={() => setForm(current => ({ ...current, ...getPTVProfileFormValues(profile) }))} style={{ marginTop: 6, border: "1px solid #cbd5e1", background: "#f8fafc", borderRadius: 8, padding: "6px 10px", cursor: "pointer" }}>העתק מידות ונתוני מבנה לטופס</button></li>)}</ul></>}
           </> : <>{ptvCheckResult.reason}{ptvCheckResult.upstreamStatus !== null && <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>קוד תגובת PTV: HTTP {ptvCheckResult.upstreamStatus} · קוד אבחון: {ptvCheckResult.diagnosticCode}</div>}{ptvCheckResult.traceId && <div style={{ marginTop: 6, fontSize: 12 }}>traceId: <code>{ptvCheckResult.traceId}</code></div>}{ptvCheckResult.requestedAt && <div style={{ fontSize: 12 }}>שעת הבדיקה: {ptvCheckResult.requestedAt}</div>}</>}
+        </div>}
+      </section>
+
+      <section style={{ background: "white", border: "1px solid #e5eaf1", borderRadius: 14, padding: 14, marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div><b>בדיקת PTV Routing API</b><p style={{ margin: "5px 0 0", color: "#718096", fontSize: 12 }}>בדיקת תקשורת בלבד בין שתי נקודות קבועות בישראל. לא נשלחים פרטי משאית, לא נשמר מסלול ולא מופעל ניווט.</p></div>
+          <button type="button" onClick={checkPTVRouting} disabled={ptvRouteChecking || ptvChecking || busy} style={{ ...field, width: "auto", margin: 0, cursor: "pointer" }}>{ptvRouteChecking ? "בודק Routing API..." : "בדוק Routing API"}</button>
+        </div>
+        {ptvRouteResult && <div role="status" style={{ marginTop: 10, padding: 10, borderRadius: 9, background: ptvRouteResult.ok ? "#edf8f0" : "#fff0f0", lineHeight: 1.5 }}>
+          {ptvRouteResult.ok ? <><b>שירות Routing API הגיב בהצלחה.</b><div>{ptvRouteResult.routeFound ? "נמצא מסלול בין נקודות הבדיקה." : "הספק החזיר דגל הפרה; בדיקת התקשורת הצליחה אך לא נמצא מסלול תקין."}</div><div>מרחק: {formatDistance(ptvRouteResult.distanceMeters)} · זמן: {formatDuration(ptvRouteResult.durationSeconds)}</div><small style={{ color: "#7c4a03" }}>{ptvRouteResult.safetyNotice}</small></> : <>{ptvRouteResult.reason}{ptvRouteResult.upstreamStatus !== null && <div style={{ fontSize: 12 }}>HTTP {ptvRouteResult.upstreamStatus} · קוד אבחון: {ptvRouteResult.diagnosticCode}</div>}{ptvRouteResult.traceId && <div style={{ fontSize: 12 }}>traceId: <code>{ptvRouteResult.traceId}</code></div>}</>}
         </div>}
       </section>
 
