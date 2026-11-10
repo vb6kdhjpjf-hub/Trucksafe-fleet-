@@ -11,7 +11,8 @@ async function fixture(t, report = { valid: true, approved_for_routing: false, d
   const root = await mkdtemp(path.join(os.tmpdir(), "trucksafe-review-")); t.after(() => rm(root, { recursive: true, force: true }));
   const outputDir = path.join(root, "quarantine"); await mkdir(outputDir);
   const candidateFile = path.join(root, "candidate.json"); const assessmentReportFile = path.join(root, "assessment.json");
-  await writeFile(candidateFile, JSON.stringify({ payload_sha256: "a".repeat(64), source: {
+  const payload = { id: "synthetic-review-payload" };
+  await writeFile(candidateFile, JSON.stringify({ payload, payload_sha256: hash(JSON.stringify(payload)), source: {
       source_id: "agency-dataset-id",
       publisher: "Publishing authority",
       dataset_name: "Road restrictions export",
@@ -27,7 +28,7 @@ const base = f => ({ ...f, reviewer: "human-reviewer-1", decision: "needs_more_e
 
 test("writes an append-only human review event with linked hashes and no routing approval", async t => {
   const f = await fixture(t); const result = await createHumanReviewEvent(base(f));
-  assert.equal(result.event.candidate_payload_sha256, "a".repeat(64));
+  assert.equal(result.event.candidate_payload_sha256, hash(JSON.stringify({ id: "synthetic-review-payload" })));
   assert.equal(result.event.assessment_report_sha256, hash(await readFile(f.assessmentReportFile)));
   assert.equal(result.event.event_sha256, hash(JSON.stringify(Object.fromEntries(Object.entries(result.event).filter(([key]) => key !== "event_sha256")))));
   assert.equal(Object.hasOwn(result.event, "approved_for_routing"), false);
@@ -46,7 +47,7 @@ test("requires reviewer, supported decision, and timezone-aware timestamp", asyn
 test("rejects malformed or routing-approved candidate and assessment report", async t => {
   const f = await fixture(t);
   const validCandidate = await readFile(f.candidateFile);
-  await writeFile(f.candidateFile, JSON.stringify({ payload_sha256: "a".repeat(64), review: { approved_for_routing: true } }));
+  await writeFile(f.candidateFile, JSON.stringify({ payload: { id: "synthetic-review-payload" }, payload_sha256: hash(JSON.stringify({ id: "synthetic-review-payload" })), review: { approved_for_routing: true } }));
   await assert.rejects(createHumanReviewEvent(base(f)), /explicitly unapproved/);
   await writeFile(f.candidateFile, validCandidate);
   await writeFile(f.assessmentReportFile, JSON.stringify({ valid: true, approved_for_routing: true, dimensions: {} }));
