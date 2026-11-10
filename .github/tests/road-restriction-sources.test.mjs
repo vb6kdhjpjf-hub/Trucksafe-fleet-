@@ -6,6 +6,7 @@ test("official railway grade-separation dataset is candidate-only and not routin
   const source = getRoadRestrictionSource("mot-level-separations-rail");
   assert.ok(source);
   assert.equal(source.publisher, "משרד התחבורה והבטיחות בדרכים");
+  assert.equal(source.contact, "ofergo@eshed-mtl.co.il");
   assert.equal(source.candidateOnly, true);
   assert.equal(source.routingEligible, false);
   assert.match(source.limitations, /גובה מעבר מדוד/);
