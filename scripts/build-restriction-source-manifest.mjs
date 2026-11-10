@@ -35,7 +35,7 @@ export function verifyRestrictionSourceManifest(manifest) {
   if (sha256(JSON.stringify(body)) !== supplied) throw new Error("Manifest integrity hash mismatch");
   if (manifest.candidates.some(item => !item || typeof item !== "object" ||
       !isHash(item.candidate_payload_sha256) ||
-      !["assessment_missing", "awaiting_review", "reviewed", "repeated_review", "review_integrity_failed"].includes(item.status) ||
+      !["assessment_missing", "awaiting_review", "reviewed", "repeated_review", "review_integrity_failed", "stale_review"].includes(item.status) ||
       item.approved_for_routing !== false || !Array.isArray(item.reviews))) {
     throw new Error("Manifest candidate entry is malformed");
   }
@@ -98,6 +98,7 @@ export async function buildRestrictionSourceManifest({ quarantineDir, outputDir 
 
     const related = eventRecords.filter(record => record.event?.candidate_payload_sha256 === candidate.payload_sha256);
     const reviews = [];
+    let staleReview = false;
     if (assessmentExists) {
       for (const record of related) {
         seenEventNames.add(record.name);
@@ -105,7 +106,9 @@ export async function buildRestrictionSourceManifest({ quarantineDir, outputDir 
           const result = await verifyHumanReviewEvent({ candidateFile, assessmentReportFile: assessmentFile, eventFile: record.file });
           reviews.push({ event_file: "reviews/" + record.name, valid: true, decision: result.decision, reviewer: result.reviewer, reviewed_at: record.event.reviewed_at, event_sha256: result.event_sha256, assessment_report_sha256: result.assessment_report_sha256 });
         } catch (error) {
-          reviews.push({ event_file: "reviews/" + record.name, valid: false, error: String(error.message).slice(0, 500) });
+          const message = String(error.message).slice(0, 500);
+          if (/assessment report hash|source provenance does not match|candidate payload hash/i.test(message)) staleReview = true;
+          reviews.push({ event_file: "reviews/" + record.name, valid: false, stale: staleReview, error: message });
         }
       }
     } else {
@@ -118,6 +121,7 @@ export async function buildRestrictionSourceManifest({ quarantineDir, outputDir 
     const invalidReviews = reviews.some(review => !review.valid);
     let status = "awaiting_review";
     if (!assessmentExists) status = "assessment_missing";
+    else if (staleReview) status = "stale_review";
     else if (invalidReviews) status = "review_integrity_failed";
     else if (validReviews.length > 1) status = "repeated_review";
     else if (validReviews.length === 1) status = "reviewed";
