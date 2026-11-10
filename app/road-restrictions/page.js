@@ -224,7 +224,7 @@ export default function RoadRestrictionsPage() {
   return <main dir="rtl" style={{ minHeight: "100vh", padding: 20, background: "#f5f7fb", color: "#172338", maxWidth: 980, margin: "0 auto" }}>
     <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
       <div><h1 style={{ margin: 0 }}>מגבלות דרך למשאיות</h1><p style={{ color: "#718096", margin: "6px 0" }}>מאגר מגבלות ידועות לצי</p></div>
-      <button style={btn} onClick={() => router.push("/")}><ArrowRight size={16}/> לוח הבקרה</button>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><a href="/road-restrictions/sources" style={{ ...btn, textDecoration: "none", color: "#315bd6" }}>מקורות מידע ואימות</a><button style={btn} onClick={() => router.push("/")}><ArrowRight size={16}/> לוח הבקרה</button></div>
     </header>
     <section style={{ ...card, background: "#fff8e8", borderColor: "#f2d7a3" }}>
       <div style={{ display: "flex", gap: 9, alignItems: "center" }}><ShieldAlert size={20}/><b>חשוב לדעת — זהו מאגר תיעוד, לא מנוע ניווט</b></div>
