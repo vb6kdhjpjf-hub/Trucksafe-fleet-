@@ -22,7 +22,7 @@ TruckSafe has a substantial fleet-management application and an isolated validat
 | Maintenance, incidents, history and reports | Implemented in the application | Pages and data workflows exist; full operational acceptance and permissions review remain. |
 | Vehicle registration verification | Guarded workflow implemented in the development branch | Private registration document and authorized review are required; never treat manager-entered dimensions alone as verified. Production schema rollout has not been authorized. |
 | Fleet road-restriction catalogue | Implemented as fleet-scoped workflow | Geometry, time validity and verification evidence checks exist. It is not a national authoritative road database. |
-| Route API security and quota | Implemented in the development branch | Authenticated fleet access, saved verified vehicle profile, streamed 16 KB request-body limit, strict UTF-8/JSON parsing, request validation and fail-closed quota enforcement are tested in the isolated test project. |
+| Route API security and quota | Implemented in the development branch | Authenticated fleet access with ambiguous multi-fleet membership rejected, saved verified vehicle selection in the routing UI, server-trusted vehicle profile, streamed 16 KB request-body limit, strict UTF-8/JSON parsing, request validation and fail-closed quota enforcement are tested in the isolated test project. |
 | HERE truck-routing integration | Code path exists, but routing is disabled by safety gate | Requires approved credentials/plan, validated Israel coverage and independent restriction checks. A provider route alone is not a safety approval. |
 | PTV integration | Experimental preparation only | Preview catalogue diagnostic returned 22 profiles (16 truck candidates). No live route integration is approved. Commercial/production rights and Israel coverage must be confirmed in writing. |
 | Israeli restriction data acquisition | Research and request draft completed | Ministry specification and other candidate leads are documented. No verified nationwide feed or commercial-use agreement has been received. |
@@ -31,7 +31,7 @@ TruckSafe has a substantial fleet-management application and an isolated validat
 
 ## Verified engineering baseline
 
-The latest verified isolated validation run is [GitHub Actions run 42870230654](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/42870230654), on commit `ad8b780c48c446fbc349dff71b801e804f373fd7`.
+The latest verified isolated validation run is [GitHub Actions run 42871524803](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/42871524803), on commit `6740ab4adc1dc5fe69d2b98023c8e4c04723bd85`.
 
 Recorded results:
 - Application and safety unit-test step passed, including the new streamed request-body limit tests.
