@@ -8,6 +8,16 @@ import { createHumanReviewEvent } from "../../scripts/record-restriction-source-
 import { buildRestrictionSourceManifest, verifyRestrictionSourceManifest } from "../../scripts/build-restriction-source-manifest.mjs";
 
 const hash = value => createHash("sha256").update(value).digest("hex");
+const dimensionNames = ["authority", "geographic_coverage", "truck_constraints", "measurement_quality", "temporal_validity", "update_mechanism", "licensing", "reliability", "independent_validation"];
+const validAssessment = (overrides = {}) => ({
+  valid: true,
+  errors: [],
+  dimensions: Object.fromEntries(dimensionNames.map(name => [name, { status: "missing", evidence_refs: [] }])),
+  blocking_gaps: [...dimensionNames],
+  evidence_dossier_complete: false,
+  approved_for_routing: false,
+  ...overrides
+});
 async function fixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), "trucksafe-manifest-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -23,7 +33,7 @@ async function fixture(t) {
     payload, payload_sha256: payloadHash,
     review: { status: "unreviewed", approved_for_routing: false }
   }));
-  await writeFile(assessmentFile, JSON.stringify({ valid: true, approved_for_routing: false, dimensions: {} }));
+  await writeFile(assessmentFile, JSON.stringify(validAssessment()));
   return { root, candidateFile, assessmentFile, payloadHash };
 }
 
@@ -49,7 +59,7 @@ test("detects repeated reviews for the same candidate and report", async t => {
 test("detects stale assessment linkage and rejects manifest tampering", async t => {
   const f = await fixture(t);
   await createHumanReviewEvent({ candidateFile: f.candidateFile, assessmentReportFile: f.assessmentFile, outputDir: f.root, reviewer: "reviewer-a", decision: "needs_more_evidence", reviewedAt: "2026-11-10T18:10:00Z" });
-  await writeFile(f.assessmentFile, JSON.stringify({ valid: false, approved_for_routing: false, dimensions: {} }));
+  await writeFile(f.assessmentFile, JSON.stringify(validAssessment({ valid: false, errors: ["synthetic change"] })));
   const result = await buildRestrictionSourceManifest({ quarantineDir: f.root, createdAt: "2026-11-10T18:30:00Z" });
   assert.equal(result.manifest.candidates[0].status, "stale_review");
   const tampered = structuredClone(result.manifest); tampered.candidate_count = 99;
@@ -61,4 +71,13 @@ test("reports review events without a matching candidate as orphaned", async t =
   await writeFile(path.join(f.root, "reviews", "review-" + "a".repeat(64) + ".json"), JSON.stringify({ candidate_payload_sha256: "b".repeat(64) }));
   const result = await buildRestrictionSourceManifest({ quarantineDir: f.root, createdAt: "2026-11-10T18:30:00Z" });
   assert.equal(result.manifest.orphaned_event_count, 1);
+});
+
+test("flags malformed assessment reports instead of treating them as pending review", async t => {
+  const f = await fixture(t);
+  await writeFile(f.assessmentFile, JSON.stringify({ valid: true, approved_for_routing: false, dimensions: {} }));
+  const result = await buildRestrictionSourceManifest({ quarantineDir: f.root, createdAt: "2026-11-10T18:40:00Z" });
+  assert.equal(result.manifest.candidates[0].status, "assessment_invalid");
+  assert.equal(result.manifest.candidates[0].approved_for_routing, false);
+  assert.match(result.manifest.candidates[0].assessment_report_sha256, /^[a-f0-9]{64}$/);
 });
