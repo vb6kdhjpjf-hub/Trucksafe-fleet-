@@ -375,13 +375,13 @@ export default function Home() {
     if(error||!data){
       setMessage("לא הצלחנו לעדכן את פרטי הרכב: "+(error?.message||"הרכב לא נמצא או שאין הרשאה."));
     } else {
-      const changedRoutingFields=["height_cm","width_cm","length_cm","gross_weight_kg","empty_weight_kg","axle_count","trailer_count","weight_per_axle_kg","routing_vehicle_type"];
+      const changedVerificationFields=["vehicle_type","make","height_cm","width_cm","length_cm","gross_weight_kg","empty_weight_kg","axle_count","trailer_count","weight_per_axle_kg","routing_vehicle_type"];
       const previous=vehicles.find(vehicle=>vehicle.id===editingVehicleId);
-      const routingChanged=previous&&changedRoutingFields.some(key=>String(previous[key]??"")!==String(payload[key]??""));
+      const verificationRelevantChanged=previous&&changedVerificationFields.some(key=>String(previous[key]??"")!==String(payload[key]??""));
       setEditingVehicleId("");
       await loadFleet(session.user);
-      setMessage(routingChanged
-        ?"פרטי הרכב עודכנו. מכיוון שנתוני הניתוב השתנו, אימות הרישיון חזר לבדיקה."
+      setMessage(verificationRelevantChanged
+        ?"פרטי הרכב עודכנו. שינוי בפרטי הזיהוי או המפרט מחייב בדיקה מחדש של הרישיון."
         :"פרטי הרכב עודכנו בהצלחה.");
     }
     setBusy(false);
