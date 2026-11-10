@@ -56,6 +56,13 @@ test("blocks actual PTV nested violation event schema", () => {
   assert.equal(normalizePTVRouteResponse(payload).reason, "provider_violation_events");
 });
 
+test("blocks the documented PTV violationType event field", () => {
+  const payload = base();
+  payload.events[1].violationType = "VEHICLE_PROPERTY";
+  payload.events[1].accessType = "ENTER";
+  assert.equal(normalizePTVRouteResponse(payload).reason, "provider_violation_events");
+});
+
 test("blocks absent or malformed route and leg geometry", () => {
   const missingRoute = base();
   delete missingRoute.polyline;
