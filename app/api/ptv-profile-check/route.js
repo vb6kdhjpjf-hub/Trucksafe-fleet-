@@ -60,11 +60,14 @@ export async function POST(request) {
       const upstreamBody = await upstream.text().catch(() => "");
       let parsedError = null;
       try { parsedError = JSON.parse(upstreamBody); } catch {}
-      const traceId = typeof parsedError?.traceId === "string"
-        ? parsedError.traceId
-        : typeof parsedError?.error?.traceId === "string"
-          ? parsedError.error.traceId
-          : null;
+      const headerTraceId = upstream.headers.get("x-trace-id") || upstream.headers.get("trace-id");
+      const traceId = typeof headerTraceId === "string" && headerTraceId.length <= 200
+        ? headerTraceId
+        : typeof parsedError?.traceId === "string" && parsedError.traceId.length <= 200
+          ? parsedError.traceId
+          : typeof parsedError?.error?.traceId === "string" && parsedError.error.traceId.length <= 200
+            ? parsedError.error.traceId
+            : null;
       return response({
         ok: false,
         reason: upstream.status === 401 || upstream.status === 403
@@ -72,8 +75,7 @@ export async function POST(request) {
           : "ptv_data_api_unavailable",
         upstreamStatus: upstream.status,
         traceId,
-        requestedAt,
-        upstreamBody: upstreamBody.slice(0, 5000)
+        requestedAt
       }, 502);
     }
 
