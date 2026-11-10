@@ -167,3 +167,17 @@ test("fails closed when an active catalogue record is unverified or has an inval
   assert.equal(invalidLimit.validated, false);
   assert.equal(invalidLimit.unresolved[0].reason, "missing_or_invalid_restriction_limit");
 });
+
+test("ignores an expired restriction after validating its review record", () => {
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [verifiedRestriction({ expires_at: "2026-11-08T12:00:00.000Z" })],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now
+  });
+  assert.equal(result.validated, true);
+  assert.deepEqual(result.conflicts, []);
+  assert.deepEqual(result.unresolved, []);
+});
