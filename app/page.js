@@ -47,6 +47,7 @@ export default function Home() {
   const [axleCount,setAxleCount]=useState("");
   const [trailerCount,setTrailerCount]=useState("0");
   const [weightPerAxleKg,setWeightPerAxleKg]=useState("");
+  const [editingVehicleId,setEditingVehicleId]=useState("");
 
   async function loadFleet(user) {
     const requestId=++fleetLoadRef.current;
@@ -314,6 +315,83 @@ export default function Home() {
     setBusy(false);
   }
 
+  function startEditVehicle(vehicle) {
+    setShowVehicle(false);
+    setEditingVehicleId(vehicle.id);
+    setVehicleType(vehicle.vehicle_type || "משאית");
+    setVehicleMake(vehicle.make || "");
+    setAssignedDriverId(vehicle.assigned_driver_id || "");
+    setRoutingVehicleType(vehicle.routing_vehicle_type || "StraightTruck");
+    setHeightCm(vehicle.height_cm == null ? "" : String(vehicle.height_cm));
+    setWidthCm(vehicle.width_cm == null ? "" : String(vehicle.width_cm));
+    setLengthCm(vehicle.length_cm == null ? "" : String(vehicle.length_cm));
+    setGrossWeightKg(vehicle.gross_weight_kg == null ? "" : String(vehicle.gross_weight_kg));
+    setEmptyWeightKg(vehicle.empty_weight_kg == null ? "" : String(vehicle.empty_weight_kg));
+    setAxleCount(vehicle.axle_count == null ? "" : String(vehicle.axle_count));
+    setTrailerCount(vehicle.trailer_count == null ? "0" : String(vehicle.trailer_count));
+    setWeightPerAxleKg(vehicle.weight_per_axle_kg == null ? "" : String(vehicle.weight_per_axle_kg));
+    setMessage("עריכת פרטי הרכב. יש להזין נתונים לפי רישיון הרכב בלבד.");
+  }
+
+  async function saveVehicleEdits(e) {
+    e.preventDefault();
+    if (!editingVehicleId || !fleet?.id || !["owner","fleet_manager"].includes(fleet.role)) return;
+    setBusy(true);setMessage("");
+    const optionalNumber=value=>value.trim()===""?null:Number(value);
+    const routing={
+      height_cm:optionalNumber(heightCm),
+      width_cm:optionalNumber(widthCm),
+      length_cm:optionalNumber(lengthCm),
+      gross_weight_kg:optionalNumber(grossWeightKg),
+      empty_weight_kg:optionalNumber(emptyWeightKg),
+      axle_count:optionalNumber(axleCount),
+      trailer_count:optionalNumber(trailerCount) ?? 0,
+      weight_per_axle_kg:optionalNumber(weightPerAxleKg),
+      routing_vehicle_type:routingVehicleType
+    };
+    const supplied=[heightCm,widthCm,lengthCm,grossWeightKg,emptyWeightKg,axleCount,weightPerAxleKg].some(value=>value.trim()!=="");
+    if(supplied&&(
+      !Number.isFinite(routing.height_cm)||routing.height_cm<100||routing.height_cm>600||
+      !Number.isFinite(routing.width_cm)||routing.width_cm<100||routing.width_cm>350||
+      !Number.isFinite(routing.length_cm)||routing.length_cm<200||routing.length_cm>3000||
+      !Number.isFinite(routing.gross_weight_kg)||routing.gross_weight_kg<1000||routing.gross_weight_kg>100000||
+      !Number.isFinite(routing.empty_weight_kg)||routing.empty_weight_kg<500||routing.empty_weight_kg>routing.gross_weight_kg||
+      !Number.isInteger(routing.axle_count)||routing.axle_count<2||routing.axle_count>12||
+      !Number.isInteger(routing.trailer_count)||routing.trailer_count<0||routing.trailer_count>3||
+      (!Number.isFinite(routing.weight_per_axle_kg)||routing.weight_per_axle_kg<500||routing.weight_per_axle_kg>30000)||
+      !["StraightTruck","Tractor"].includes(routing.routing_vehicle_type)
+    )){
+      setMessage("פרטי הניתוב חלקיים או לא תקינים. יש למלא את כל נתוני הרכב לפי הרישיון, או להשאיר את כולם ריקים.");
+      setBusy(false);
+      return;
+    }
+    const payload={
+      vehicle_type:vehicleType,
+      make:vehicleMake.trim()||null,
+      assigned_driver_id:assignedDriverId||null,
+      ...(supplied?routing:{height_cm:null,width_cm:null,length_cm:null,gross_weight_kg:null,empty_weight_kg:null,axle_count:null,trailer_count:0,weight_per_axle_kg:null,routing_vehicle_type:null})
+    };
+    const {data,error}=await supabase.from("vehicles").update(payload).eq("id",editingVehicleId).eq("fleet_id",fleet.id).eq("is_demo",false).select("id").maybeSingle();
+    if(error||!data){
+      setMessage("לא הצלחנו לעדכן את פרטי הרכב: "+(error?.message||"הרכב לא נמצא או שאין הרשאה."));
+    } else {
+      const changedRoutingFields=["height_cm","width_cm","length_cm","gross_weight_kg","empty_weight_kg","axle_count","trailer_count","weight_per_axle_kg","routing_vehicle_type"];
+      const previous=vehicles.find(vehicle=>vehicle.id===editingVehicleId);
+      const routingChanged=previous&&changedRoutingFields.some(key=>String(previous[key]??"")!==String(payload[key]??""));
+      setEditingVehicleId("");
+      await loadFleet(session.user);
+      setMessage(routingChanged
+        ?"פרטי הרכב עודכנו. מכיוון שנתוני הניתוב השתנו, אימות הרישיון חזר לבדיקה."
+        :"פרטי הרכב עודכנו בהצלחה.");
+    }
+    setBusy(false);
+  }
+
+  function cancelEditVehicle() {
+    setEditingVehicleId("");
+    setMessage("");
+  }
+
   async function uploadVehicleRegistration(vehicle,file) {
     if(!file)return;
     if(!fleet?.id||!["owner","fleet_manager"].includes(fleet.role)||vehicle.is_demo){
@@ -528,7 +606,28 @@ export default function Home() {
         <label>משקל מרבי לסרן (ק״ג)<input type="number" min="500" max="30000" step="100" value={weightPerAxleKg} onChange={e=>setWeightPerAxleKg(e.target.value)} placeholder="לפי רישיון / נתון מאומת"/></label>
         <button className="primary-btn" disabled={busy}>שמירת רכב</button>
       </form>}
-      {vehicles.length===0?<div className="fleet-empty">עדיין לא הוספת כלי רכב. לחץ על "הוספת רכב" כדי להתחיל.</div>:<div className="vehicle-list">{vehicles.map(v=><div className="vehicle-row" key={v.id}><Truck size={20}/><div><b>{v.registration_number}</b><small>{[v.make,v.model,v.vehicle_type].filter(Boolean).join(" · ")}{v.assigned_driver_id ? " · נהג: "+(drivers.find(d=>d.id===v.assigned_driver_id)?.full_name||"לא נמצא") : " · ללא נהג משויך"}</small>{v.is_demo&&<small style={{color:"#9a6700",fontWeight:700}}>רכב הדגמה בלבד · אין להשתמש לניווט אמיתי</small>}{!v.is_demo&&<small style={{fontWeight:700,color:v.registration_verification_status==="verified"?"#16803c":v.registration_verification_status==="pending"?"#a15c00":"#667085"}}>אימות רישיון: {v.registration_verification_status==="verified"?"מאומת":v.registration_verification_status==="pending"?"ממתין לבדיקה":v.registration_verification_status==="rejected"?"נדחה":"טרם הועלה"}</small>}</div>{!v.is_demo&&v.registration_document_path&&["owner","fleet_manager"].includes(fleet.role)&&<button type="button" className="nav-link" disabled={registrationViewBusy===v.id} onClick={()=>viewVehicleRegistration(v)}>{registrationViewBusy===v.id?"פותח מסמך...":"צפייה ברישיון (קישור מאובטח)"}</button>}{!v.is_demo&&["owner","fleet_manager"].includes(fleet.role)&&<label className="nav-link" style={{display:"inline-flex",alignItems:"center",gap:6,cursor:registrationSchemaReady?"pointer":"not-allowed",opacity:registrationSchemaReady?1:.55}}>העלאת רישיון<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" disabled={!registrationSchemaReady||registrationUploadBusy===v.id} style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(file)uploadVehicleRegistration(v,file);e.target.value="";}}/></label>}{v.registration_document_path&&!v.is_demo&&v.registration_verification_status==="pending"&&["owner","fleet_manager"].includes(fleet.role)&&<div className="registration-review" style={{display:"grid",gap:8,minWidth:220,maxWidth:360}}>
+      {vehicles.length===0?<div className="fleet-empty">עדיין לא הוספת כלי רכב. לחץ על "הוספת רכב" כדי להתחיל.</div>:<div className="vehicle-list">{vehicles.map(v=><div className="vehicle-row" key={v.id}><Truck size={20}/><div><b>{v.registration_number}</b><small>{[v.make,v.model,v.vehicle_type].filter(Boolean).join(" · ")}{v.assigned_driver_id ? " · נהג: "+(drivers.find(d=>d.id===v.assigned_driver_id)?.full_name||"לא נמצא") : " · ללא נהג משויך"}</small>{v.is_demo&&<small style={{color:"#9a6700",fontWeight:700}}>רכב הדגמה בלבד · אין להשתמש לניווט אמיתי</small>}{!v.is_demo&&<small style={{fontWeight:700,color:v.registration_verification_status==="verified"?"#16803c":v.registration_verification_status==="pending"?"#a15c00":"#667085"}}>אימות רישיון: {v.registration_verification_status==="verified"?"מאומת":v.registration_verification_status==="pending"?"ממתין לבדיקה":v.registration_verification_status==="rejected"?"נדחה":"טרם הועלה"}</small>}</div>{!v.is_demo&&v.registration_document_path&&["owner","fleet_manager"].includes(fleet.role)&&<button type="button" className="nav-link" disabled={registrationViewBusy===v.id} onClick={()=>viewVehicleRegistration(v)}>{registrationViewBusy===v.id?"פותח מסמך...":"צפייה ברישיון (קישור מאובטח)"}</button>}{!v.is_demo&&["owner","fleet_manager"].includes(fleet.role)&&<button type="button" className="nav-link" onClick={()=>startEditVehicle(v)}>עריכת פרטי רכב</button>}
+{editingVehicleId===v.id&&<form className="vehicle-form" onSubmit={saveVehicleEdits}>
+  <div style={{gridColumn:"1 / -1",fontWeight:700}}>עריכת פרטי רכב · {v.registration_number}</div>
+  <label>סוג רכב<select value={vehicleType} onChange={e=>setVehicleType(e.target.value)}><option>משאית</option><option>גורר</option><option>נגרר</option><option>מסחרית</option><option>רכב אחר</option></select></label>
+  <label>יצרן / דגם<input value={vehicleMake} onChange={e=>setVehicleMake(e.target.value)} placeholder="לדוגמה: Volvo FH"/></label>
+  <label>נהג משויך<select value={assignedDriverId} onChange={e=>setAssignedDriverId(e.target.value)}><option value="">ללא נהג משויך</option>{drivers.filter(d=>d.status==="active").map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label>
+  <div style={{gridColumn:"1 / -1",borderTop:"1px solid #e5eaf1",paddingTop:12,marginTop:4}}>
+    <b>נתוני משאית לניווט</b>
+    <p style={{fontSize:12,color:"#718096",margin:"5px 0 10px"}}>יש להזין רק נתונים שמופיעים ברישיון או שנמדדו בפועל. שינוי נתוני ניתוב יחייב בדיקה מחדש של הרישיון.</p>
+  </div>
+  <label>מבנה רכב<select value={routingVehicleType} onChange={e=>setRoutingVehicleType(e.target.value)}><option value="StraightTruck">משאית קשיחה</option><option value="Tractor">גורר / ראש גורר</option></select></label>
+  <label>גובה כולל (ס״מ)<input type="number" min="100" max="600" step="1" value={heightCm} onChange={e=>setHeightCm(e.target.value)} placeholder="לפי מדידה"/></label>
+  <label>רוחב כולל (ס״מ)<input type="number" min="100" max="350" step="1" value={widthCm} onChange={e=>setWidthCm(e.target.value)} placeholder="לפי מדידה"/></label>
+  <label>אורך כולל (ס״מ)<input type="number" min="200" max="3000" step="1" value={lengthCm} onChange={e=>setLengthCm(e.target.value)} placeholder="כולל נגרר"/></label>
+  <label>משקל כולל מותר (ק״ג)<input type="number" min="1000" max="100000" step="100" value={grossWeightKg} onChange={e=>setGrossWeightKg(e.target.value)} placeholder="לפי רישיון הרכב"/></label>
+  <label>משקל רכב ריק (ק״ג)<input type="number" min="500" max="100000" step="100" value={emptyWeightKg} onChange={e=>setEmptyWeightKg(e.target.value)} placeholder="לפי רישיון הרכב"/></label>
+  <label>מספר סרנים<input type="number" min="2" max="12" step="1" value={axleCount} onChange={e=>setAxleCount(e.target.value)} placeholder="לפי רישיון הרכב"/></label>
+  <label>מספר נגררים<input type="number" min="0" max="3" step="1" value={trailerCount} onChange={e=>setTrailerCount(e.target.value)}/></label>
+  <label>משקל מרבי לסרן (ק״ג)<input type="number" min="500" max="30000" step="100" value={weightPerAxleKg} onChange={e=>setWeightPerAxleKg(e.target.value)} placeholder="לפי רישיון / נתון מאומת"/></label>
+  <button className="primary-btn" disabled={busy}>{busy?"שומר...":"שמירת שינויים"}</button>
+  <button type="button" className="nav-link" disabled={busy} onClick={cancelEditVehicle}>ביטול</button>
+</form>}{!v.is_demo&&["owner","fleet_manager"].includes(fleet.role)&&<label className="nav-link" style={{display:"inline-flex",alignItems:"center",gap:6,cursor:registrationSchemaReady?"pointer":"not-allowed",opacity:registrationSchemaReady?1:.55}}>העלאת רישיון<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" disabled={!registrationSchemaReady||registrationUploadBusy===v.id} style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(file)uploadVehicleRegistration(v,file);e.target.value="";}}/></label>}{v.registration_document_path&&!v.is_demo&&v.registration_verification_status==="pending"&&["owner","fleet_manager"].includes(fleet.role)&&<div className="registration-review" style={{display:"grid",gap:8,minWidth:220,maxWidth:360}}>
   <small style={{fontWeight:700}}>בדיקת מסמך לפני אישור</small>
   <textarea aria-label="הערת בדיקת רישיון" rows={2} maxLength={1000} value={registrationReviewNotes[v.id]||""} onChange={e=>setRegistrationReviewNotes(current=>({...current,[v.id]:e.target.value}))} placeholder="רשום מה נבדק ומה נמצא (לפחות 5 תווים)" />
   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
