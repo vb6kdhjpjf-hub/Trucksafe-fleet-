@@ -148,6 +148,10 @@ begin
     (owner_id,'authenticated','authenticated','ci-road-owner@example.invalid','test-only-no-login',now(),
       '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb),
     (dispatcher_id,'authenticated','authenticated','ci-road-dispatcher@example.invalid','test-only-no-login',now(),
+      '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb),
+    (driver_user_id,'authenticated','authenticated','ci-road-driver@example.invalid','test-only-no-login',now(),
+      '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb),
+    (other_owner_id,'authenticated','authenticated','ci-other-owner@example.invalid','test-only-no-login',now(),
       '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb);
 
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
@@ -159,7 +163,26 @@ begin
   values(fleet_id,owner_id,'owner')
   on conflict do nothing;
   insert into public.fleet_members(fleet_id,user_id,role)
-  values(fleet_id,dispatcher_id,'dispatcher');
+  values
+    (fleet_id,dispatcher_id,'dispatcher'),
+    (fleet_id,driver_user_id,'driver');
+
+  insert into public.fleets(id,name,owner_user_id)
+  values(other_fleet_id,'CI isolated second fleet',other_owner_id);
+  insert into public.fleet_members(fleet_id,user_id,role)
+  values(other_fleet_id,other_owner_id,'owner')
+  on conflict do nothing;
+
+  insert into public.drivers(id,fleet_id,user_id,full_name,license_expires_at,status)
+  values(driver_id,fleet_id,driver_user_id,'CI Assigned Driver',current_date+365,'active');
+
+  insert into public.vehicles(
+    id,fleet_id,registration_number,make,model,vehicle_type,status,
+    test_due_at,insurance_due_at,registration_due_at,is_demo
+  ) values(
+    other_vehicle_id,other_fleet_id,'CI-OTHER-FLEET-001','Test','Truck','truck','available',
+    current_date+365,current_date+365,current_date+365,false
+  );
 
   -- A direct INSERT must never be able to create a pre-verified vehicle.
   insert into public.vehicles(
@@ -242,10 +265,10 @@ begin
   -- Vehicle profile changes require a fresh registration review.
   insert into public.vehicles(
     id,fleet_id,registration_number,make,model,vehicle_type,status,
-    test_due_at,insurance_due_at,registration_due_at,is_demo
+    test_due_at,insurance_due_at,registration_due_at,is_demo,assigned_driver_id
   ) values(
     vehicle_id,fleet_id,'CI-PARITY-001','Test','Truck','truck','available',
-    current_date+365,current_date+365,current_date+365,false
+    current_date+365,current_date+365,current_date+365,false,driver_id
   );
 
   update public.vehicles set height_cm=320 where id=vehicle_id;
@@ -314,6 +337,91 @@ begin
 
 end
 $behavior_tests$;
+
+-- Exercise fleet isolation and role-scoped access with the real authenticated
+-- database role. These checks use synthetic users and rows inside this rollback.
+select set_config('request.jwt.claim.sub','f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf51',true);
+select set_config('request.jwt.claim.role','authenticated',true);
+set local role authenticated;
+
+do $rls_owner_checks$
+begin
+  if (select count(*) from public.vehicles where id='e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51') <> 1 then
+    raise exception 'Fleet owner cannot read own vehicle';
+  end if;
+  if exists(select 1 from public.vehicles where id='e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf55') then
+    raise exception 'Fleet owner can read a vehicle from another fleet';
+  end if;
+end
+$rls_owner_checks$;
+reset role;
+insert into pg_temp.road_vehicle_security_results
+values('fleet owner row isolation','PASS','Owner can read own fleet vehicle and cannot read another fleet vehicle');
+
+select set_config('request.jwt.claim.sub','f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf52',true);
+set local role authenticated;
+do $rls_dispatcher_checks$
+declare changed_rows integer;
+begin
+  if (select count(*) from public.vehicles where fleet_id='b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d51') <> 2 then
+    raise exception 'Dispatcher should read fleet vehicles';
+  end if;
+  update public.vehicles set notes='unauthorized dispatcher edit'
+  where id='e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51';
+  get diagnostics changed_rows = row_count;
+  if changed_rows <> 0 then
+    raise exception 'Dispatcher unexpectedly updated a vehicle';
+  end if;
+  begin
+    insert into public.vehicles(fleet_id,registration_number,vehicle_type,status)
+    values('b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d51','CI-DISPATCHER-FORGED','truck','available');
+    raise exception 'Dispatcher unexpectedly inserted a vehicle';
+  exception when insufficient_privilege then
+    null;
+  end;
+end
+$rls_dispatcher_checks$;
+reset role;
+insert into pg_temp.road_vehicle_security_results
+values('dispatcher cannot mutate vehicles','PASS','Dispatcher can read fleet vehicles but cannot update or insert vehicles');
+
+select set_config('request.jwt.claim.sub','f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf54',true);
+set local role authenticated;
+do $rls_driver_checks$
+declare changed_rows integer;
+begin
+  if (select count(*) from public.vehicles where fleet_id='b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d51') <> 1
+     or not exists(select 1 from public.vehicles where id='e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51') then
+    raise exception 'Driver should see only the vehicle assigned to them';
+  end if;
+  if exists(select 1 from public.vehicles where id='e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf53') then
+    raise exception 'Driver can read an unassigned vehicle';
+  end if;
+  update public.vehicles set notes='unauthorized driver edit'
+  where id='e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51';
+  get diagnostics changed_rows = row_count;
+  if changed_rows <> 0 then
+    raise exception 'Driver unexpectedly updated an assigned vehicle';
+  end if;
+end
+$rls_driver_checks$;
+reset role;
+insert into pg_temp.road_vehicle_security_results
+values('driver access is assignment-scoped','PASS','Driver sees only assigned vehicle and cannot modify vehicle records');
+
+select set_config('request.jwt.claim.sub','f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf55',true);
+set local role authenticated;
+do $rls_other_fleet_checks$
+begin
+  if (select count(*) from public.vehicles where fleet_id='b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d52') <> 1
+     or exists(select 1 from public.vehicles where id='e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51') then
+    raise exception 'Second fleet owner isolation failed';
+  end if;
+end
+$rls_other_fleet_checks$;
+reset role;
+insert into pg_temp.road_vehicle_security_results
+values('second fleet isolation','PASS','Second fleet owner cannot read first fleet vehicles');
 
 -- Exercise the RPC with the real authenticated database role, not the postgres
 -- owner used to create rollback-only fixtures. This verifies grants and RLS.
