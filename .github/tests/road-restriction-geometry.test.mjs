@@ -256,6 +256,24 @@ test("blocks a date-based road closure that starts after departure but before ar
   assert.equal(result.conflicts[0].restrictionType, "closed");
 });
 
+test("fails closed for impossible calendar dates in restriction validity", () => {
+  for (const overrides of [
+    { active_from: "2026-02-30" },
+    { active_until: "2026-13-01" }
+  ]) {
+    const result = evaluateFleetRestrictions({
+      sections,
+      restrictions: [verifiedRestriction(overrides)],
+      restrictionCatalogLoaded: true,
+      vehicle,
+      currentWeightKg: 10000,
+      now
+    });
+    assert.equal(result.validated, false);
+    assert.equal(result.unresolved[0].reason, "invalid_active_date_range");
+  }
+});
+
 test("detects a scheduled restriction crossing midnight in Israel local time", () => {
   const result = evaluateFleetRestrictions({
     sections,
