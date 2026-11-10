@@ -285,6 +285,29 @@ begin
     end if;
   end;
 
+  -- Simulate a completed trusted review, then change the vehicle's registration identity.
+  -- The identity change must invalidate the prior approval and its reviewer metadata.
+  perform set_config('request.jwt.claim.role','service_role',true);
+  update public.vehicles
+  set registration_verification_status='verified',
+      registration_document_path=fleet_id::text || '/' || vehicle_id::text || '/reviewed-registration.pdf',
+      registration_verified_at=now(),
+      registration_verified_by=owner_id,
+      registration_verification_note='Registration identity reviewed by trusted service'
+  where id=vehicle_id;
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  update public.vehicles
+  set registration_number='CI-PARITY-002'
+  where id=vehicle_id;
+  if (select registration_verification_status from public.vehicles where id=vehicle_id) <> 'pending'
+     or (select registration_verified_at from public.vehicles where id=vehicle_id) is not null
+     or (select registration_verified_by from public.vehicles where id=vehicle_id) is not null
+     or (select registration_verification_note from public.vehicles where id=vehicle_id) is not null then
+    raise exception 'Registration identity edit did not invalidate prior approval metadata';
+  end if;
+  insert into pg_temp.road_vehicle_security_results
+  values('vehicle registration identity edit invalidates approval','PASS','Registration-number change reset status and cleared reviewer metadata');
+
 end
 $behavior_tests$;
 
