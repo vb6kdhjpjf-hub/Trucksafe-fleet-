@@ -217,3 +217,60 @@ test("ignores an expired restriction after validating its review record", () => 
   assert.deepEqual(result.conflicts, []);
   assert.deepEqual(result.unresolved, []);
 });
+
+
+test("blocks a time-window restriction that begins during the journey", () => {
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [verifiedRestriction({
+      restriction_type: "time_window",
+      valid_from: "12:00:30",
+      valid_until: "12:02:00"
+    })],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now: new Date("2026-11-09T09:59:00.000Z")
+  });
+  assert.equal(result.validated, false);
+  assert.equal(result.conflicts.length, 1);
+  assert.equal(result.conflicts[0].restrictionType, "time_window");
+});
+
+test("blocks a date-based road closure that starts after departure but before arrival", () => {
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [verifiedRestriction({
+      restriction_type: "closed",
+      active_from: "2026-11-10",
+      active_until: "2026-11-10"
+    })],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now: new Date("2026-11-09T21:59:00.000Z")
+  });
+  assert.equal(result.validated, false);
+  assert.equal(result.conflicts.length, 1);
+  assert.equal(result.conflicts[0].restrictionType, "closed");
+});
+
+test("detects a scheduled restriction crossing midnight in Israel local time", () => {
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [verifiedRestriction({
+      restriction_type: "time_window",
+      active_from: "2026-11-09",
+      active_until: "2026-11-10",
+      valid_from: "23:59:30",
+      valid_until: "00:01:00"
+    })],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now: new Date("2026-11-09T21:59:00.000Z")
+  });
+  assert.equal(result.validated, false);
+  assert.equal(result.conflicts.length, 1);
+  assert.equal(result.conflicts[0].restrictionType, "time_window");
+});
