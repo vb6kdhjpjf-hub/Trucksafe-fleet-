@@ -142,7 +142,7 @@ begin
   values(fleet_id,'CI road and vehicle security fleet',owner_id);
   insert into public.fleet_members(fleet_id,user_id,role)
   values(fleet_id,owner_id,'owner')
-  on conflict (fleet_id,user_id) do nothing;
+  on conflict do nothing;
   insert into public.fleet_members(fleet_id,user_id,role)
   values(fleet_id,dispatcher_id,'dispatcher');
 
