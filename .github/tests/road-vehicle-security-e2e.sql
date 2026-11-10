@@ -76,8 +76,10 @@ begin
     where t.tgrelid='public.vehicles'::regclass
       and t.tgname='guard_vehicle_registration_verification'
       and not t.tgisinternal
+      and (t.tgtype & 4) <> 0
+      and (t.tgtype & 16) <> 0
   ) then
-    raise exception 'Schema parity failed: vehicle registration guard trigger is missing';
+    raise exception 'Schema parity failed: vehicle registration guard must run on INSERT and UPDATE';
   end if;
 
   if to_regprocedure('public.review_vehicle_registration(uuid,text,text)') is null
