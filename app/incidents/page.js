@@ -105,7 +105,7 @@ export default function IncidentsPage() {
         description:form.description.trim(), location_text:form.location_text.trim()||null,
         driver_id:form.driver_id||null, vehicle_id:form.vehicle_id||null,
         latitude:gps.latitude, longitude:gps.longitude, photo_path:photoPath,
-        status:"reported", reported_at:new Date().toISOString(), created_by:session.user.id
+        status:"open", reported_at:new Date().toISOString(), created_by:session.user.id
       };
       const {error} = await supabase.from("incidents").insert(payload);
       if (error) {
@@ -126,6 +126,8 @@ export default function IncidentsPage() {
       } else setMessage("דיווח האירוע נכשל: "+(error?.message||"שגיאה לא ידועה"));
     } finally { setBusy(false); }
   }
+
+  const canResolveIncidents = ["owner","fleet_manager","safety_manager"].includes(fleet?.role);
 
   async function resolveIncident(incident) {
     if (!fleet || !["owner","fleet_manager","safety_manager"].includes(fleet.role)) {
@@ -178,7 +180,7 @@ export default function IncidentsPage() {
             {item.photo_url&&<div className="task-assignees"><a className="nav-link" href={item.photo_url} target="_blank" rel="noreferrer">צפייה בתמונת האירוע</a></div>}
             {item.driver_id&&<div className="task-assignees"><span>נהג: {drivers.find(d=>d.id===item.driver_id)?.full_name||"לא ידוע"}</span></div>}
             {item.vehicle_id&&<div className="task-assignees"><span>רכב: {vehicles.find(v=>v.id===item.vehicle_id)?.registration_number||"לא ידוע"}</span></div>}
-            {item.status!=="resolved"&&<div className="task-actions"><button className="primary-btn" disabled={busy} onClick={()=>resolveIncident(item)}><CheckCircle2 size={14}/> סימון כטופל</button></div>}
+            {canResolveIncidents&&item.status!=="resolved"&&<div className="task-actions"><button className="primary-btn" disabled={busy} onClick={()=>resolveIncident(item)}><CheckCircle2 size={14}/> סימון כטופל</button></div>}
           </article>)}</div>}
       </section>
       <p className="fleet-foot">TruckSafe Fleet V1 · דיווחי הבטיחות נשמרים במסד הנתונים של הצי</p>
