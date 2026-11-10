@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { buildPTVRoutingProbeRequest, assessPTVRoutingProbeResponse } from "../../../../lib/ptv-routing-probe.mjs";
+import { buildPTVRoutingProbeRequest, assessPTVRoutingProbeResponse } from "../../../lib/ptv-routing-probe.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
