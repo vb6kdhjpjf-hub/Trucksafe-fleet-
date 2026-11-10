@@ -52,6 +52,28 @@ test("fails closed when restriction location or route geometry is invalid", () =
   assert.equal(routePassesNearRestriction([{ polyline: "invalid" }], verifiedRestriction({})), null);
 });
 
+test("detects a route passing near a linear restriction segment", () => {
+  const segment = verifiedRestriction({
+    latitude: null, longitude: null,
+    start_latitude: 32.839, start_longitude: 35.505,
+    end_latitude: 32.841, end_longitude: 35.505
+  });
+  assert.equal(routePassesNearRestriction(sections, segment), true);
+});
+
+test("rejects incomplete or out-of-Israel linear restriction geometry", () => {
+  assert.equal(routePassesNearRestriction(sections, verifiedRestriction({
+    latitude: null, longitude: null,
+    start_latitude: 32.839, start_longitude: 35.505,
+    end_latitude: null, end_longitude: null
+  })), null);
+  assert.equal(routePassesNearRestriction(sections, verifiedRestriction({
+    latitude: null, longitude: null,
+    start_latitude: 40, start_longitude: 35,
+    end_latitude: 32.841, end_longitude: 35.505
+  })), null);
+});
+
 test("accepts recent verification and rejects stale or future verification timestamps", () => {
   assert.equal(isRestrictionVerificationFresh(verifiedRestriction({}), now), true);
   assert.equal(isRestrictionVerificationFresh(verifiedRestriction({
