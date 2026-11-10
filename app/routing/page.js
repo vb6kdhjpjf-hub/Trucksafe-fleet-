@@ -170,7 +170,7 @@ export default function TruckRoutingPage() {
           ptv_request_timeout: "הבדיקה מול PTV חרגה מזמן ההמתנה.",
           ptv_request_failed: "לא ניתן להשלים את הבדיקה מול PTV."
         };
-        setPtvCheckResult({ ok: false, reason: messages[data.reason] || "בדיקת PTV נכשלה.", diagnosticCode: data.reason || "unknown", upstreamStatus: Number.isInteger(data.upstreamStatus) ? data.upstreamStatus : null });
+        setPtvCheckResult({ ok: false, reason: messages[data.reason] || "בדיקת PTV נכשלה.", diagnosticCode: data.reason || "unknown", upstreamStatus: Number.isInteger(data.upstreamStatus) ? data.upstreamStatus : null, traceId: typeof data.traceId === "string" ? data.traceId : null, requestedAt: typeof data.requestedAt === "string" ? data.requestedAt : null, upstreamBody: typeof data.upstreamBody === "string" ? data.upstreamBody : null });
         return;
       }
       setPtvCheckResult({ ok: true, ...data });
@@ -283,7 +283,7 @@ export default function TruckRoutingPage() {
         {ptvCheckResult && <div role="status" style={{ marginTop: 10, padding: 10, borderRadius: 9, background: ptvCheckResult.ok ? "#edf8f0" : "#fff0f0", lineHeight: 1.5 }}>
           {ptvCheckResult.ok ? <><b>החיבור ל־PTV עובד.</b><div>נמצאו {ptvCheckResult.profileCount} פרופילים בסך הכול, מתוכם {ptvCheckResult.truckCandidateCount} פרופילי משאית.</div>
             {ptvCheckResult.truckProfiles.length > 0 && <ul style={{ margin: "6px 0", paddingRight: 20 }}>{ptvCheckResult.truckProfiles.map(profile => <li key={profile.name}><b>{profile.name}</b> · {profile.region} · גובה {profile.vehicle.height ?? "לא ידוע"} ס״מ · רוחב {profile.vehicle.width ?? "לא ידוע"} ס״מ · אורך {profile.vehicle.length ?? "לא ידוע"} ס״מ</li>)}</ul>}
-          </> : <>{ptvCheckResult.reason}{ptvCheckResult.upstreamStatus !== null && <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>קוד תגובת PTV: HTTP {ptvCheckResult.upstreamStatus} · קוד אבחון: {ptvCheckResult.diagnosticCode}</div>}</>}
+          </> : <>{ptvCheckResult.reason}{ptvCheckResult.upstreamStatus !== null && <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>קוד תגובת PTV: HTTP {ptvCheckResult.upstreamStatus} · קוד אבחון: {ptvCheckResult.diagnosticCode}</div>}{ptvCheckResult.traceId && <div style={{ marginTop: 6, fontSize: 12 }}>traceId: <code>{ptvCheckResult.traceId}</code></div>}{ptvCheckResult.requestedAt && <div style={{ fontSize: 12 }}>שעת הבדיקה: {ptvCheckResult.requestedAt}</div>}{ptvCheckResult.upstreamBody && <details style={{ marginTop: 6 }}><summary style={{ cursor: "pointer", fontSize: 12 }}>תוכן תשובת PTV לתמיכה</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 11, direction: "ltr", textAlign: "left" }}>{ptvCheckResult.upstreamBody}</pre></details>}</>}
         </div>}
       </section>
 
