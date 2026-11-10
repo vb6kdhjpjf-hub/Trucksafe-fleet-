@@ -51,7 +51,7 @@ test("detects stale assessment linkage and rejects manifest tampering", async t 
   await createHumanReviewEvent({ candidateFile: f.candidateFile, assessmentReportFile: f.assessmentFile, outputDir: f.root, reviewer: "reviewer-a", decision: "needs_more_evidence", reviewedAt: "2026-11-10T18:10:00Z" });
   await writeFile(f.assessmentFile, JSON.stringify({ valid: false, approved_for_routing: false, dimensions: {} }));
   const result = await buildRestrictionSourceManifest({ quarantineDir: f.root, createdAt: "2026-11-10T18:30:00Z" });
-  assert.equal(result.manifest.candidates[0].status, "review_integrity_failed");
+  assert.equal(result.manifest.candidates[0].status, "stale_review");
   const tampered = structuredClone(result.manifest); tampered.candidate_count = 99;
   assert.throws(() => verifyRestrictionSourceManifest(tampered), /integrity hash mismatch/);
 });
