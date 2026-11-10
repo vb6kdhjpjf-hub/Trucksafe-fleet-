@@ -18,7 +18,7 @@ TruckSafe has a substantial fleet-management application and an isolated validat
 | Workstream | Current status | Evidence / remaining gate |
 |---|---|---|
 | Fleet workspace and dashboard | Implemented in the application | Login, fleet membership, fleet dashboard and operational modules exist; dashboard loading now fails closed when an account has multiple fleet memberships or multiple owned fleets instead of selecting one arbitrarily. Complete user-acceptance testing is still required. |
-| Drivers, vehicles and tasks | Implemented; safety checks added | Driver eligibility, vehicle lifecycle and task/pre-trip flows have automated tests. Isolated authenticated-role tests now verify cross-fleet row isolation, dispatcher write denial, driver assignment-scoped vehicle reads, and authenticated driver start/finish RPC authorization. Real-user acceptance and edge-case review remain. |
+| Drivers, vehicles and tasks | Implemented; safety checks added | Driver eligibility, vehicle lifecycle and task/pre-trip flows have automated tests. Isolated authenticated-role tests now verify cross-fleet row isolation, dispatcher write denial, driver assignment-scoped vehicle reads, authenticated driver start/finish RPC authorization, and private registration-document read/upload restrictions. Real-user acceptance and edge-case review remain. |
 | Maintenance, incidents, history and reports | Implemented in the application | Pages and data workflows exist; full operational acceptance and permissions review remain. |
 | Vehicle registration verification | Guarded workflow implemented in the development branch | Private registration document and authorized review are required; material technical-profile, registration-number, make/model and vehicle-type edits invalidate prior approval; a database INSERT trigger clears any client-supplied approval or document metadata. SQL integration tests cover forged INSERT metadata and re-review after a registration identity change. Rollout to Production has not been authorized. |
 | Fleet road-restriction catalogue | Implemented as fleet-scoped workflow | Geometry, time validity and verification evidence checks exist. It is not a national authoritative road database. |
@@ -31,11 +31,11 @@ TruckSafe has a substantial fleet-management application and an isolated validat
 
 ## Verified engineering baseline
 
-The latest verified isolated validation run is [GitHub Actions run 42875131116](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/42875131116), on commit `70f107243f630803bd8d99b1a5037e3d8f4d77d9`.
+The latest verified isolated validation run is [GitHub Actions run 42875566875](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/42875566875), on commit `10b2977a340ee710c4478bf2dcce602cb66e4cd2`.
 
 Recorded results:
 - Application and safety unit-test step passed (161 tests), including streamed request-body limit and routing-profile validation tests.
-- Vehicle-registration and RLS integration tests passed: direct vehicle INSERT cannot forge a verified status or inject document/approval metadata; technical-profile edits and registration-identity changes invalidate prior approval and clear reviewer metadata. Fourteen rollback-only security scenarios passed, including owner/other-fleet row isolation, dispatcher vehicle write denial, driver assignment-scoped vehicle reads, and authenticated driver trip start/finish with cross-fleet rejection. Fleet dashboard code also rejects ambiguous multi-fleet selection rather than silently choosing a workspace.
+- Vehicle-registration and RLS integration tests passed: direct vehicle INSERT cannot forge a verified status or inject document/approval metadata; technical-profile edits and registration-identity changes invalidate prior approval and clear reviewer metadata. Fourteen rollback-only security scenarios passed, including owner/other-fleet row isolation, dispatcher vehicle write denial, driver assignment-scoped vehicle reads, private registration-document access limited to fleet owners/managers, and authenticated driver trip start/finish with cross-fleet rejection. Fleet dashboard code also rejects ambiguous multi-fleet selection rather than silently choosing a workspace.
 - Isolated database integration job passed; its connection was verified to target only the dedicated test project.
 - Next.js production build passed.
 - Production dependency audit reported 0 vulnerabilities.
