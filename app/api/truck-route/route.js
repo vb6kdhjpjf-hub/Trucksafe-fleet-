@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { evaluateFleetRestrictions } from "../../../lib/road-restriction-geometry.mjs";
+import { selectSafeTruckRoute } from "../../../lib/road-restriction-geometry.mjs";
 import { isTruckRouteConfigured } from "../../../lib/truck-route-readiness.mjs";
 import { getSavedTruckRoutingProfile } from "../../../lib/truck-routing-profile.mjs";
 import { checkTruckRouteQuota } from "../../../lib/truck-route-quota.mjs";
@@ -159,6 +159,7 @@ export async function POST(request) {
       destination: `${destination.lat},${destination.lng}`,
       departureTime: new Date().toISOString(),
       return: "polyline,summary,actions",
+      alternatives: "2",
       lang: "he-IL",
       "avoid[features]": "dirtRoad,uTurns",
       "vehicle[height]": String(Math.round(heightCm)),
@@ -178,8 +179,10 @@ export async function POST(request) {
     const routeData = await routeResponse.json().catch(() => null);
     if (!routeResponse.ok) return response({ error: "ספק הניווט לא הצליח לחשב מסלול. בדוק את פרטי הרכב ונסה שוב." }, 502);
 
-    const route = routeData?.routes?.[0];
-    if (!route?.sections?.length) return response({ error: "לא נמצא מסלול למשאית לפי הנתונים שהוזנו. אין להחליף למסלול רכב פרטי." }, 422);
+    const routeCandidates = routeData?.routes;
+    if (!Array.isArray(routeCandidates) || routeCandidates.length === 0) {
+      return response({ error: "לא נמצא מסלול למשאית לפי הנתונים שהוזנו. אין להחליף למסלול רכב פרטי." }, 422);
+    }
 
     // Load the current fleet restriction catalogue through the caller's RLS-scoped client.
     // A failed query must never be interpreted as an empty catalogue.
@@ -192,30 +195,27 @@ export async function POST(request) {
       return response({ error: "לא ניתן לאמת את מאגר מגבלות הדרך של הצי. המסלול לא אושר." }, 503);
     }
 
-    const restrictionValidation = evaluateFleetRestrictions({
-      sections: route.sections,
+    const selection = selectSafeTruckRoute({
+      routes: routeCandidates,
       restrictions,
       restrictionCatalogLoaded: true,
       vehicle: { heightCm, widthCm, lengthCm },
       currentWeightKg,
       now: new Date()
     });
-    if (!restrictionValidation.validated) {
-      const conflicts = restrictionValidation.conflicts.map(item => ({
-        roadName: item.roadName,
-        restrictionType: item.restrictionType
-      }));
-      const unresolved = restrictionValidation.unresolved.map(item => ({
-        roadName: item.roadName,
-        reason: item.reason
-      }));
+    if (!selection.route || !selection.restrictionCheck?.validated) {
       return response({
-        error: "לא ניתן לאשר את המסלול מול מגבלות הדרך הרשומות בצי. יש לבדוק את הפרטים לפני נסיעה.",
-        restrictionValidation: { validated: false, conflicts, unresolved }
+        error: "לא נמצא מסלול חלופי שניתן לאמת מול מגבלות הדרך הרשומות בצי. יש לבדוק את הפרטים לפני נסיעה.",
+        restrictionValidation: {
+          validated: false,
+          rejectedCandidateCount: selection.rejected.length
+        }
       }, 409);
     }
 
-    const notices = route.sections.flatMap(section => (section.notices || []).map(notice => ({
+    const route = selection.route;
+    const restrictionValidation = selection.restrictionCheck;
+    const notices = selection.notices.map(notice => ({
       code: String(notice.code || "notice").slice(0, 100),
       severity: String(notice.severity || "info").slice(0, 30),
       title: String(notice.title || notice.code || "הודעת ניווט").slice(0, 240)
