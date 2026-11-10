@@ -290,7 +290,7 @@ begin
   perform set_config('request.jwt.claim.role','service_role',true);
   update public.vehicles
   set registration_verification_status='verified',
-      registration_document_path=fleet_id::text || '/' || vehicle_id::text || '/reviewed-registration.pdf',
+      registration_document_path='b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d51/e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51/reviewed-registration.pdf',
       registration_verified_at=now(),
       registration_verified_by=owner_id,
       registration_verification_note='Registration identity reviewed by trusted service'
