@@ -74,6 +74,21 @@ test("rejects incomplete or out-of-Israel linear restriction geometry", () => {
   })), null);
 });
 
+test("uses exact segment distance for parallel restrictions near the route", () => {
+  const nearSegment = verifiedRestriction({
+    latitude: null, longitude: null,
+    start_latitude: 32.84018, start_longitude: 35.501,
+    end_latitude: 32.84018, end_longitude: 35.519
+  });
+  const farSegment = verifiedRestriction({
+    latitude: null, longitude: null,
+    start_latitude: 32.842, start_longitude: 35.501,
+    end_latitude: 32.842, end_longitude: 35.519
+  });
+  assert.equal(routePassesNearRestriction(sections, nearSegment), true);
+  assert.equal(routePassesNearRestriction(sections, farSegment), false);
+});
+
 test("accepts recent verification and rejects stale or future verification timestamps", () => {
   assert.equal(isRestrictionVerificationFresh(verifiedRestriction({}), now), true);
   assert.equal(isRestrictionVerificationFresh(verifiedRestriction({
