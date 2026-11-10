@@ -35,7 +35,7 @@ async function readBoundedInput(input) {
     if (info.size > MAX_SOURCE_BYTES) throw new Error("Input exceeds the 5 MiB safety limit");
     const raw = await handle.readFile();
     if (raw.byteLength > MAX_SOURCE_BYTES) throw new Error("Input exceeds the 5 MiB safety limit");
-    return raw.toString("utf8");
+    try { return new TextDecoder("utf-8", { fatal: true }).decode(raw); }\n    catch { throw new Error("Input is not valid UTF-8"); }
   } finally {
     await handle.close();
   }
