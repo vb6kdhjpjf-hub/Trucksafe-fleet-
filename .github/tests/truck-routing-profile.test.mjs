@@ -53,7 +53,8 @@ test("rejects missing or out-of-range dimensions, weights, and vehicle configura
     { axle_count: 1 },
     { trailer_count: 4 },
     { routing_vehicle_type: "Car" },
-    { weight_per_axle_kg: 30001 }
+    { weight_per_axle_kg: 30001 },
+    { weight_per_axle_kg: 26001 }
   ]) {
     assert.equal(getSavedTruckRoutingProfile({ ...validVehicle, ...change }), null);
   }
