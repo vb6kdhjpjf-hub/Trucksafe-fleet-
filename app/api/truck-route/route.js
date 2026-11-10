@@ -93,6 +93,7 @@ export async function POST(request) {
     const lengthCm = Number(raw.lengthCm);
     const grossWeightKg = Number(raw.grossWeightKg);
     const currentWeightKg = Number(raw.currentWeightKg);
+    const emptyWeightKg = Number(raw.emptyWeightKg);
     const weightPerAxleKg = raw.weightPerAxleKg === "" || raw.weightPerAxleKg == null ? null : Number(raw.weightPerAxleKg);
     const axleCount = Number(raw.axleCount);
     const trailerCount = Number(raw.trailerCount);
@@ -103,12 +104,15 @@ export async function POST(request) {
         !numberInRange(lengthCm, 200, 3000) ||
         !numberInRange(grossWeightKg, 1000, 100000) ||
         !numberInRange(currentWeightKg, 1000, 100000) ||
+        !numberInRange(emptyWeightKg, 500, 100000) ||
+        emptyWeightKg > currentWeightKg ||
+        emptyWeightKg > grossWeightKg ||
         currentWeightKg > grossWeightKg ||
         !Number.isInteger(axleCount) || axleCount < 2 || axleCount > 12 ||
         !Number.isInteger(trailerCount) || trailerCount < 0 || trailerCount > 3 ||
         !["StraightTruck", "Tractor"].includes(vehicleType) ||
         (weightPerAxleKg !== null && !numberInRange(weightPerAxleKg, 500, 30000))) {
-      return response({ error: "יש לבדוק את סוג המשאית, מספר הסרנים והנגררים, המידות והמשקלים. המשקל בפועל חייב להיות קטן או שווה למשקל הכולל המותר." }, 400);
+      return response({ error: "יש לבדוק את סוג המשאית, מספר הסרנים והנגררים, המידות והמשקלים. משקל הרכב הריק חייב להיות קטן או שווה למשקל בפועל, והמשקל בפועל חייב להיות קטן או שווה למשקל הכולל המותר." }, 400);
     }
 
     const [origin, destination] = await Promise.all([
