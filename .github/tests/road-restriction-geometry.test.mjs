@@ -5,7 +5,8 @@ import {
   decodeFlexiblePolyline,
   routePassesNearRestriction,
   isRestrictionVerificationFresh,
-  evaluateFleetRestrictions
+  evaluateFleetRestrictions,
+  selectSafeTruckRoute
 } from "../../lib/road-restriction-geometry.mjs";
 
 const coordinates = [[32.84, 35.50], [32.84, 35.51], [32.84, 35.52]];
@@ -273,4 +274,55 @@ test("detects a scheduled restriction crossing midnight in Israel local time", (
   assert.equal(result.validated, false);
   assert.equal(result.conflicts.length, 1);
   assert.equal(result.conflicts[0].restrictionType, "time_window");
+});
+
+
+test("selects a safe alternative when the fastest route conflicts with a verified restriction", () => {
+  const alternateCoordinates = coordinates.map(([lat,lng]) => [lat + 0.02,lng]);
+  const alternatePolyline = encodePTVCoordinatesAsFlexiblePolyline(alternateCoordinates);
+  const result = selectSafeTruckRoute({
+    routes: [
+      { sections: [{ polyline, summary: { length: 1800, duration: 180 } }] },
+      { sections: [{ polyline: alternatePolyline, summary: { length: 2200, duration: 210 } }] }
+    ],
+    restrictions: [verifiedRestriction({ max_height_m: 3.5 })],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now
+  });
+  assert.equal(result.routeIndex, 1);
+  assert.equal(result.restrictionCheck.validated, true);
+  assert.equal(result.rejected[0].reason, "fleet_restriction_conflict");
+});
+
+test("does not select any alternative when the restriction catalogue was not loaded", () => {
+  const result = selectSafeTruckRoute({
+    routes: [{ sections }],
+    restrictions: [verifiedRestriction({})],
+    restrictionCatalogLoaded: false,
+    vehicle,
+    currentWeightKg: 10000,
+    now
+  });
+  assert.equal(result.route, null);
+  assert.equal(result.rejected[0].reason, "unresolved_fleet_restrictions");
+});
+
+test("rejects provider-critical alternatives and selects the next validated route", () => {
+  const alternateCoordinates = coordinates.map(([lat,lng]) => [lat + 0.02,lng]);
+  const alternatePolyline = encodePTVCoordinatesAsFlexiblePolyline(alternateCoordinates);
+  const result = selectSafeTruckRoute({
+    routes: [
+      { notices: [{ severity: "critical", code: "providerWarning" }], sections },
+      { sections: [{ polyline: alternatePolyline, summary: { length: 2200, duration: 210 } }] }
+    ],
+    restrictions: [verifiedRestriction({ latitude: 32.84, longitude: 35.505 })],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now
+  });
+  assert.equal(result.routeIndex, 1);
+  assert.equal(result.rejected[0].reason, "provider_restriction_notice");
 });
