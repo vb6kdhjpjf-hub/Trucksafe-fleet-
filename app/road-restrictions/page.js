@@ -165,26 +165,13 @@ export default function RoadRestrictionsPage() {
     setReviewBusy(row.id);
     setMessage("");
     try {
-      const checkedAt = new Date().toISOString();
-      const update = decision === "verified"
-        ? {
-            verification_status: "verified",
-            verified_at: checkedAt,
-            verified_by: session.user.id,
-            source_last_checked_at: checkedAt,
-            verification_note: note,
-            verification_notes: note,
-            updated_at: checkedAt
-          }
-        : {
-            verification_status: "rejected",
-            verified_at: null,
-            verified_by: null,
-            source_last_checked_at: checkedAt,
-            verification_note: note,
-            verification_notes: note,
-            updated_at: checkedAt
-          };
+      // The database trigger is authoritative for reviewer identity and timestamps.
+      // The client submits only the decision and the review note.
+      const update = {
+        verification_status: decision,
+        verification_note: note,
+        verification_notes: note
+      };
       const { data, error } = await supabase.from("road_restrictions")
         .update(update)
         .eq("id", row.id)
