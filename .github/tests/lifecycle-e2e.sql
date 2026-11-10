@@ -16,7 +16,7 @@ declare
   d1 uuid := 'd1d0f66b-52e6-4e7e-a641-5c0f2f8eaf11';
   v1 uuid := 'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf11';
   t1 uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf11';
-  trip_id uuid;
+  v_trip_id uuid;
 
   -- Safety-block fixtures
   u2 uuid := 'f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf12';
@@ -74,16 +74,16 @@ begin
     values (t1, f1, 'CI end-to-end test task', 'Test origin', 'Test destination',
       d1, v1, 'assigned', u1);
 
-  trip_id := public.start_trip_with_inspection(
+  v_trip_id := public.start_trip_with_inspection(
     f1, t1, d1, v1, 'Test origin', 'Test destination', good_checklist
   );
-  if trip_id is null then raise exception 'Lifecycle test: trip was not created'; end if;
-  perform public.finish_trip(f1, trip_id);
+  if v_trip_id is null then raise exception 'Lifecycle test: trip was not created'; end if;
+  perform public.finish_trip(f1, v_trip_id);
 
-  if (select status from public.trips where id = trip_id) <> 'completed'
+  if (select status from public.trips where id = v_trip_id) <> 'completed'
      or (select status from public.tasks where id = t1) <> 'completed'
      or (select status from public.vehicles where id = v1) <> 'available'
-     or not exists (select 1 from public.inspections where trip_id = trip_id and passed = true) then
+     or not exists (select 1 from public.inspections where v_trip_id = v_trip_id and passed = true) then
     raise exception 'Lifecycle test: trip/task/vehicle/inspection final state is incorrect';
   end if;
   insert into pg_temp.trucksafe_e2e_results values
@@ -107,8 +107,8 @@ begin
     (t2b, f2, 'CI expired license', d2b, v2b, 'assigned', u2),
     (t2c, f2, 'CI expired vehicle docs', d2c, v2c, 'assigned', u2);
 
-  trip_id := public.start_trip_with_inspection(f2, t2a, d2a, v2a, 'A', 'B', failed_checklist);
-  if trip_id is not null
+  v_trip_id := public.start_trip_with_inspection(f2, t2a, d2a, v2a, 'A', 'B', failed_checklist);
+  if v_trip_id is not null
      or exists (select 1 from public.trips where task_id = t2a)
      or not exists (select 1 from public.inspections where vehicle_id = v2a and passed = false)
      or not exists (select 1 from public.incidents where vehicle_id = v2a and status in ('open','investigating')) then
