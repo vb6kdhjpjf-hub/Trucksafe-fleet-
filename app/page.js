@@ -280,7 +280,7 @@ export default function Home() {
       !Number.isFinite(routing.empty_weight_kg)||routing.empty_weight_kg<500||routing.empty_weight_kg>routing.gross_weight_kg||
       !Number.isInteger(routing.axle_count)||routing.axle_count<2||routing.axle_count>12||
       !Number.isInteger(routing.trailer_count)||routing.trailer_count<0||routing.trailer_count>3||
-      (routing.weight_per_axle_kg!==null&&(!Number.isFinite(routing.weight_per_axle_kg)||routing.weight_per_axle_kg<500||routing.weight_per_axle_kg>30000))||
+      (!Number.isFinite(routing.weight_per_axle_kg)||routing.weight_per_axle_kg<500||routing.weight_per_axle_kg>30000)||
       !["StraightTruck","Tractor"].includes(routing.routing_vehicle_type)
     )){
       setMessage("פרטי הניתוב חלקיים או לא תקינים. יש למלא גובה, רוחב, אורך, משקל כולל מותר, משקל ריק ומספר סרנים בטווחים המוצגים, או להשאיר את כל פרטי הניתוב ריקים.");
@@ -376,7 +376,7 @@ export default function Home() {
         <label>משקל רכב ריק (ק״ג)<input type="number" min="500" max="100000" step="100" value={emptyWeightKg} onChange={e=>setEmptyWeightKg(e.target.value)} placeholder="ללא מטען"/></label>
         <label>מספר סרנים<input type="number" min="2" max="12" step="1" value={axleCount} onChange={e=>setAxleCount(e.target.value)} placeholder="לפי רישיון הרכב"/></label>
         <label>מספר נגררים<input type="number" min="0" max="3" step="1" value={trailerCount} onChange={e=>setTrailerCount(e.target.value)}/></label>
-        <label>משקל מרבי לסרן (ק״ג, אם ידוע)<input type="number" min="500" max="30000" step="100" value={weightPerAxleKg} onChange={e=>setWeightPerAxleKg(e.target.value)} placeholder="אופציונלי"/></label>
+        <label>משקל מרבי לסרן (ק״ג)<input type="number" min="500" max="30000" step="100" value={weightPerAxleKg} onChange={e=>setWeightPerAxleKg(e.target.value)} placeholder="לפי רישיון / נתון מאומת"/></label>
         <button className="primary-btn" disabled={busy}>שמירת רכב</button>
       </form>}
       {vehicles.length===0?<div className="fleet-empty">עדיין לא הוספת כלי רכב. לחץ על "הוספת רכב" כדי להתחיל.</div>:<div className="vehicle-list">{vehicles.map(v=><div className="vehicle-row" key={v.id}><Truck size={20}/><div><b>{v.registration_number}</b><small>{[v.make,v.model,v.vehicle_type].filter(Boolean).join(" · ")}{v.assigned_driver_id ? " · נהג: "+(drivers.find(d=>d.id===v.assigned_driver_id)?.full_name||"לא נמצא") : " · ללא נהג משויך"}</small></div><span>{v.status==="available"?"זמין":v.status==="assigned"?"משויך":v.status==="on_trip"?"בנסיעה":v.status==="maintenance"?"בטיפול":v.status==="inactive"?"לא פעיל":v.status}</span></div>)}</div>}
