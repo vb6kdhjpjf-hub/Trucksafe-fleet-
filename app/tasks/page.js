@@ -68,9 +68,12 @@ export default function TasksPage() {
     if (inspectionError) setMessage("שגיאה בטעינת היסטוריית בדיקות הרכב: " + inspectionError.message); else setInspections(inspectionRows || []);
   }
 
+  const canManageTasks = ["owner", "fleet_manager", "dispatcher"].includes(fleet?.role);
+
   async function saveTask(e) {
     e.preventDefault();
     if (!fleet || !form.title.trim()) return;
+    if (!canManageTasks) { setMessage("אין לך הרשאה לניהול משימות."); return; }
     setBusy(true); setMessage("");
     const payload = {
       fleet_id: fleet.id,
@@ -91,6 +94,8 @@ export default function TasksPage() {
   }
 
   async function updateStatus(task, status) {
+    if (!fleet || !canManageTasks) { setMessage("אין לך הרשאה לעדכון סטטוס משימה."); return; }
+    if (!["pending", "assigned", "cancelled"].includes(status)) { setMessage("סטטוס זה אינו ניתן לעדכון ידני."); return; }
     setBusy(true); setMessage("");
     const { error } = await supabase.from("tasks").update({ status }).eq("id", task.id).eq("fleet_id", fleet.id);
     if (error) setMessage("לא הצלחנו לעדכן סטטוס: " + error.message);
@@ -236,8 +241,8 @@ export default function TasksPage() {
         </article>)}</div>}
       </section>
       <section className="fleet-panel">
-        <div className="fleet-panel-head"><div><h3>משימות הצי</h3><p>יצירת משימות, שיוך נהגים וכלי רכב ומעקב סטטוס</p></div><button className="primary-btn" onClick={() => { setShowForm(!showForm); setMessage(""); }}><Plus size={16}/> משימה חדשה</button></div>
-        {showForm && <form className="task-form" onSubmit={saveTask}>
+        <div className="fleet-panel-head"><div><h3>משימות הצי</h3><p>יצירת משימות, שיוך נהגים וכלי רכב ומעקב סטטוס</p></div>{canManageTasks&&<button className="primary-btn" onClick={() => { setShowForm(!showForm); setMessage(""); }}><Plus size={16}/> משימה חדשה</button>}</div>
+        {showForm && canManageTasks && <form className="task-form" onSubmit={saveTask}>
           <div className="driver-form-title">פרטי המשימה</div>
           <div className="task-form-grid">
             <label>כותרת המשימה *<input required value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="לדוגמה: הובלת מטען ללקוח"/></label>
@@ -256,7 +261,7 @@ export default function TasksPage() {
             {(task.pickup_address || task.delivery_address) && <div className="task-route"><span><MapPin size={14}/> איסוף: {task.pickup_address || "לא צוין"}</span><span><MapPin size={14}/> יעד: {task.delivery_address || "לא צוין"}</span></div>}
             <div className="task-assignees"><span>נהג: {drivers.find(d=>d.id===task.assigned_driver_id)?.full_name || "לא שובץ"}</span><span>רכב: {vehicles.find(v=>v.id===task.assigned_vehicle_id)?.registration_number || "לא שובץ"}</span>{task.scheduled_at && <span><CalendarClock size={13}/> {new Date(task.scheduled_at).toLocaleString("he-IL")}</span>}</div>
             {task.description && <p className="task-description">{task.description}</p>}
-            <div className="task-actions"><label>סטטוס<select disabled={busy} value={task.status} onChange={e=>updateStatus(task,e.target.value)}>{Object.entries(labels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>{!["completed","cancelled"].includes(task.status) && <button className="primary-btn" disabled={busy} onClick={()=>startTrip(task)}><Play size={14}/> פתיחת נסיעה</button>}</div>
+            <div className="task-actions"><label>סטטוס<select disabled={busy||!canManageTasks} value={task.status} onChange={e=>updateStatus(task,e.target.value)}>{Object.entries(labels).filter(([value])=>["pending","assigned","cancelled"].includes(value)||value===task.status).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>{!["completed","cancelled"].includes(task.status) && <button className="primary-btn" disabled={busy} onClick={()=>startTrip(task)}><Play size={14}/> פתיחת נסיעה</button>}</div>
           </article>)}</div>}
       </section>
       <p className="fleet-foot">TruckSafe Fleet V1 · המשימות והנסיעות נשמרות במסד הנתונים</p>
