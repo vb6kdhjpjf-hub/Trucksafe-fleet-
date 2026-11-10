@@ -23,7 +23,7 @@ node scripts/stage-restriction-source.mjs \
   --licence-reference "Documented licence or written permission reference"
 \`\`\`
 
-The CLI rejects invalid JSON, primitive payloads, missing source/licence metadata, timezone-ambiguous timestamps, and files larger than 5 MiB. It hashes the exact original UTF-8 bytes, validates the envelope, then creates a content-addressed JSON file with exclusive-create semantics; an existing candidate is never overwritten. The quarantine directory must already exist.
+The CLI rejects invalid JSON, primitive payloads, missing source/licence metadata, timezone-ambiguous timestamps, and files larger than 5 MiB. It hashes the canonical JSON serialization of the parsed payload (so the stored payload can be re-verified after the envelope is written), validates the envelope, then creates a content-addressed JSON file with exclusive-create semantics; an existing candidate is never overwritten. The quarantine directory must already exist.
 
 Every generated record is marked \`unreviewed\` and \`approved_for_routing: false\`. Structural validation and a matching hash do **not** prove that road facts are accurate, authoritative, current, complete, or licensed. A human review and independent verification remain mandatory. The CLI does not import into a database, enable route coverage, or make a route safe.
 
