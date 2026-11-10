@@ -45,9 +45,10 @@ test("requires reviewer, supported decision, and timezone-aware timestamp", asyn
 
 test("rejects malformed or routing-approved candidate and assessment report", async t => {
   const f = await fixture(t);
+  const validCandidate = await readFile(f.candidateFile);
   await writeFile(f.candidateFile, JSON.stringify({ payload_sha256: "a".repeat(64), review: { approved_for_routing: true } }));
   await assert.rejects(createHumanReviewEvent(base(f)), /explicitly unapproved/);
-  await writeFile(f.candidateFile, JSON.stringify({ payload_sha256: "a".repeat(64), review: { approved_for_routing: false } }));
+  await writeFile(f.candidateFile, validCandidate);
   await writeFile(f.assessmentReportFile, JSON.stringify({ valid: true, approved_for_routing: true, dimensions: {} }));
   await assert.rejects(createHumanReviewEvent(base(f)), /malformed or not explicitly unapproved/);
 });
