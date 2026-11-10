@@ -105,3 +105,13 @@ Do not treat a positive reply or a sample file as proof of nationwide operationa
 **Automatic rejection conditions:** unclear commercial licence; unknown measurement date; no stable source ID; missing lane/direction where it affects applicability; stale or non-withdrawable records; unexplained coverage gaps; or any inability to distinguish “no restriction known” from “road verified clear”.
 
 Until every mandatory gate is passed, the data source remains candidate-only and nationwide truck routing remains disabled.
+
+## 8. Source assessment report (evidence completeness only)
+
+The pure helper `lib/restriction-source-assessment.mjs` evaluates whether a candidate's review dossier contains references for each gate in the supplier checklist. It reports each dimension as `missing`, `partial`, or `evidenced`; omitted dimensions are always `missing`. It does not fetch, inspect, authenticate, or validate the truth of referenced documents.
+
+The report covers authority, geographic coverage, truck constraints, measurement quality, temporal validity, update mechanism, licensing, reliability, and independent validation. A complete dossier means only that a reviewer has supplied a reference for every dimension. It is **not** source approval, proof of nationwide coverage, or permission to route.
+
+The helper always returns `approved_for_routing: false`. A human safety review, source-owner confirmation, pilot validation, licensing review, and explicit release approval remain separate mandatory gates. The helper is not connected to the route API, database, ingestion process, or production feature flags.
+
+Tests use synthetic references only and are included in `npm run test:ptv`.
