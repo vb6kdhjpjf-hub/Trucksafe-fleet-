@@ -23,7 +23,7 @@ test("builds PTV route request with two Israeli waypoints, safety results and ve
   assert.equal(url.searchParams.get("options[trafficMode]"), "AVERAGE");
   assert.equal(url.searchParams.get("options[polylineMapType]"), "VECTOR");
   assert.deepEqual(url.searchParams.get("results").split(","), [
-    "POLYLINE", "LEGS_POLYLINE", "MANEUVER_EVENTS", "VIOLATION_EVENTS_POLYLINE"
+    "POLYLINE", "LEGS_POLYLINE", "MANEUVER_EVENTS", "VIOLATION_EVENTS", "VIOLATION_EVENTS_POLYLINE"
   ]);
   for (const [key, value] of Object.entries(vehicle)) {
     assert.equal(url.searchParams.get(`vehicle[${key}]`), String(value));
@@ -71,5 +71,5 @@ test("rejects missing key", () => {
 test("returns a defensive copy of required result flags", () => {
   const first = getPTVRequiredRouteResults();
   first.pop();
-  assert.equal(getPTVRequiredRouteResults().length, 4);
+  assert.equal(getPTVRequiredRouteResults().length, 5);
 });
