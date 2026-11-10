@@ -21,7 +21,7 @@ test("selects the smallest sufficient profile in the requested region", () => {
 });
 
 test("uses the lighter profile when its permitted weight is sufficient", () => {
-  const result = mapVehicleToPTVProfile(profiles, { ...vehicle, grossWeightKg: 7000, currentWeightKg: 6500 }, "IMEA");
+  const result = mapVehicleToPTVProfile(profiles, { ...vehicle, grossWeightKg: 7000, currentWeightKg: 6500, emptyWeightKg: 4000 }, "IMEA");
   assert.equal(result.profileName, "IMEA_TRUCK_7_49T");
 });
 
