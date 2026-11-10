@@ -136,7 +136,12 @@ do $behavior_tests$
 declare
   owner_id uuid := 'f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf51';
   dispatcher_id uuid := 'f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf52';
+  driver_user_id uuid := 'f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf54';
+  other_owner_id uuid := 'f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf55';
   fleet_id uuid := 'b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d51';
+  other_fleet_id uuid := 'b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d52';
+  driver_id uuid := 'd1d0f66b-52e6-4e7e-a641-5c0f2f8eaf54';
+  other_vehicle_id uuid := 'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf55';
   vehicle_id uuid := 'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51';
   untrusted_vehicle_id uuid := 'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf53';
   restriction_id uuid;
