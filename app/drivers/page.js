@@ -53,8 +53,9 @@ export default function DriversPage() {
     else setDrivers(data || []);
   }
 
-  function startAdd() { setEditing(null); setForm(emptyForm); setShowForm(true); setMessage(""); }
+  function startAdd() { if (!canManageDrivers) { setMessage("אין לך הרשאה לניהול נהגים."); return; } setEditing(null); setForm(emptyForm); setShowForm(true); setMessage(""); }
   function startEdit(driver) {
+    if (!canManageDrivers) { setMessage("אין לך הרשאה לניהול נהגים."); return; }
     setEditing(driver);
     setForm({
       full_name: driver.full_name || "", phone: driver.phone || "",
@@ -66,6 +67,7 @@ export default function DriversPage() {
 
   async function saveDriver(e) {
     e.preventDefault();
+    if (!canManageDrivers) { setMessage("אין לך הרשאה לניהול נהגים."); return; }
     if (!fleet) return;
     if (!form.full_name.trim()) { setMessage("יש להזין שם מלא לנהג."); return; }
     setBusy(true); setMessage("");
@@ -89,6 +91,7 @@ export default function DriversPage() {
   }
 
   async function toggleStatus(driver) {
+    if (!canManageDrivers) { setMessage("אין לך הרשאה לניהול נהגים."); return; }
     if (!fleet || !driver?.id) return;
     const nextStatus = driver.status === "active" ? "off_duty" : "active";
     setBusy(true); setMessage("");
