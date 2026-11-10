@@ -11,6 +11,8 @@ export default function TripHistoryPage() {
   const [fleetId, setFleetId] = useState(null);
   const [trips, setTrips] = useState([]);
   const [expanded, setExpanded] = useState({});
+  const [pointsByTrip, setPointsByTrip] = useState({});
+  const [pointsLoading, setPointsLoading] = useState({});
   const [error, setError] = useState("");
 
   async function loadHistory(id) {
@@ -20,12 +22,14 @@ export default function TripHistoryPage() {
       .eq("fleet_id", id).order("started_at", { ascending: false }).limit(100);
     if (tripError) { setError("לא ניתן לטעון היסטוריית נסיעות: " + tripError.message); return; }
     const rows = await Promise.all((data || []).map(async trip => {
-      const [{ data: driver }, { data: vehicle }, { data: points }] = await Promise.all([
+      const [driverResult, vehicleResult] = await Promise.all([
         supabase.from("drivers").select("full_name").eq("id", trip.driver_id).maybeSingle(),
-        supabase.from("vehicles").select("registration_number").eq("id", trip.vehicle_id).maybeSingle(),
-        supabase.from("trip_locations").select("latitude,longitude,recorded_at").eq("trip_id", trip.id).order("recorded_at", { ascending: true }).limit(3000)
+        supabase.from("vehicles").select("registration_number").eq("id", trip.vehicle_id).maybeSingle()
       ]);
-      return { ...trip, driverName: driver?.full_name || "לא צוין", vehicleName: vehicle?.registration_number || "לא צוין", points: points || [] };
+      if (driverResult.error || vehicleResult.error) {
+        throw driverResult.error || vehicleResult.error;
+      }
+      return { ...trip, driverName: driverResult.data?.full_name || "לא צוין", vehicleName: vehicleResult.data?.registration_number || "לא צוין" };
     }));
     setTrips(rows);
     setError("");
@@ -53,6 +57,22 @@ export default function TripHistoryPage() {
     return () => { alive = false; subscription.unsubscribe(); };
   }, [router]);
 
+  async function toggleTrip(trip) {
+    const opening = !expanded[trip.id];
+    setExpanded(old => ({ ...old, [trip.id]: opening }));
+    if (!opening || Object.prototype.hasOwnProperty.call(pointsByTrip, trip.id)) return;
+    setPointsLoading(old => ({ ...old, [trip.id]: true }));
+    const { data, error: pointsError } = await supabase.from("trip_locations")
+      .select("latitude,longitude,recorded_at").eq("trip_id", trip.id)
+      .order("recorded_at", { ascending: true }).limit(3000);
+    if (pointsError) {
+      setError("לא ניתן לטעון נקודות GPS לנסיעה: " + pointsError.message);
+    } else {
+      setPointsByTrip(old => ({ ...old, [trip.id]: data || [] }));
+    }
+    setPointsLoading(old => ({ ...old, [trip.id]: false }));
+  }
+
   const date = value => value ? new Date(value).toLocaleString("he-IL") : "—";
   return <main dir="rtl" style={{ minHeight: "100vh", padding: 24, background: "#f5f7fb", color: "#172338" }}>
     <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
@@ -71,9 +91,9 @@ export default function TripHistoryPage() {
         </div>
         <p style={{ marginBottom: 8 }}>{trip.origin_address || "מוצא לא צוין"} ← {trip.destination_address || "יעד לא צוין"}</p>
         <div style={{ color: "#718096", fontSize: 13 }}>סיום: {date(trip.ended_at)} · נקודות GPS: {trip.points.length}</div>
-        <button onClick={() => setExpanded(old => ({ ...old, [trip.id]: !old[trip.id] }))} style={{ ...btn, marginTop: 12 }}><History size={16}/>{expanded[trip.id] ? "הסתר נקודות GPS" : "הצג נקודות GPS"}</button>
+        <button onClick={() => toggleTrip(trip)} style={{ ...btn, marginTop: 12 }}><History size={16}/>{expanded[trip.id] ? "הסתר נקודות GPS" : "הצג נקודות GPS"}</button>
         {expanded[trip.id] && <div style={{ marginTop: 12, borderTop: "1px solid #edf0f5", paddingTop: 10 }}>
-          {trip.points.length === 0 ? <p>לא נשמרו נקודות GPS בנסיעה זו.</p> : trip.points.map((point, index) =>
+          {pointsLoading[trip.id] ? <p>טוען נקודות GPS...</p> : (pointsByTrip[trip.id] || []).length === 0 ? <p>לא נשמרו נקודות GPS בנסיעה זו.</p> : (pointsByTrip[trip.id] || []).map((point, index) =>
             <div key={index} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "7px 0", fontSize: 13, borderBottom: "1px solid #f0f2f6" }}>
               <span>{date(point.recorded_at)}</span>
               {Number.isFinite(Number(point.latitude)) && Number.isFinite(Number(point.longitude)) && Number(point.latitude) >= -90 && Number(point.latitude) <= 90 && Number(point.longitude) >= -180 && Number(point.longitude) <= 180 ? <a target="_blank" rel="noreferrer" href={"https://www.google.com/maps?q=" + Number(point.latitude) + "," + Number(point.longitude)} style={{ color: "#3867e8" }}><MapPin size={14} style={{ verticalAlign: "middle" }}/> {Number(point.latitude).toFixed(5)}, {Number(point.longitude).toFixed(5)}</a> : <span>נקודת GPS לא תקינה</span>}
