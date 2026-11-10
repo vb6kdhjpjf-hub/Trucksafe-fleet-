@@ -13,6 +13,7 @@ const initial = {
   lengthCm: "",
   grossWeightKg: "",
   currentWeightKg: "",
+  emptyWeightKg: "",
   weightPerAxleKg: "",
   vehicleType: "StraightTruck",
   axleCount: "",
@@ -227,6 +228,7 @@ export default function TruckRoutingPage() {
           lengthCm: Number(form.lengthCm),
           grossWeightKg: Number(form.grossWeightKg),
           currentWeightKg: Number(form.currentWeightKg),
+          emptyWeightKg: form.emptyWeightKg ? Number(form.emptyWeightKg) : null,
           weightPerAxleKg: form.weightPerAxleKg ? Number(form.weightPerAxleKg) : null,
           vehicleType: form.vehicleType,
           axleCount: Number(form.axleCount),
@@ -288,6 +290,7 @@ export default function TruckRoutingPage() {
           <label style={label}>אורך כולל (ס״מ)<input required type="number" min="200" max="3000" step="1" style={field} value={form.lengthCm} onChange={e => update("lengthCm", e.target.value)} placeholder="כולל נגרר"/></label>
           <label style={label}>משקל כולל מותר (ק״ג)<input required type="number" min="1000" max="100000" step="100" style={field} value={form.grossWeightKg} onChange={e => update("grossWeightKg", e.target.value)} placeholder="לפי רישיון הרכב"/></label>
           <label style={label}>משקל בפועל בנסיעה (ק״ג)<input required type="number" min="1000" max="100000" step="100" style={field} value={form.currentWeightKg} onChange={e => update("currentWeightKg", e.target.value)} placeholder="רכב + מטען + נגרר"/></label>
+          <label style={label}>משקל רכב ריק כולל נגרר (ק״ג)<input type="number" min="1000" max="100000" step="100" style={field} value={form.emptyWeightKg} onChange={e => update("emptyWeightKg", e.target.value)} placeholder="ללא מטען · נדרש להתאמת PTV"/></label>
           <label style={label}>סוג משאית<select required style={field} value={form.vehicleType} onChange={e => update("vehicleType", e.target.value)}><option value="StraightTruck">משאית קשיחה</option><option value="Tractor">גורר / ראש גורר</option></select></label>
           <label style={label}>מספר סרנים<input required type="number" min="2" max="12" step="1" style={field} value={form.axleCount} onChange={e => update("axleCount", e.target.value)} placeholder="לפי רישיון הרכב"/></label>
           <label style={label}>מספר נגררים<input required type="number" min="0" max="3" step="1" style={field} value={form.trailerCount} onChange={e => update("trailerCount", e.target.value)}/></label>
