@@ -68,3 +68,6 @@ node scripts/verify-restriction-source-review.mjs \
 ```
 
 The verifier checks the candidate payload hash, exact assessment-report byte hash, event schema, timestamp, decision, and event integrity hash. It rejects changed inputs, malformed records, and unexpected fields. It is an offline integrity check only: it does not authenticate the human reviewer, prove evidence is true, or authorize routing.
+
+
+Review events also copy the candidate's source identity (source ID, publisher, dataset name/version, licence reference, candidate schema version, and retrieval timestamp). The verifier requires exact equality with the current candidate, in addition to the content hashes. This makes a changed publisher/version/metadata invalidate an older review record. These fields are provenance labels supplied in the staged candidate, not independent proof of publisher identity or licence validity.
