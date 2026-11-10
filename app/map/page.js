@@ -19,6 +19,7 @@ export default function FleetMapPage() {
   const [error, setError] = useState("");
 
   const loadingLocations = useRef(false);
+  const historyByTrip = useRef(new Map());
 
   async function loadLocations(id) {
     if (!id || loadingLocations.current) return;
@@ -29,17 +30,30 @@ export default function FleetMapPage() {
         .eq("fleet_id", id).eq("status", "active");
       if (tripError) throw tripError;
       const points = await Promise.all((trips || []).map(async trip => {
+        const cachedHistory = historyByTrip.current.get(trip.id);
+        const historyQuery = cachedHistory
+          ? Promise.resolve({ data: null, error: null })
+          : supabase.from("trip_locations").select("latitude,longitude,recorded_at")
+              .eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(3000);
         const [latest, historyResult, driverResult, vehicleResult] = await Promise.all([
           supabase.from("trip_locations").select("id,latitude,longitude,speed_kmh,recorded_at")
             .eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(1).maybeSingle(),
-          supabase.from("trip_locations").select("latitude,longitude,recorded_at").eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(3000),
+          historyQuery,
           supabase.from("drivers").select("full_name").eq("id", trip.driver_id).maybeSingle(),
           supabase.from("vehicles").select("registration_number").eq("id", trip.vehicle_id).maybeSingle()
         ]);
         const childError = latest.error || historyResult.error || driverResult.error || vehicleResult.error;
         if (childError) throw childError;
         const loc = latest.data;
-        return loc ? { ...trip, ...loc, history: (historyResult.data || []).reverse(), driver: driverResult.data?.full_name || "נהג", vehicle: vehicleResult.data?.registration_number || "רכב" } : null;
+        if (!loc) return null;
+        const history = cachedHistory || (historyResult.data || []).reverse();
+        const lastPoint = history[history.length - 1];
+        if (!lastPoint || lastPoint.recorded_at !== loc.recorded_at) {
+          history.push({ latitude: loc.latitude, longitude: loc.longitude, recorded_at: loc.recorded_at });
+          if (history.length > 3000) history.shift();
+        }
+        historyByTrip.current.set(trip.id, history);
+        return { ...trip, ...loc, history, driver: driverResult.data?.full_name || "נהג", vehicle: vehicleResult.data?.registration_number || "רכב" };
       }));
       setLocations(points.filter(Boolean));
       setError("");
