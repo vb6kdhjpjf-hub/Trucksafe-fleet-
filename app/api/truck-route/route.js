@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { evaluateFleetRestrictions } from "../../../lib/road-restriction-geometry.mjs";
 import { isTruckRouteConfigured } from "../../../lib/truck-route-readiness.mjs";
+import { getSavedTruckRoutingProfile } from "../../../lib/truck-routing-profile.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -98,31 +99,36 @@ export async function POST(request) {
       return response({ error: "המיקום הנוכחי אינו תקין או נמצא מחוץ לישראל. אפשר להזין מוצא ידני." }, 400);
     }
 
-    const heightCm = Number(raw.heightCm);
-    const widthCm = Number(raw.widthCm);
-    const lengthCm = Number(raw.lengthCm);
-    const grossWeightKg = Number(raw.grossWeightKg);
-    const currentWeightKg = Number(raw.currentWeightKg);
-    const emptyWeightKg = Number(raw.emptyWeightKg);
-    const weightPerAxleKg = raw.weightPerAxleKg === "" || raw.weightPerAxleKg == null ? null : Number(raw.weightPerAxleKg);
-    const axleCount = Number(raw.axleCount);
-    const trailerCount = Number(raw.trailerCount);
-    const vehicleType = raw.vehicleType;
+    const vehicleId = typeof raw.vehicleId === "string" ? raw.vehicleId : "";
+    if (!/^[0-9a-f-]{36}$/i.test(vehicleId)) {
+      return response({ error: "יש לבחור רכב שמור מהצי לפני תכנון מסלול." }, 400);
+    }
 
-    if (!numberInRange(heightCm, 100, 600) ||
-        !numberInRange(widthCm, 100, 350) ||
-        !numberInRange(lengthCm, 200, 3000) ||
-        !numberInRange(grossWeightKg, 1000, 100000) ||
-        !numberInRange(currentWeightKg, 1000, 100000) ||
-        !numberInRange(emptyWeightKg, 500, 100000) ||
-        emptyWeightKg > currentWeightKg ||
-        emptyWeightKg > grossWeightKg ||
-        currentWeightKg > grossWeightKg ||
-        !Number.isInteger(axleCount) || axleCount < 2 || axleCount > 12 ||
-        !Number.isInteger(trailerCount) || trailerCount < 0 || trailerCount > 3 ||
-        !["StraightTruck", "Tractor"].includes(vehicleType) ||
-        (weightPerAxleKg !== null && !numberInRange(weightPerAxleKg, 500, 30000))) {
-      return response({ error: "יש לבדוק את סוג המשאית, מספר הסרנים והנגררים, המידות והמשקלים. משקל הרכב הריק חייב להיות קטן או שווה למשקל בפועל, והמשקל בפועל חייב להיות קטן או שווה למשקל הכולל המותר." }, 400);
+    const { data: savedVehicle, error: vehicleError } = await db
+      .from("vehicles")
+      .select("id,fleet_id,status,is_demo,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,empty_weight_kg,axle_count,trailer_count,weight_per_axle_kg")
+      .eq("id", vehicleId)
+      .eq("fleet_id", membership.fleet_id)
+      .maybeSingle();
+
+    if (vehicleError || !savedVehicle) {
+      return response({ error: "הרכב שנבחר אינו קיים בצי הפעיל או שאין הרשאה לצפות בו." }, 404);
+    }
+    if (!["available", "assigned"].includes(savedVehicle.status)) {
+      return response({ error: "אפשר לתכנן מסלול רק לרכב זמין או משויך שאינו בטיפול או מושבת." }, 409);
+    }
+
+    const vehicleProfile = getSavedTruckRoutingProfile(savedVehicle);
+    if (!vehicleProfile) {
+      return response({ error: "פרופיל הרכב השמור אינו מלא או מאומת, או שמדובר ברכב הדגמה. יש להשלים נתונים לפי רישיון הרכב." }, 409);
+    }
+
+    const { heightCm, widthCm, lengthCm, grossWeightKg, weightPerAxleKg, axleCount, trailerCount, vehicleType } = vehicleProfile;
+    const currentWeightKg = Number(raw.currentWeightKg);
+    const emptyWeightKg = Number(savedVehicle.empty_weight_kg);
+    if (!numberInRange(emptyWeightKg, 500, 100000) ||
+        !numberInRange(currentWeightKg, emptyWeightKg, grossWeightKg)) {
+      return response({ error: "יש להזין משקל בפועל תקין. הוא חייב להיות לפחות משקל הרכב הריק ולא לעלות על המשקל הכולל המותר לפי הרישיון." }, 400);
     }
 
     const [origin, destination] = await Promise.all([
