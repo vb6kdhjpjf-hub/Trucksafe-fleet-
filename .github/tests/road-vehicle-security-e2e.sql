@@ -2,6 +2,8 @@
 -- This file must run only against the dedicated test database; it creates no lasting data.
 begin;
 
+\ir ../../supabase/migrations/20261110170000_guard_vehicle_registration_insert.sql
+
 do $schema_check$
 declare
   missing_columns integer;
