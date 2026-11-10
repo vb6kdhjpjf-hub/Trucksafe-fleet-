@@ -11,7 +11,15 @@ async function fixture(t, report = { valid: true, approved_for_routing: false, d
   const root = await mkdtemp(path.join(os.tmpdir(), "trucksafe-review-")); t.after(() => rm(root, { recursive: true, force: true }));
   const outputDir = path.join(root, "quarantine"); await mkdir(outputDir);
   const candidateFile = path.join(root, "candidate.json"); const assessmentReportFile = path.join(root, "assessment.json");
-  await writeFile(candidateFile, JSON.stringify({ payload_sha256: "a".repeat(64), review: { approved_for_routing: false } }));
+  await writeFile(candidateFile, JSON.stringify({ payload_sha256: "a".repeat(64), source: {
+      source_id: "agency-dataset-id",
+      publisher: "Publishing authority",
+      dataset_name: "Road restrictions export",
+      dataset_version: "2026-11",
+      licence_reference: "permission-123"
+    },
+    retrieved_at: "2026-11-10T17:00:00Z",
+    schema_version: "1.0", review: { approved_for_routing: false } }));
   await writeFile(assessmentReportFile, JSON.stringify(report));
   return { root, outputDir, candidateFile, assessmentReportFile };
 }
