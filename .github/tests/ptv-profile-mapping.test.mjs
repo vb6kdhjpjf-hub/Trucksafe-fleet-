@@ -59,7 +59,7 @@ test("returns separate actual and permitted weight overrides", () => {
   assert.deepEqual(result.vehicleOverrides, {
     height: 400, width: 254, length: 1200,
     emptyWeight: 9000, loadWeight: 6000,
-    totalPermittedWeight: 18000, totalTechnicallyPermittedWeight: 18000,
+    totalPermittedWeight: 18000,
     numberOfAxles: 4, numberOfTrailers: 0, axleWeight: 9000
   });
   assert.equal(result.requiresManualVehicleVerification, true);
