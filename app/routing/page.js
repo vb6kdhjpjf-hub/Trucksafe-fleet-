@@ -84,6 +84,8 @@ export default function TruckRoutingPage() {
   const [providerReady, setProviderReady] = useState(false);
   const [ptvChecking, setPtvChecking] = useState(false);
   const [ptvCheckResult, setPtvCheckResult] = useState(null);
+  const [ptvRouteChecking, setPtvRouteChecking] = useState(false);
+  const [ptvRouteResult, setPtvRouteResult] = useState(null);
   const [locating, setLocating] = useState(false);
 
   useEffect(() => {
