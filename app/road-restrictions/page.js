@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { ArrowRight, AlertTriangle, Plus, RefreshCw, ShieldAlert } from "lucide-react";
 
-const blank = { road_name: "", restriction_type: "height", direction: "", max_height_m: "", max_weight_t: "", max_width_m: "", max_length_m: "", valid_from: "", valid_until: "", active_from: "", active_until: "", notes: "" };
+const blank = { road_name: "", restriction_type: "height", direction: "", max_height_m: "", max_weight_t: "", max_width_m: "", max_length_m: "", valid_from: "", valid_until: "", active_from: "", active_until: "", latitude: "", longitude: "", start_latitude: "", start_longitude: "", end_latitude: "", end_longitude: "", location_accuracy_m: "", source_type: "user_report", source_name: "", source_url: "", source_reference: "", source_updated_at: "", expires_at: "", notes: "" };
 const labels = { height: "גובה מרבי", weight: "משקל מרבי", width: "רוחב מרבי", length: "אורך מרבי", hazmat: "חומרים מסוכנים", time_window: "הגבלת שעות", closed: "כביש סגור", other: "אחר" };
 
 export default function RoadRestrictionsPage() {
@@ -56,6 +56,29 @@ export default function RoadRestrictionsPage() {
         (form.active_from && form.active_until && form.active_until < form.active_from)) {
       setMessage("תאריך או שעת הסיום אינם יכולים להיות לפני ההתחלה."); return;
     }
+    const coordinatePairs = [["latitude", "longitude"], ["start_latitude", "start_longitude"], ["end_latitude", "end_longitude"]];
+    for (const [latKey, lngKey] of coordinatePairs) {
+      if ((form[latKey] === "") !== (form[lngKey] === "")) {
+        setMessage("יש להזין קו רוחב וקו אורך יחד."); return;
+      }
+      if (form[latKey] !== "" &&
+          (!Number.isFinite(Number(form[latKey])) || Number(form[latKey]) < -90 || Number(form[latKey]) > 90 ||
+           !Number.isFinite(Number(form[lngKey])) || Number(form[lngKey]) < -180 || Number(form[lngKey]) > 180)) {
+        setMessage("קואורדינטות המיקום אינן תקינות."); return;
+      }
+    }
+    if ((form.start_latitude === "") !== (form.end_latitude === "")) {
+      setMessage("במקטע כביש יש להזין נקודת התחלה וסיום."); return;
+    }
+    if (form.source_url.trim() && !/^https:\/\//i.test(form.source_url.trim())) {
+      setMessage("קישור מקור חייב להתחיל ב־https://."); return;
+    }
+    if (form.source_updated_at && Number.isNaN(Date.parse(form.source_updated_at))) {
+      setMessage("תאריך עדכון המקור אינו תקין."); return;
+    }
+    if (form.expires_at && Number.isNaN(Date.parse(form.expires_at))) {
+      setMessage("תאריך התפוגה אינו תקין."); return;
+    }
     setBusy(true); setMessage("");
     try {
       const numeric = value => value === "" ? null : Number(value);
@@ -66,6 +89,20 @@ export default function RoadRestrictionsPage() {
         max_width_m: numeric(form.max_width_m), max_length_m: numeric(form.max_length_m),
         valid_from: form.valid_from || null, valid_until: form.valid_until || null,
         active_from: form.active_from || null, active_until: form.active_until || null,
+        country_code: "IL",
+        latitude: numeric(form.latitude), longitude: numeric(form.longitude),
+        start_latitude: numeric(form.start_latitude), start_longitude: numeric(form.start_longitude),
+        end_latitude: numeric(form.end_latitude), end_longitude: numeric(form.end_longitude),
+        location_accuracy_m: numeric(form.location_accuracy_m),
+        source_type: form.source_type,
+        source_name: form.source_name.trim() || null,
+        source_url: form.source_url.trim() || null,
+        source_reference: form.source_reference.trim() || null,
+        source_updated_at: form.source_updated_at ? new Date(form.source_updated_at).toISOString() : null,
+        expires_at: form.expires_at ? new Date(form.expires_at).toISOString() : null,
+        verification_status: "unverified",
+        verified_at: null,
+        verified_by: null,
         notes: form.notes.trim() || null
       };
       const { error } = await supabase.from("road_restrictions").insert(payload);
@@ -97,7 +134,7 @@ export default function RoadRestrictionsPage() {
     </header>
     <section style={{ ...card, background: "#fff8e8", borderColor: "#f2d7a3" }}>
       <div style={{ display: "flex", gap: 9, alignItems: "center" }}><ShieldAlert size={20}/><b>חשוב לדעת — זהו מאגר תיעוד, לא מנוע ניווט</b></div>
-      <p style={{ marginBottom: 0, lineHeight: 1.6 }}>המידע מוזן על ידי מנהלי הצי ואינו מאומת מול רשות הכבישים. המערכת עדיין אינה מחשבת מסלול משאית ואינה יכולה להבטיח הימנעות מגשרים נמוכים, מגבלות משקל או כבישים אסורים. אין להסתמך על המאגר כתחליף לשילוט ולהנחיות הדרך.</p>
+      <p style={{ marginBottom: 0, lineHeight: 1.6 }}>כל מגבלה חדשה נשמרת כ״לא מאומתת״. יש להזין מיקום מדויק ככל האפשר ולצרף מקור. רק לאחר בדיקה ואימות נפרדים ניתן יהיה להתייחס לרשומה כנתון מוסמך. המערכת עדיין אינה מחשבת מסלול משאית על בסיס המאגר, ואין להסתמך עליו כתחליף לשילוט ולהנחיות הדרך.</p>
     </section>
     {message && <p style={{ ...card, background: "#eef4ff" }}>{message}</p>}
     <section style={card}>
@@ -109,6 +146,19 @@ export default function RoadRestrictionsPage() {
         <label>שם הכביש / המקטע *<input required style={field} value={form.road_name} onChange={e => setForm({ ...form, road_name: e.target.value })}/></label>
         <label>סוג הגבלה<select style={field} value={form.restriction_type} onChange={e => setForm({ ...form, restriction_type: e.target.value })}>{Object.entries(labels).map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></label>
         <label>כיוון / מקטע<input style={field} value={form.direction} onChange={e => setForm({ ...form, direction: e.target.value })} placeholder="לדוגמה: לכיוון צפון"/></label>
+        <label>קו רוחב נקודתי<input type="number" step="any" style={field} value={form.latitude} onChange={e => setForm({ ...form, latitude: e.target.value })} placeholder="WGS84"/></label>
+        <label>קו אורך נקודתי<input type="number" step="any" style={field} value={form.longitude} onChange={e => setForm({ ...form, longitude: e.target.value })} placeholder="WGS84"/></label>
+        <label>תחילת מקטע – קו רוחב<input type="number" step="any" style={field} value={form.start_latitude} onChange={e => setForm({ ...form, start_latitude: e.target.value })}/></label>
+        <label>תחילת מקטע – קו אורך<input type="number" step="any" style={field} value={form.start_longitude} onChange={e => setForm({ ...form, start_longitude: e.target.value })}/></label>
+        <label>סיום מקטע – קו רוחב<input type="number" step="any" style={field} value={form.end_latitude} onChange={e => setForm({ ...form, end_latitude: e.target.value })}/></label>
+        <label>סיום מקטע – קו אורך<input type="number" step="any" style={field} value={form.end_longitude} onChange={e => setForm({ ...form, end_longitude: e.target.value })}/></label>
+        <label>דיוק מיקום משוער (מטר)<input type="number" min="0" max="100000" step="1" style={field} value={form.location_accuracy_m} onChange={e => setForm({ ...form, location_accuracy_m: e.target.value })}/></label>
+        <label>סוג מקור<select style={field} value={form.source_type} onChange={e => setForm({ ...form, source_type: e.target.value })}><option value="user_report">דיווח משתמש</option><option value="fleet_report">דיווח צי</option><option value="official_authority">רשות רשמית</option><option value="municipal_authority">רשות מקומית</option><option value="road_operator">מפעיל דרך</option><option value="imported">ייבוא נתונים</option></select></label>
+        <label>שם המקור<input style={field} value={form.source_name} onChange={e => setForm({ ...form, source_name: e.target.value })} placeholder="למשל: רשות מקומית"/></label>
+        <label>קישור למקור (HTTPS)<input type="url" style={field} value={form.source_url} onChange={e => setForm({ ...form, source_url: e.target.value })} placeholder="https://..."/></label>
+        <label>מספר אסמכתא / מזהה מקור<input style={field} value={form.source_reference} onChange={e => setForm({ ...form, source_reference: e.target.value })}/></label>
+        <label>עודכן במקור בתאריך<input type="datetime-local" style={field} value={form.source_updated_at} onChange={e => setForm({ ...form, source_updated_at: e.target.value })}/></label>
+        <label>תפוגת המגבלה<input type="datetime-local" style={field} value={form.expires_at} onChange={e => setForm({ ...form, expires_at: e.target.value })}/></label>
         <label>גובה מרבי (מטר)<input type="number" min="0.1" step="0.01" style={field} value={form.max_height_m} onChange={e => setForm({ ...form, max_height_m: e.target.value })}/></label>
         <label>משקל מרבי (טון)<input type="number" min="0.1" step="0.1" style={field} value={form.max_weight_t} onChange={e => setForm({ ...form, max_weight_t: e.target.value })}/></label>
         <label>רוחב מרבי (מטר)<input type="number" min="0.1" step="0.01" style={field} value={form.max_width_m} onChange={e => setForm({ ...form, max_width_m: e.target.value })}/></label>
@@ -130,6 +180,13 @@ export default function RoadRestrictionsPage() {
         {row.max_height_m && <span>גובה: {row.max_height_m} מ׳</span>}{row.max_weight_t && <span>משקל: {row.max_weight_t} טון</span>}{row.max_width_m && <span>רוחב: {row.max_width_m} מ׳</span>}{row.max_length_m && <span>אורך: {row.max_length_m} מ׳</span>}
         {(row.valid_from || row.valid_until) && <span>שעות: {row.valid_from || "—"}–{row.valid_until || "—"}</span>}
         {(row.active_from || row.active_until) && <span>תאריכים: {row.active_from || "—"} עד {row.active_until || "—"}</span>}
+      </div>
+      <div style={{ marginTop: 8, fontSize: 12, color: row.verification_status === "verified" ? "#16803c" : "#9a6500" }}>
+        אימות: {row.verification_status === "verified" ? "מאומת" : row.verification_status === "rejected" ? "נדחה" : row.verification_status === "expired" ? "פג תוקף" : "לא מאומת"}
+        {row.source_name ? " · מקור: " + row.source_name : ""}
+        {row.source_url ? <> · <a href={row.source_url} target="_blank" rel="noreferrer">קישור למקור</a></> : ""}
+        {(row.latitude !== null && row.longitude !== null) ? " · מיקום: " + Number(row.latitude).toFixed(5) + ", " + Number(row.longitude).toFixed(5) : ""}
+        {row.expires_at ? " · תפוגה: " + new Date(row.expires_at).toLocaleDateString("he-IL") : ""}
       </div>
       {row.notes && <p style={{ marginBottom: 0, whiteSpace: "pre-wrap" }}>{row.notes}</p>}
     </article>)}
