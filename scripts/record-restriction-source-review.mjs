@@ -33,9 +33,9 @@ export async function createHumanReviewEvent({ candidateFile, assessmentReportFi
   }
   const reportBytes = await readBytes(assessmentReportFile);
   const report = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(reportBytes));
-  if (!report || typeof report !== "object" || Array.isArray(report) || report.approved_for_routing !== false || typeof report.valid !== "boolean" || !Array.isArray(report.dimensions)) {
-    // Assessment reports use an object keyed by dimension; validate conservative fields below.
-    if (!report || typeof report !== "object" || Array.isArray(report) || report.approved_for_routing !== false || typeof report.valid !== "boolean" || !report.dimensions || typeof report.dimensions !== "object" || Array.isArray(report.dimensions)) throw new Error("Assessment report is malformed or not explicitly unapproved");
+  if (!report || typeof report !== "object" || Array.isArray(report) || report.approved_for_routing !== false ||
+      typeof report.valid !== "boolean" || !report.dimensions || typeof report.dimensions !== "object" || Array.isArray(report.dimensions)) {
+    throw new Error("Assessment report is malformed or not explicitly unapproved");
   }
   if (Object.hasOwn(report, "reviewer") || Object.hasOwn(report, "decision")) throw new Error("Assessment report must not contain review-event fields");
   const evidenceRefs = Object.values(report.dimensions).flatMap(item => Array.isArray(item?.evidence_refs) ? item.evidence_refs : []);
