@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+import { buildPreTripChecklist } from "../../lib/pre-trip-checklist.mjs";
 import { Truck, ArrowRight, Plus, ClipboardList, MapPin, CalendarClock, Play, CheckCircle2, LogOut } from "lucide-react";
 
 const emptyForm = { title: "", description: "", pickup_address: "", delivery_address: "", scheduled_at: "", assigned_driver_id: "", assigned_vehicle_id: "" };
@@ -25,6 +26,7 @@ export default function TasksPage() {
   const [trackingTripId, setTrackingTripId] = useState(null);
   const [preTripTask, setPreTripTask] = useState(null);
   const [preTripChecks, setPreTripChecks] = useState({});
+  const [preTripDefectDetails, setPreTripDefectDetails] = useState("");
   const preTripItems = ["צמיגים ולחץ אוויר תקינים","בלמים ובלם חניה תקינים","אורות, איתותים וצופר תקינים","מראות, שמשות ומגבים תקינים","אין נזילות או נזק גלוי","המטען מאובטח והמשקל מתאים","מסמכי רכב ורישיון נהיגה בתוקף"];
   const watchIdRef = useRef(null);
   const lastLocationWriteRef = useRef(0);
@@ -105,32 +107,35 @@ export default function TasksPage() {
 
   async function startTrip(task) {
     if (!task.assigned_driver_id || !task.assigned_vehicle_id) { setMessage("כדי להתחיל נסיעה יש לשייך למשימה גם נהג וגם רכב."); return; }
-    setPreTripTask(task); setPreTripChecks({}); setMessage("");
+    setPreTripTask(task); setPreTripChecks({}); setPreTripDefectDetails(""); setMessage("");
   }
 
   async function confirmPreTrip() {
     const task = preTripTask;
     if (!task || !fleet || !session?.user) return;
-    if (!preTripItems.every((_, i) => preTripChecks[i])) {
-      setMessage("יש לאשר את כל סעיפי בדיקת הרכב לפני פתיחת הנסיעה.");
+    const result = buildPreTripChecklist(preTripItems, preTripChecks, preTripDefectDetails);
+    if (!result.valid) {
+      setMessage(result.message);
       return;
     }
     setBusy(true); setMessage("");
-    const checklist = Object.fromEntries(preTripItems.map((item, i) => [item, Boolean(preTripChecks[i])]));
     try {
       const { data: startedTripId, error } = await supabase.rpc("start_trip_with_inspection", {
         p_fleet_id: fleet.id, p_task_id: task.id, p_driver_id: task.assigned_driver_id,
         p_vehicle_id: task.assigned_vehicle_id, p_origin_address: task.pickup_address,
-        p_destination_address: task.delivery_address, p_checklist: checklist
+        p_destination_address: task.delivery_address, p_checklist: result.checklist
       });
       if (error) {
         setMessage("לא ניתן לפתוח נסיעה או לשמור בדיקת רכב: " + error.message);
         return;
       }
       setPreTripTask(null);
+      setPreTripDefectDetails("");
       await loadWorkspace(session.user);
       if (!startedTripId) {
-        setMessage("בדיקת הרכב נשמרה, אך הנסיעה לא נפתחה. נמצאו ליקויים או שהרכב אינו מאושר לנסיעה. יש לטפל בנושא לפני יציאה.");
+        setMessage(result.hasDefects
+          ? "נמצאו ליקויים. הבדיקה נשמרה ונפתח אירוע בטיחות, אך הנסיעה לא נפתחה. יש לטפל בליקוי ולקבל אישור לפני יציאה."
+          : "הבדיקה נשמרה, אך הנסיעה לא נפתחה. יש לבדוק את תנאי הכשירות של הנהג והרכב לפני יציאה.");
         return;
       }
       setMessage("בדיקת הרכב נשמרה והנסיעה נפתחה בהצלחה.");
@@ -220,7 +225,7 @@ export default function TasksPage() {
     <section className="fleet-content">
       <div className="fleet-welcome"><div><small>תכנון ותפעול</small><h2>משימות ונסיעות</h2><p>{fleet?.name || "הצי שלך"} · {tasks.length} משימות</p></div><span className="role-pill"><ClipboardList size={14}/> ניהול משימות</span></div>
       {message && <div className="auth-message">{message}</div>}
-      {preTripTask && <section className="fleet-panel"><div className="fleet-panel-head"><div><h3>בדיקת רכב לפני יציאה</h3><p>{preTripTask.title} · יש לאשר כל סעיף לאחר בדיקה בפועל</p></div><span className="role-pill">בדיקת בטיחות</span></div><div className="task-list">{preTripItems.map((item, i) => <label className="task-assignees" key={item} style={{ padding: "10px 4px", alignItems: "center" }}><input type="checkbox" checked={Boolean(preTripChecks[i])} onChange={e => setPreTripChecks(old => ({ ...old, [i]: e.target.checked }))}/>{item}</label>)}</div><div className="task-actions"><button className="primary-btn" disabled={busy || !preTripItems.every((_, i) => preTripChecks[i])} onClick={confirmPreTrip}>אישור בדיקה ופתיחת נסיעה</button><button className="secondary-btn" disabled={busy} onClick={() => setPreTripTask(null)}>ביטול</button></div></section>}
+      {preTripTask && <section className="fleet-panel"><div className="fleet-panel-head"><div><h3>בדיקת רכב לפני יציאה</h3><p>{preTripTask.title} · יש לאשר כל סעיף לאחר בדיקה בפועל</p></div><span className="role-pill">בדיקת בטיחות</span></div><div className="task-list">{preTripItems.map((item, i) => <div className="task-assignees" key={item} style={{ padding: "10px 4px", alignItems: "center", justifyContent: "space-between", gap: 12 }}><span>{item}</span><select aria-label={item} value={preTripChecks[i] === true ? "ok" : preTripChecks[i] === false ? "defect" : ""} onChange={e => setPreTripChecks(old => ({ ...old, [i]: e.target.value === "ok" ? true : e.target.value === "defect" ? false : undefined }))}><option value="">בחר מצב</option><option value="ok">תקין</option><option value="defect">לא תקין</option></select></div>)}</div>{preTripItems.some((_, i) => preTripChecks[i] === false) && <label style={{ display: "grid", gap: 6, marginTop: 12 }}>פירוט הליקוי (חובה, לפחות 5 תווים)<textarea rows={3} maxLength={1000} value={preTripDefectDetails} onChange={e => setPreTripDefectDetails(e.target.value)} placeholder="תאר מה נמצא, באיזה רכיב ומה דורש טיפול" /></label>}<div className="task-actions"><button className="primary-btn" disabled={busy || !preTripItems.every((_, i) => typeof preTripChecks[i] === "boolean") || (preTripItems.some((_, i) => preTripChecks[i] === false) && preTripDefectDetails.trim().length < 5)} onClick={confirmPreTrip}>{preTripItems.some((_, i) => preTripChecks[i] === false) ? "שמירת בדיקה ודיווח תקלה" : "אישור בדיקה ופתיחת נסיעה"}</button><button className="secondary-btn" disabled={busy} onClick={() => { setPreTripTask(null); setPreTripDefectDetails(""); }}>ביטול</button></div></section>}
       <section className="fleet-panel">
         <div className="fleet-panel-head"><div><h3>נסיעות פעילות</h3><p>מעקב ועדכון נסיעות שהתחילו</p></div><span className="role-pill">{trips.filter(t=>t.status==="active").length} פעילות</span></div>
         {trips.filter(t=>t.status==="active").length === 0 ? <div className="fleet-empty">אין כרגע נסיעות פעילות.</div> :
