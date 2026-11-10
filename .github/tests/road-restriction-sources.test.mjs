@@ -30,3 +30,15 @@ test("source registry is immutable", () => {
   assert.equal(Object.isFrozen(ROAD_RESTRICTION_SOURCES), true);
   assert.equal(Object.isFrozen(ROAD_RESTRICTION_SOURCES[0]), true);
 });
+
+
+test("road signing authority GIS is only a contact-discovery source, never a restriction feed", () => {
+  const source = getRoadRestrictionSource("mot-road-signing-authority");
+  assert.ok(source);
+  assert.equal(source.publisher, "משרד התחבורה והבטיחות בדרכים");
+  assert.equal(source.contact, "pinusi@mot.gov.il");
+  assert.equal(source.candidateOnly, true);
+  assert.equal(source.routingEligible, false);
+  assert.match(source.limitations, /אינה מפרטת חסימות/);
+  assert.equal(isSourceCandidateOnly(source), true);
+});
