@@ -97,8 +97,20 @@ begin
     raise exception 'Schema parity failed: storage access policies are incomplete';
   end if;
 
-  if to_regprocedure('public.consume_truck_route_quota()') is null then
-    raise exception 'Test-only route quota protection was unexpectedly removed';
+  if to_regprocedure('public.consume_truck_route_quota()') is null
+     or exists (
+       select 1 from pg_proc p
+       where p.oid='public.consume_truck_route_quota()'::regprocedure
+         and p.prosecdef
+     ) then
+    raise exception 'Route quota RPC is missing or is not SECURITY INVOKER';
+  end if;
+
+  if has_function_privilege('anon','public.consume_truck_route_quota()','EXECUTE')
+     or not has_function_privilege('authenticated','public.consume_truck_route_quota()','EXECUTE')
+     or not has_table_privilege('authenticated','private.truck_route_requests','SELECT')
+     or not has_column_privilege('authenticated','private.truck_route_requests','user_id','INSERT') then
+    raise exception 'Route quota privileges are not correctly scoped to authenticated users';
   end if;
 
   select count(*) into bad_tables
