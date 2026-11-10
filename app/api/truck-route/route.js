@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { evaluateFleetRestrictions } from "../../../lib/road-restriction-geometry.mjs";
 import { isTruckRouteConfigured } from "../../../lib/truck-route-readiness.mjs";
 import { getSavedTruckRoutingProfile } from "../../../lib/truck-routing-profile.mjs";
+import { checkTruckRouteQuota } from "../../../lib/truck-route-quota.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -129,6 +130,16 @@ export async function POST(request) {
     if (!numberInRange(emptyWeightKg, 500, 100000) ||
         !numberInRange(currentWeightKg, emptyWeightKg, grossWeightKg)) {
       return response({ error: "יש להזין משקל בפועל תקין. הוא חייב להיות לפחות משקל הרכב הריק ולא לעלות על המשקל הכולל המותר לפי הרישיון." }, 400);
+    }
+
+    // Enforce the per-user quota before any paid HERE geocoding or routing call.
+    // If the quota service is unavailable, fail closed rather than spending provider credits.
+    const quota = await checkTruckRouteQuota(db);
+    if (!quota.allowed) {
+      if (quota.reason === "quota_exceeded") {
+        return response({ error: "הגעת למכסת תכנון המסלולים. אפשר לנסות שוב בעוד 10 דקות." }, 429);
+      }
+      return response({ error: "מנגנון הגבלת בקשות הניווט אינו זמין. לא ניתן לחשב מסלול כרגע." }, 503);
     }
 
     const [origin, destination] = await Promise.all([
