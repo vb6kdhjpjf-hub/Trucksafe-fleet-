@@ -125,8 +125,6 @@ declare
   restriction_id uuid;
   message_text_value text;
   status_value text;
-  accepted_requests integer := 0;
-  i integer;
 begin
   insert into auth.users(id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data)
   values
@@ -245,19 +243,38 @@ begin
     end if;
   end;
 
-  -- Preserve the test-only route quota: 10 requests per user per 10 minutes.
-  for i in 1..11 loop
-    if public.consume_truck_route_quota() then
-      accepted_requests := accepted_requests + 1;
-    end if;
-  end loop;
-  if accepted_requests <> 10 then
-    raise exception 'Route quota expected 10 accepted requests, got %',accepted_requests;
-  end if;
-  insert into pg_temp.road_vehicle_security_results
-  values('route quota','PASS','10 requests accepted; request 11 blocked');
 end
 $behavior_tests$;
+
+-- Exercise the RPC with the real authenticated database role, not the postgres
+-- owner used to create rollback-only fixtures. This verifies grants and RLS.
+select set_config('request.jwt.claim.sub','f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf51',true);
+select set_config('request.jwt.claim.role','authenticated',true);
+set local role authenticated;
+select set_config(
+  'trucksafe.test_quota_count',
+  (
+    select count(*) filter (where allowed)::text
+    from (
+      select public.consume_truck_route_quota() as allowed
+      from generate_series(1,11)
+    ) quota_calls
+  ),
+  true
+);
+reset role;
+
+do $quota_assert$
+begin
+  if current_setting('trucksafe.test_quota_count')::integer <> 10 then
+    raise exception 'Route quota expected 10 accepted requests, got %',
+      current_setting('trucksafe.test_quota_count');
+  end if;
+end
+$quota_assert$;
+
+insert into pg_temp.road_vehicle_security_results
+values('route quota under authenticated role','PASS','10 requests accepted; request 11 blocked');
 
 select scenario,outcome,detail
 from pg_temp.road_vehicle_security_results
