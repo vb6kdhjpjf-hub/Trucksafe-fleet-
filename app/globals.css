@@ -203,3 +203,6 @@ button, a { -webkit-tap-highlight-color: transparent; }
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+/* Mobile vehicle actions: keep registration and edit controls visible */
+@media(max-width:700px){.vehicle-row{flex-wrap:wrap;align-items:flex-start}.vehicle-row>div{min-width:0;flex:1 1 calc(100% - 40px)}.vehicle-row>.nav-link{flex:1 1 100%;justify-content:center;white-space:normal}}
