@@ -8,6 +8,29 @@ import { verifyHumanReviewEvent } from "./verify-restriction-source-review.mjs";
 
 const sha256 = value => createHash("sha256").update(value).digest("hex");
 const isHash = value => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+const ASSESSMENT_DIMENSIONS = ["authority", "geographic_coverage", "truck_constraints", "measurement_quality", "temporal_validity", "update_mechanism", "licensing", "reliability", "independent_validation"];
+
+function isValidAssessmentReport(report) {
+  if (!report || typeof report !== "object" || Array.isArray(report) ||
+      report.approved_for_routing !== false || typeof report.valid !== "boolean" ||
+      !Array.isArray(report.errors) || report.errors.some(item => typeof item !== "string") ||
+      !report.dimensions || typeof report.dimensions !== "object" || Array.isArray(report.dimensions) ||
+      !Array.isArray(report.blocking_gaps) || typeof report.evidence_dossier_complete !== "boolean" ||
+      Object.keys(report.dimensions).length !== ASSESSMENT_DIMENSIONS.length ||
+      ASSESSMENT_DIMENSIONS.some(name => !Object.hasOwn(report.dimensions, name))) return false;
+  const gaps = [];
+  for (const name of ASSESSMENT_DIMENSIONS) {
+    const item = report.dimensions[name];
+    if (!item || typeof item !== "object" || Array.isArray(item) ||
+        !["missing", "partial", "evidenced"].includes(item.status) ||
+        !Array.isArray(item.evidence_refs) ||
+        item.evidence_refs.some(ref => typeof ref !== "string" || !ref.trim() || ref.length > 1000)) return false;
+    if (item.status === "evidenced" && item.evidence_refs.length === 0) return false;
+    if (item.status !== "evidenced") gaps.push(name);
+  }
+  return JSON.stringify(report.blocking_gaps) === JSON.stringify(gaps) &&
+    report.evidence_dossier_complete === (report.valid && gaps.length === 0);
+}
 
 async function readBounded(file, maxBytes = 5 * 1024 * 1024) {
   const handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
@@ -36,7 +59,7 @@ export function verifyRestrictionSourceManifest(manifest) {
   if (sha256(JSON.stringify(body)) !== supplied) throw new Error("Manifest integrity hash mismatch");
   if (manifest.candidates.some(item => !item || typeof item !== "object" ||
       !isHash(item.candidate_payload_sha256) ||
-      !["assessment_missing", "awaiting_review", "reviewed", "repeated_review", "review_integrity_failed", "stale_review"].includes(item.status) ||
+      !["assessment_missing", "assessment_invalid", "awaiting_review", "reviewed", "repeated_review", "review_integrity_failed", "stale_review"].includes(item.status) ||
       item.approved_for_routing !== false || !Array.isArray(item.reviews))) {
     throw new Error("Manifest candidate entry is malformed");
   }
@@ -89,10 +112,16 @@ export async function buildRestrictionSourceManifest({ quarantineDir, outputDir 
     const assessmentName = "candidate-" + candidate.payload_sha256 + ".assessment.json";
     const assessmentFile = path.join(dir, assessmentName);
     let assessmentExists = false;
+    let assessmentValid = false;
+    let assessmentHash = null;
     try {
       const info = await lstat(assessmentFile);
       if (!info.isFile() || info.isSymbolicLink()) throw new Error("Assessment path must be a regular, non-symlink file");
       assessmentExists = true;
+      const assessmentBytes = await readBounded(assessmentFile, 1024 * 1024);
+      const assessment = parseJson(assessmentBytes, "Assessment report");
+      assessmentHash = sha256(assessmentBytes);
+      assessmentValid = isValidAssessmentReport(assessment);
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
@@ -100,7 +129,7 @@ export async function buildRestrictionSourceManifest({ quarantineDir, outputDir 
     const related = eventRecords.filter(record => record.event?.candidate_payload_sha256 === candidate.payload_sha256);
     const reviews = [];
     let staleReview = false;
-    if (assessmentExists) {
+    if (assessmentExists && assessmentValid) {
       for (const record of related) {
         seenEventNames.add(record.name);
         try {
@@ -108,9 +137,15 @@ export async function buildRestrictionSourceManifest({ quarantineDir, outputDir 
           reviews.push({ event_file: "reviews/" + record.name, valid: true, decision: result.decision, reviewer: result.reviewer, reviewed_at: record.event.reviewed_at, event_sha256: result.event_sha256, assessment_report_sha256: result.assessment_report_sha256 });
         } catch (error) {
           const message = String(error.message).slice(0, 500);
-          if (/assessment report hash|source provenance does not match|candidate payload hash/i.test(message)) staleReview = true;
-          reviews.push({ event_file: "reviews/" + record.name, valid: false, stale: staleReview, error: message });
+          const isStale = /assessment report hash|source provenance does not match|candidate payload hash/i.test(message);
+          if (isStale) staleReview = true;
+          reviews.push({ event_file: "reviews/" + record.name, valid: false, stale: isStale, error: message });
         }
+      }
+    } else if (assessmentExists) {
+      for (const record of related) {
+        seenEventNames.add(record.name);
+        reviews.push({ event_file: "reviews/" + record.name, valid: false, error: "Assessment report failed structural validation" });
       }
     } else {
       for (const record of related) {
@@ -122,6 +157,7 @@ export async function buildRestrictionSourceManifest({ quarantineDir, outputDir 
     const invalidReviews = reviews.some(review => !review.valid);
     let status = "awaiting_review";
     if (!assessmentExists) status = "assessment_missing";
+    else if (!assessmentValid) status = "assessment_invalid";
     else if (staleReview) status = "stale_review";
     else if (invalidReviews) status = "review_integrity_failed";
     else if (validReviews.length > 1) status = "repeated_review";
@@ -134,6 +170,7 @@ export async function buildRestrictionSourceManifest({ quarantineDir, outputDir 
       candidate_file: name,
       candidate_payload_sha256: candidate.payload_sha256,
       assessment_file: assessmentExists ? assessmentName : null,
+      assessment_report_sha256: assessmentHash,
       status,
       reviews,
       approved_for_routing: false
