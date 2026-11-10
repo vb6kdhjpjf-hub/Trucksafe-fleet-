@@ -39,3 +39,19 @@ node scripts/assess-staged-restriction-source.mjs \\
 ```
 
 The command writes a separate content-addressed `.assessment.json` report and never edits the candidate. If no evidence is supplied, all nine dimensions remain blocking. Evidence references are pointers for human review, not proof of truth. Even a complete dossier always has `approved_for_routing: false`. The command does not contact networks or databases.
+
+## Append-only human review event
+
+A separate human review event can be recorded after an assessment report exists. It requires an explicit reviewer identifier and one of three decisions: `accepted_for_pilot`, `rejected`, or `needs_more_evidence`.
+
+```sh
+node scripts/record-restriction-source-review.mjs \
+  --candidate ./private-quarantine/candidate-HASH.json \
+  --assessment-report ./private-quarantine/candidate-HASH.assessment.json \
+  --output-dir ./private-quarantine \
+  --reviewer "reviewer-id" \
+  --decision needs_more_evidence \
+  --notes "Describe remaining verification work"
+```
+
+The command writes a separate file under `reviews/` using exclusive-create semantics and mode `0600`. It links the candidate payload hash and exact assessment-report byte hash, includes evidence references, and hashes the canonical event content. It never edits the candidate or assessment report, accepts no routing-approval decision, and does not add an `approved_for_routing` field. This is an audit record of a human decision only; it does not verify evidence, enable routing, contact networks, or access a database. The reviewer identifier is supplied by the human operator and is not independently authenticated by this local CLI.
