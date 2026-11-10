@@ -88,3 +88,4 @@ jobs:
         run: |
           set +x
           psql "$SUPABASE_TEST_DB_URL" -X -v ON_ERROR_STOP=1 -f .github/tests/lifecycle-e2e.sql
+          psql "$SUPABASE_TEST_DB_URL" -X -v ON_ERROR_STOP=1 -f .github/tests/road-vehicle-security-e2e.sql
