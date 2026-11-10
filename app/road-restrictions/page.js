@@ -70,6 +70,9 @@ export default function RoadRestrictionsPage() {
     if ((form.start_latitude === "") !== (form.end_latitude === "")) {
       setMessage("במקטע כביש יש להזין נקודת התחלה וסיום."); return;
     }
+    if (form.latitude === "" && form.start_latitude === "") {
+      setMessage("יש להזין מיקום נקודתי או נקודת התחלה וסיום של מקטע הכביש."); return;
+    }
     if (form.source_url.trim() && !/^https:\/\//i.test(form.source_url.trim())) {
       setMessage("קישור מקור חייב להתחיל ב־https://."); return;
     }
@@ -186,6 +189,7 @@ export default function RoadRestrictionsPage() {
         {row.source_name ? " · מקור: " + row.source_name : ""}
         {row.source_url ? <> · <a href={row.source_url} target="_blank" rel="noreferrer">קישור למקור</a></> : ""}
         {(row.latitude !== null && row.longitude !== null) ? " · מיקום: " + Number(row.latitude).toFixed(5) + ", " + Number(row.longitude).toFixed(5) : ""}
+        {(row.start_latitude !== null && row.end_latitude !== null) ? " · מקטע: " + Number(row.start_latitude).toFixed(5) + ", " + Number(row.start_longitude).toFixed(5) + " עד " + Number(row.end_latitude).toFixed(5) + ", " + Number(row.end_longitude).toFixed(5) : ""}
         {row.expires_at ? " · תפוגה: " + new Date(row.expires_at).toLocaleDateString("he-IL") : ""}
       </div>
       {row.notes && <p style={{ marginBottom: 0, whiteSpace: "pre-wrap" }}>{row.notes}</p>}
