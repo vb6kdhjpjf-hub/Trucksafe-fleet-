@@ -219,7 +219,7 @@ export async function POST(request) {
       code: String(notice.code || "notice").slice(0, 100),
       severity: String(notice.severity || "info").slice(0, 30),
       title: String(notice.title || notice.code || "הודעת ניווט").slice(0, 240)
-    })));
+    }));
     const actions = route.sections.flatMap(section => (section.actions || [])
       .filter(action => typeof action.instruction === "string" && action.instruction.trim())
       .map(action => ({
