@@ -228,7 +228,7 @@ export default function RoadRestrictionsPage() {
     </header>
     <section style={{ ...card, background: "#fff8e8", borderColor: "#f2d7a3" }}>
       <div style={{ display: "flex", gap: 9, alignItems: "center" }}><ShieldAlert size={20}/><b>חשוב לדעת — זהו מאגר תיעוד, לא מנוע ניווט</b></div>
-      <p style={{ marginBottom: 0, lineHeight: 1.6 }}>כל מגבלה חדשה נשמרת כ״לא מאומתת״. יש להזין מיקום מדויק ככל האפשר ולצרף מקור. רק לאחר בדיקה ואימות נפרדים ניתן יהיה להתייחס לרשומה כנתון מוסמך. המערכת עדיין אינה מחשבת מסלול משאית על בסיס המאגר, ואין להסתמך עליו כתחליף לשילוט ולהנחיות הדרך.</p>
+      <p style={{ marginBottom: 0, lineHeight: 1.6 }}>כל מגבלה חדשה נשמרת כ״לא מאומתת״. יש להזין מיקום מדויק ככל האפשר ולצרף מקור. בהגבלת גובה, אימות מחייב גם מדידה בפועל, גובה רשום בתמרור, תאריך ושיטת מדידה, דיוק מדידה של עד 1 ס״מ ומסמך מדידה. נדרש פער בטיחות של 20–29 ס״מ בין הגובה המדוד לגובה המותר בתמרור, בהתאם ל־<a href="https://www.gov.il/BlobFolder/policy/traffic_height_obstacle/he/Guidelines-for-height-obstacles-2026.pdf" target="_blank" rel="noreferrer">הנחיות משרד התחבורה מאפריל 2026</a>. המערכת עדיין אינה מחשבת מסלול משאית על בסיס מאגר מלא של מגבלות רשמיות, ואין להסתמך עליה כתחליף לשילוט ולהנחיות הדרך.</p>
     </section>
     {message && <p style={{ ...card, background: "#eef4ff" }}>{message}</p>}
     <section style={card}>
