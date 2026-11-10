@@ -24,6 +24,8 @@ export default function Home() {
   const [registrationSchemaReady,setRegistrationSchemaReady]=useState(false);
   const [registrationUploadBusy,setRegistrationUploadBusy]=useState("");
   const [registrationViewBusy,setRegistrationViewBusy]=useState("");
+  const [registrationReviewBusy,setRegistrationReviewBusy]=useState("");
+  const [registrationReviewNotes,setRegistrationReviewNotes]=useState({});
   const [drivers,setDrivers]=useState([]);
   const [activeTrips,setActiveTrips]=useState(0);
   const [openIncidents,setOpenIncidents]=useState(0);
@@ -106,7 +108,7 @@ export default function Home() {
     else {
       const {data:verificationRows,error:verificationError}=await supabase
         .from("vehicles")
-        .select("id,registration_verification_status,registration_document_path,registration_document_uploaded_at")
+        .select("id,registration_verification_status,registration_document_path,registration_document_uploaded_at,registration_verified_at,registration_verification_note")
         .eq("fleet_id",current.id);
       const verificationById=new Map((verificationRows||[]).map(row=>[row.id,row]));
       setRegistrationSchemaReady(!verificationError);
@@ -378,6 +380,43 @@ export default function Home() {
     }
   }
 
+  async function reviewVehicleRegistration(vehicle, decision) {
+    const note = (registrationReviewNotes[vehicle.id] || "").trim();
+    if (note.length < 5 || note.length > 1000) {
+      setMessage("יש להזין הערת בדיקה באורך 5 עד 1000 תווים.");
+      return;
+    }
+    if (!vehicle.registration_document_path || vehicle.is_demo ||
+        !["owner", "fleet_manager"].includes(fleet?.role)) {
+      setMessage("אין הרשאה לבדוק את הרישיון הזה.");
+      return;
+    }
+    setRegistrationReviewBusy(vehicle.id);
+    setMessage("");
+    try {
+      const { data, error } = await supabase.rpc("review_vehicle_registration", {
+        p_vehicle_id: vehicle.id,
+        p_decision: decision,
+        p_note: note
+      });
+      if (error) throw error;
+      const result = typeof data === "string" ? JSON.parse(data) : data;
+      setVehicles(current => current.map(item => item.id === vehicle.id ? {
+        ...item,
+        registration_verification_status: result?.status || decision,
+        registration_verified_at: result?.verified_at || null,
+        registration_verified_by: result?.verified_by || session?.user?.id,
+        registration_verification_note: result?.note || note
+      } : item));
+      setRegistrationReviewNotes(current => ({ ...current, [vehicle.id]: "" }));
+      setMessage(decision === "verified" ? "הרישיון אושר. הרכב עדיין כפוף לכל בדיקות הבטיחות הנוספות." : "הרישיון נדחה והסיבה נשמרה.");
+    } catch (error) {
+      setMessage("לא ניתן לשמור את החלטת הבדיקה: " + (error?.message || "שגיאה לא ידועה"));
+    } finally {
+      setRegistrationReviewBusy("");
+    }
+  }
+
   async function markVehicleAsDemo(vehicle) {
     if (!fleet?.id || !["owner", "fleet_manager"].includes(fleet.role)) {
       setMessage("אין לחשבון הרשאה לעדכן את פרטי הרכב.");
@@ -489,7 +528,16 @@ export default function Home() {
         <label>משקל מרבי לסרן (ק״ג)<input type="number" min="500" max="30000" step="100" value={weightPerAxleKg} onChange={e=>setWeightPerAxleKg(e.target.value)} placeholder="לפי רישיון / נתון מאומת"/></label>
         <button className="primary-btn" disabled={busy}>שמירת רכב</button>
       </form>}
-      {vehicles.length===0?<div className="fleet-empty">עדיין לא הוספת כלי רכב. לחץ על "הוספת רכב" כדי להתחיל.</div>:<div className="vehicle-list">{vehicles.map(v=><div className="vehicle-row" key={v.id}><Truck size={20}/><div><b>{v.registration_number}</b><small>{[v.make,v.model,v.vehicle_type].filter(Boolean).join(" · ")}{v.assigned_driver_id ? " · נהג: "+(drivers.find(d=>d.id===v.assigned_driver_id)?.full_name||"לא נמצא") : " · ללא נהג משויך"}</small>{v.is_demo&&<small style={{color:"#9a6700",fontWeight:700}}>רכב הדגמה בלבד · אין להשתמש לניווט אמיתי</small>}{!v.is_demo&&<small style={{fontWeight:700,color:v.registration_verification_status==="verified"?"#16803c":v.registration_verification_status==="pending"?"#a15c00":"#667085"}}>אימות רישיון: {v.registration_verification_status==="verified"?"מאומת":v.registration_verification_status==="pending"?"ממתין לבדיקה":v.registration_verification_status==="rejected"?"נדחה":"טרם הועלה"}</small>}</div>{!v.is_demo&&v.registration_document_path&&["owner","fleet_manager"].includes(fleet.role)&&<button type="button" className="nav-link" disabled={registrationViewBusy===v.id} onClick={()=>viewVehicleRegistration(v)}>{registrationViewBusy===v.id?"פותח מסמך...":"צפייה ברישיון (קישור מאובטח)"}</button>}{!v.is_demo&&["owner","fleet_manager"].includes(fleet.role)&&<label className="nav-link" style={{display:"inline-flex",alignItems:"center",gap:6,cursor:registrationSchemaReady?"pointer":"not-allowed",opacity:registrationSchemaReady?1:.55}}>העלאת רישיון<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" disabled={!registrationSchemaReady||registrationUploadBusy===v.id} style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(file)uploadVehicleRegistration(v,file);e.target.value="";}}/></label>}{!registrationSchemaReady&&<small style={{color:"#667085"}}>העלאת מסמכים תופעל לאחר התקנת עדכון האבטחה במסד הנתונים</small>}{!v.is_demo&&String(v.make||"").toLowerCase()==="man"&&["owner","fleet_manager"].includes(fleet.role)&&<button type="button" className="nav-link" disabled={busy} onClick={()=>markVehicleAsDemo(v)}>סמן כרכב הדגמה</button>}<span>{v.status==="available"?"זמין":v.status==="assigned"?"משויך":v.status==="on_trip"?"בנסיעה":v.status==="maintenance"?"בטיפול":v.status==="inactive"?"לא פעיל":v.status}</span></div>)}</div>}
+      {vehicles.length===0?<div className="fleet-empty">עדיין לא הוספת כלי רכב. לחץ על "הוספת רכב" כדי להתחיל.</div>:<div className="vehicle-list">{vehicles.map(v=><div className="vehicle-row" key={v.id}><Truck size={20}/><div><b>{v.registration_number}</b><small>{[v.make,v.model,v.vehicle_type].filter(Boolean).join(" · ")}{v.assigned_driver_id ? " · נהג: "+(drivers.find(d=>d.id===v.assigned_driver_id)?.full_name||"לא נמצא") : " · ללא נהג משויך"}</small>{v.is_demo&&<small style={{color:"#9a6700",fontWeight:700}}>רכב הדגמה בלבד · אין להשתמש לניווט אמיתי</small>}{!v.is_demo&&<small style={{fontWeight:700,color:v.registration_verification_status==="verified"?"#16803c":v.registration_verification_status==="pending"?"#a15c00":"#667085"}}>אימות רישיון: {v.registration_verification_status==="verified"?"מאומת":v.registration_verification_status==="pending"?"ממתין לבדיקה":v.registration_verification_status==="rejected"?"נדחה":"טרם הועלה"}</small>}</div>{!v.is_demo&&v.registration_document_path&&["owner","fleet_manager"].includes(fleet.role)&&<button type="button" className="nav-link" disabled={registrationViewBusy===v.id} onClick={()=>viewVehicleRegistration(v)}>{registrationViewBusy===v.id?"פותח מסמך...":"צפייה ברישיון (קישור מאובטח)"}</button>}{!v.is_demo&&["owner","fleet_manager"].includes(fleet.role)&&<label className="nav-link" style={{display:"inline-flex",alignItems:"center",gap:6,cursor:registrationSchemaReady?"pointer":"not-allowed",opacity:registrationSchemaReady?1:.55}}>העלאת רישיון<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" disabled={!registrationSchemaReady||registrationUploadBusy===v.id} style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(file)uploadVehicleRegistration(v,file);e.target.value="";}}/></label>}{v.registration_document_path&&!v.is_demo&&v.registration_verification_status==="pending"&&["owner","fleet_manager"].includes(fleet.role)&&<div className="registration-review" style={{display:"grid",gap:8,minWidth:220,maxWidth:360}}>
+  <small style={{fontWeight:700}}>בדיקת מסמך לפני אישור</small>
+  <textarea aria-label="הערת בדיקת רישיון" rows={2} maxLength={1000} value={registrationReviewNotes[v.id]||""} onChange={e=>setRegistrationReviewNotes(current=>({...current,[v.id]:e.target.value}))} placeholder="רשום מה נבדק ומה נמצא (לפחות 5 תווים)" />
+  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+    <button type="button" className="primary-btn" disabled={registrationReviewBusy===v.id} onClick={()=>reviewVehicleRegistration(v,"verified")}>{registrationReviewBusy===v.id?"שומר...":"אישור רישיון"}</button>
+    <button type="button" className="nav-link" disabled={registrationReviewBusy===v.id} onClick={()=>reviewVehicleRegistration(v,"rejected")}>דחיית רישיון</button>
+  </div>
+</div>}
+{v.registration_verification_note&&<small>הערת בדיקה: {v.registration_verification_note}</small>}
+{!registrationSchemaReady&&<small style={{color:"#667085"}}>העלאת מסמכים תופעל לאחר התקנת עדכון האבטחה במסד הנתונים</small>}{!v.is_demo&&String(v.make||"").toLowerCase()==="man"&&["owner","fleet_manager"].includes(fleet.role)&&<button type="button" className="nav-link" disabled={busy} onClick={()=>markVehicleAsDemo(v)}>סמן כרכב הדגמה</button>}<span>{v.status==="available"?"זמין":v.status==="assigned"?"משויך":v.status==="on_trip"?"בנסיעה":v.status==="maintenance"?"בטיפול":v.status==="inactive"?"לא פעיל":v.status}</span></div>)}</div>}
       </section>
       <p className="fleet-foot">TruckSafe Fleet V1 · מחובר למסד הנתונים · נתוני הצי מוצגים מהמערכת</p>
     </section>
