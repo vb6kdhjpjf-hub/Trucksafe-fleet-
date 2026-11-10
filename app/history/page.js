@@ -90,7 +90,7 @@ export default function TripHistoryPage() {
           <span style={{ background: trip.status === "active" ? "#e8f1ff" : "#edf7ef", padding: "5px 10px", borderRadius: 20, height: "fit-content" }}>{trip.status === "active" ? "פעילה" : trip.status === "completed" ? "הושלמה" : trip.status}</span>
         </div>
         <p style={{ marginBottom: 8 }}>{trip.origin_address || "מוצא לא צוין"} ← {trip.destination_address || "יעד לא צוין"}</p>
-        <div style={{ color: "#718096", fontSize: 13 }}>סיום: {date(trip.ended_at)} · נקודות GPS: {trip.points.length}</div>
+        <div style={{ color: "#718096", fontSize: 13 }}>סיום: {date(trip.ended_at)} · נקודות GPS: {Object.prototype.hasOwnProperty.call(pointsByTrip, trip.id) ? pointsByTrip[trip.id].length : "ייטענו בעת פתיחת הנסיעה"}</div>
         <button onClick={() => toggleTrip(trip)} style={{ ...btn, marginTop: 12 }}><History size={16}/>{expanded[trip.id] ? "הסתר נקודות GPS" : "הצג נקודות GPS"}</button>
         {expanded[trip.id] && <div style={{ marginTop: 12, borderTop: "1px solid #edf0f5", paddingTop: 10 }}>
           {pointsLoading[trip.id] ? <p>טוען נקודות GPS...</p> : (pointsByTrip[trip.id] || []).length === 0 ? <p>לא נשמרו נקודות GPS בנסיעה זו.</p> : (pointsByTrip[trip.id] || []).map((point, index) =>
