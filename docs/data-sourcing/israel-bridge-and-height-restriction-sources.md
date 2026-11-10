@@ -75,3 +75,33 @@ Request, without assuming public availability:
 ## 6. Current implementation boundary
 
 The existing `road_restrictions` review workflow and database guard enforce evidence for verified height records. This document is a source-acquisition plan only: it does not add database tables, import records, change routing behavior, enable PTV, or deploy to Production.
+
+## 7. Supplier response evaluation checklist
+
+Do not treat a positive reply or a sample file as proof of nationwide operational coverage. Before accepting a provider, record evidence for every item below:
+
+| Gate | Evidence required | Pass condition |
+| --- | --- | --- |
+| Authority | Data-owner identity and responsibility map | Each record is attributable to the competent road owner / authority |
+| Geographic coverage | Coverage map, road classes, excluded areas and known gaps | Coverage is explicit; gaps are not silently treated as clear roads |
+| Truck constraints | Data dictionary and sample records | Height, gross/axle weight, dimensions, time windows and closures are separately represented where applicable |
+| Measurement quality | Measurement method, date, accuracy, lane/direction and signed evidence | Height values can be traced to a current official measurement |
+| Temporal validity | Effective dates, expiry, supersession and emergency update behavior | Expired or withdrawn records cannot remain active |
+| Update mechanism | API/change feed/file delivery, cadence, outage notice and last-updated metadata | Changes and withdrawals can be detected within an agreed operational window |
+| Licensing | Written commercial-use, storage, transformation and display permission | Product use is expressly permitted, including derived route decisions |
+| Reliability | SLA, support contact, incident process and correction channel | Operational ownership and escalation are documented |
+| Independent validation | Field/authority spot checks and route-level test cases | False negatives and stale-data behavior meet an approved safety threshold |
+
+### Mandatory pilot before national activation
+
+1. Obtain a written data agreement and a representative sample covering urban, interurban, municipal and national-road authorities.
+2. Build a staging-only importer that preserves the raw source payload, source ID, retrieval timestamp, source version and checksum.
+3. Validate geometry, coordinate reference system, lane/direction association, units, time zones, effective intervals and duplicate/conflict handling.
+4. Compare a statistically justified sample against current official signs, signed measurements and road-owner records. Record false negatives separately; do not average them away.
+5. Test closures and restrictions that begin/end during a trip, including Israel-local midnight, daylight-saving transitions and last-minute withdrawals.
+6. Run shadow evaluations against candidate routes without displaying them as approved navigation. Log disagreements and obtain human review.
+7. Require written sign-off from the data owner, product safety reviewer and operational owner before changing any production feature flag.
+
+**Automatic rejection conditions:** unclear commercial licence; unknown measurement date; no stable source ID; missing lane/direction where it affects applicability; stale or non-withdrawable records; unexplained coverage gaps; or any inability to distinguish “no restriction known” from “road verified clear”.
+
+Until every mandatory gate is passed, the data source remains candidate-only and nationwide truck routing remains disabled.
