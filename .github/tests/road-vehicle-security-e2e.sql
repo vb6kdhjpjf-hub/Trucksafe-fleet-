@@ -287,6 +287,17 @@ begin
     task_id,fleet_id,'CI authenticated driver RPC task',driver_id,vehicle_id,'assigned',owner_id
   );
 
+  -- Seed one private registration object so the authenticated storage policies
+  -- can be exercised without leaving a real file or any persistent test data.
+  insert into storage.objects(id,bucket_id,name,owner,metadata)
+  values(
+    'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf56',
+    'vehicle-registrations',
+    fleet_id::text || '/' || vehicle_id::text || '/registration.pdf',
+    owner_id,
+    '{}'::jsonb
+  );
+
   update public.vehicles set height_cm=320 where id=vehicle_id;
   select registration_verification_status into status_value
   from public.vehicles where id=vehicle_id;
@@ -368,11 +379,18 @@ begin
   if exists(select 1 from public.vehicles where id='e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf55') then
     raise exception 'Fleet owner can read a vehicle from another fleet';
   end if;
+  if (select count(*) from storage.objects
+      where bucket_id='vehicle-registrations'
+        and name='b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d51/e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51/registration.pdf') <> 1 then
+    raise exception 'Fleet owner cannot read own private registration document';
+  end if;
+  insert into storage.objects(bucket_id,name)
+  values('vehicle-registrations','b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d51/e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51/manager-upload.pdf');
 end
 $rls_owner_checks$;
 reset role;
 insert into pg_temp.road_vehicle_security_results
-values('fleet owner row isolation','PASS','Owner can read own fleet vehicle and cannot read another fleet vehicle');
+values('fleet owner row and document isolation','PASS','Owner reads own vehicle and private registration document and can upload to own vehicle folder');
 
 select set_config('request.jwt.claim.sub','f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf52',true);
 set local role authenticated;
@@ -382,6 +400,18 @@ begin
   if (select count(*) from public.vehicles where fleet_id='b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d51') <> 2 then
     raise exception 'Dispatcher should read fleet vehicles';
   end if;
+  if exists(select 1 from storage.objects
+      where bucket_id='vehicle-registrations'
+        and name='b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d51/e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51/registration.pdf') then
+    raise exception 'Dispatcher can read a private registration document';
+  end if;
+  begin
+    insert into storage.objects(bucket_id,name)
+    values('vehicle-registrations','b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d51/e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51/dispatcher-upload.pdf');
+    raise exception 'Dispatcher unexpectedly uploaded a private registration document';
+  exception when insufficient_privilege then
+    null;
+  end;
   update public.vehicles set notes='unauthorized dispatcher edit'
   where id='e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51';
   get diagnostics changed_rows = row_count;
@@ -413,6 +443,18 @@ begin
   if exists(select 1 from public.vehicles where id='e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf53') then
     raise exception 'Driver can read an unassigned vehicle';
   end if;
+  if exists(select 1 from storage.objects
+      where bucket_id='vehicle-registrations'
+        and name='b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d51/e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51/registration.pdf') then
+    raise exception 'Driver can read a private registration document';
+  end if;
+  begin
+    insert into storage.objects(bucket_id,name)
+    values('vehicle-registrations','b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d51/e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51/driver-upload.pdf');
+    raise exception 'Driver unexpectedly uploaded a private registration document';
+  exception when insufficient_privilege then
+    null;
+  end;
   update public.vehicles set notes='unauthorized driver edit'
   where id='e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51';
   get diagnostics changed_rows = row_count;
