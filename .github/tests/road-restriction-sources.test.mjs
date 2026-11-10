@@ -42,3 +42,28 @@ test("road signing authority GIS is only a contact-discovery source, never a res
   assert.match(source.limitations, /אינה מפרטת חסימות/);
   assert.equal(isSourceCandidateOnly(source), true);
 });
+
+
+test("Ministry road-safety infrastructure document is a data specification, not a live restriction feed", () => {
+  const source = getRoadRestrictionSource("mot-road-safety-infrastructure-spec-2025");
+  assert.ok(source);
+  assert.equal(source.routingEligible, false);
+  assert.equal(source.dataTypes.includes("layer_specification"), true);
+  assert.match(source.limitations, /לא קובץ נתונים ארצי/);
+});
+
+test("Netivei Israel inventory page is an acquisition lead requiring direct permission and coverage checks", () => {
+  const source = getRoadRestrictionSource("netivei-israel-infrastructure-inventory-lead");
+  assert.ok(source);
+  assert.equal(source.contact, "MeyJ@iroads.co.il");
+  assert.equal(source.routingEligible, false);
+  assert.match(source.limitations, /נדרש אישור ישיר/);
+});
+
+test("Tel Aviv bridge GIS is local candidate geometry without measured clearance or confirmed commercial licence", () => {
+  const source = getRoadRestrictionSource("tel-aviv-municipal-bridge-gis");
+  assert.ok(source);
+  assert.equal(source.candidateOnly, true);
+  assert.equal(source.routingEligible, false);
+  assert.match(source.limitations, /ללא גובה מעבר מדוד/);
+});
