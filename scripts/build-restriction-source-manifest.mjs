@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { hashRestrictionPayload } from "../lib/restriction-source-envelope.mjs";
 import { verifyHumanReviewEvent } from "./verify-restriction-source-review.mjs";
 
 const sha256 = value => createHash("sha256").update(value).digest("hex");
@@ -82,7 +83,7 @@ export async function buildRestrictionSourceManifest({ quarantineDir, outputDir 
     const candidate = parseJson(candidateBytes, "Candidate");
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate) ||
         !isHash(candidate.payload_sha256) || name !== "candidate-" + candidate.payload_sha256 + ".json" ||
-        candidate.review?.approved_for_routing !== false) {
+        candidate.review?.approved_for_routing !== false || hashRestrictionPayload(candidate.payload) !== candidate.payload_sha256) {
       throw new Error("Candidate filename, payload hash, or unapproved state is invalid: " + name);
     }
     const assessmentName = "candidate-" + candidate.payload_sha256 + ".assessment.json";
