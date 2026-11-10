@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { MAX_SOURCE_BYTES, stageCandidate } from "../../scripts/stage-restriction-source.mjs";
+import { MAX_SOURCE_BYTES, parseArgs, stageCandidate } from "../../scripts/stage-restriction-source.mjs";
 
 const source = {
   source_id: "synthetic-source",
@@ -88,4 +88,28 @@ test("rejects invalid UTF-8 instead of silently replacing source bytes", async t
   const paths = await fixture(t);
   await writeFile(paths.input, Buffer.from([0x7b, 0x22, 0x78, 0x22, 0x3a, 0xff, 0x7d]));
   await assert.rejects(stageCandidate({ ...paths, source }), /not valid UTF-8/);
+});
+
+
+test("accepts a valid JSON payload exactly at the 5 MiB boundary", async t => {
+  const paths = await fixture(t);
+  const prefix = '{"boundary":true}';
+  const raw = prefix + " ".repeat(MAX_SOURCE_BYTES - Buffer.byteLength(prefix));
+  assert.equal(Buffer.byteLength(raw), MAX_SOURCE_BYTES);
+  await writeFile(paths.input, raw, "utf8");
+  const output = await stageCandidate({ ...paths, source, retrievedAt: "2026-11-10T12:00:00Z" });
+  const envelope = JSON.parse(await readFile(output, "utf8"));
+  assert.equal(envelope.payload.boundary, true);
+});
+
+test("rejects a directory used as the source input", async t => {
+  const paths = await fixture(t);
+  await assert.rejects(stageCandidate({ ...paths, input: paths.quarantineDir, source }), /regular file/);
+});
+
+test("CLI arguments reject unknown, duplicate, and missing values", () => {
+  assert.throws(() => parseArgs(["--unknown", "x"]), /Invalid or duplicate argument/);
+  assert.throws(() => parseArgs(["--source-id", "a", "--source-id", "b"]), /Invalid or duplicate argument/);
+  assert.throws(() => parseArgs(["--source-id", "--publisher", "x"]), /Missing value/);
+  assert.throws(() => parseArgs([]), /Missing required arguments/);
 });
