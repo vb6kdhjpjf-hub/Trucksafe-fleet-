@@ -28,7 +28,10 @@ const base = () => ({
 
 test("normalizes valid PTV GeoJSON route and leg geometry into TruckSafe flexible polylines", () => {
   const result = normalizePTVRouteResponse(base());
-  assert.equal(result.safe, true);
+  assert.equal(result.safe, false);
+  assert.equal(result.reason, "awaiting_independent_restriction_validation");
+  assert.equal(result.providerFlagsClear, true);
+  assert.equal(result.geometryFormatValidated, true);
   assert.equal(result.route.sections.length, 1);
   assert.equal(result.actions[0].instruction, "התחל בנסיעה");
   const points = decodeFlexiblePolyline(result.route.sections[0].polyline);
@@ -91,7 +94,8 @@ test("allows only a non-safety maneuver-language warning", () => {
     warningCode: "ROUTING_MANEUVERS_IN_DIFFERENT_LANGUAGE",
     description: "Fallback language used"
   }];
-  assert.equal(normalizePTVRouteResponse(payload).safe, true);
+  assert.equal(normalizePTVRouteResponse(payload).safe, false);
+  assert.equal(normalizePTVRouteResponse(payload).reason, "awaiting_independent_restriction_validation");
 });
 
 test("blocks malformed or non-Israeli provider events", () => {
