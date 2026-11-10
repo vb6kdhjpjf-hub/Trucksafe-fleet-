@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildPTVPredefinedProfilesRequest,
   getPTVTruckProfileCandidates,
+  getPTVProfileFormValues,
   selectUniquePTVTruckProfile
 } from "../../lib/ptv-vehicle-profiles.mjs";
 
@@ -60,4 +61,21 @@ test("selects exactly one candidate only for explicitly matched region", () => {
 test("malformed provider payload fails closed", () => {
   assert.deepEqual(getPTVTruckProfileCandidates(null), []);
   assert.deepEqual(getPTVTruckProfileCandidates({ profiles: {} }), []);
+});
+
+
+test("maps valid dimensions and structure fields to form strings but never copies weight", () => {
+  const values = getPTVProfileFormValues({
+    vehicle: { height: 400, width: 254, length: 1650, numberOfAxles: 5, numberOfTrailers: 1, totalPermittedWeight: 40000 }
+  });
+  assert.deepEqual(values, { heightCm: "400", widthCm: "254", lengthCm: "1650", axleCount: "5", trailerCount: "1" });
+  assert.equal("grossWeightKg" in values, false);
+});
+
+test("does not copy out-of-range or malformed PTV profile values", () => {
+  const values = getPTVProfileFormValues({
+    vehicle: { height: 999, width: "254", length: 1650, numberOfAxles: 1, numberOfTrailers: 8 }
+  });
+  assert.deepEqual(values, { lengthCm: "1650" });
+  assert.deepEqual(getPTVProfileFormValues(null), {});
 });
