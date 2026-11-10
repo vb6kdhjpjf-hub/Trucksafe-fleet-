@@ -128,7 +128,7 @@ test("does not reject a route for a distant, verified restriction", () => {
   assert.deepEqual(result.unresolved, []);
 });
 
-test("allows an empty restriction catalogue only when the database query succeeded", () => {
+test("fails closed when the loaded restriction catalogue is empty", () => {
   const result = evaluateFleetRestrictions({
     sections,
     restrictions: [],
@@ -137,9 +137,8 @@ test("allows an empty restriction catalogue only when the database query succeed
     currentWeightKg: 10000,
     now
   });
-  assert.equal(result.validated, true);
-  assert.deepEqual(result.conflicts, []);
-  assert.deepEqual(result.unresolved, []);
+  assert.equal(result.validated, false);
+  assert.equal(result.unresolved[0].reason, "restriction_catalog_empty");
 });
 
 test("fails closed when the restriction catalogue is unavailable or was not loaded", () => {
