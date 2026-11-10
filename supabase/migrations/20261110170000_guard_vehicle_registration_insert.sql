@@ -23,7 +23,13 @@ begin
   end if;
 
   routing_profile_changed :=
-    new.registration_document_path is distinct from old.registration_document_path
+    -- Registration identity and technical classification are material evidence.
+    -- Any change requires a fresh review, not only changes to routing dimensions.
+    new.registration_number is distinct from old.registration_number
+    or new.make is distinct from old.make
+    or new.model is distinct from old.model
+    or new.vehicle_type is distinct from old.vehicle_type
+    or new.registration_document_path is distinct from old.registration_document_path
     or new.routing_vehicle_type is distinct from old.routing_vehicle_type
     or new.height_cm is distinct from old.height_cm
     or new.width_cm is distinct from old.width_cm
