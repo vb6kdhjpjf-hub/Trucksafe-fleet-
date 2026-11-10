@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { ArrowRight, AlertTriangle, Plus, RefreshCw, ShieldAlert } from "lucide-react";
 
-const blank = { road_name: "", restriction_type: "height", direction: "", max_height_m: "", max_weight_t: "", max_width_m: "", max_length_m: "", valid_from: "", valid_until: "", active_from: "", active_until: "", latitude: "", longitude: "", start_latitude: "", start_longitude: "", end_latitude: "", end_longitude: "", location_accuracy_m: "", source_type: "user_report", source_name: "", source_url: "", source_reference: "", source_updated_at: "", expires_at: "", notes: "" };
+const blank = { road_name: "", restriction_type: "height", direction: "", max_height_m: "", max_weight_t: "", max_width_m: "", max_length_m: "", valid_from: "", valid_until: "", active_from: "", active_until: "", latitude: "", longitude: "", start_latitude: "", start_longitude: "", end_latitude: "", end_longitude: "", location_accuracy_m: "", measured_clearance_m: "", measurement_date: "", measurement_accuracy_cm: "", measurement_method: "", measurement_location_note: "", measurement_document_url: "", source_type: "user_report", source_name: "", source_url: "", source_reference: "", source_updated_at: "", expires_at: "", notes: "" };
 const labels = { height: "גובה מרבי", weight: "משקל מרבי", width: "רוחב מרבי", length: "אורך מרבי", hazmat: "חומרים מסוכנים", time_window: "הגבלת שעות", closed: "כביש סגור", other: "אחר" };
 
 export default function RoadRestrictionsPage() {
@@ -99,6 +99,12 @@ export default function RoadRestrictionsPage() {
         start_latitude: numeric(form.start_latitude), start_longitude: numeric(form.start_longitude),
         end_latitude: numeric(form.end_latitude), end_longitude: numeric(form.end_longitude),
         location_accuracy_m: numeric(form.location_accuracy_m),
+        measured_clearance_m: numeric(form.measured_clearance_m),
+        measurement_date: form.measurement_date || null,
+        measurement_accuracy_cm: numeric(form.measurement_accuracy_cm),
+        measurement_method: form.measurement_method.trim() || null,
+        measurement_location_note: form.measurement_location_note.trim() || null,
+        measurement_document_url: form.measurement_document_url.trim() || null,
         source_type: form.source_type,
         source_name: form.source_name.trim() || null,
         source_url: form.source_url.trim() || null,
@@ -156,6 +162,19 @@ export default function RoadRestrictionsPage() {
       if (row.restriction_type === "time_window" && (!row.valid_from || !row.valid_until)) {
         setMessage("להגבלת שעות נדרשים שעת התחלה ושעת סיום.");
         return;
+      }
+      if (row.restriction_type === "height") {
+        const measured = Number(row.measured_clearance_m);
+        const posted = Number(row.max_height_m);
+        const margin = measured - posted;
+        if (!Number.isFinite(measured) || !row.measurement_date ||
+            !Number.isFinite(Number(row.measurement_accuracy_cm)) || Number(row.measurement_accuracy_cm) > 1 ||
+            !row.measurement_method?.trim() || String(row.measurement_location_note || "").trim().length < 12 ||
+            !/^https:\/\//i.test(String(row.measurement_document_url || "")) ||
+            !Number.isFinite(margin) || margin < 0.20 || margin > 0.29) {
+          setMessage("לאימות הגבלת גובה נדרשים מדידה מתועדת, דיוק של עד 1 ס״מ, תאריך, שיטת מדידה, תיאור הנתיבים/המיקומים והפרש בטיחות של 20–29 ס״מ מהגובה הרשום.");
+          return;
+        }
       }
       if (!["official_authority", "municipal_authority", "road_operator"].includes(row.source_type)) {
         setMessage("לא ניתן לאמת לניווט מקור שאינו רשות רשמית או מפעיל דרך.");
@@ -234,7 +253,13 @@ export default function RoadRestrictionsPage() {
         <label>מספר אסמכתא / מזהה מקור<input style={field} value={form.source_reference} onChange={e => setForm({ ...form, source_reference: e.target.value })}/></label>
         <label>עודכן במקור בתאריך<input type="datetime-local" style={field} value={form.source_updated_at} onChange={e => setForm({ ...form, source_updated_at: e.target.value })}/></label>
         <label>תפוגת המגבלה<input type="datetime-local" style={field} value={form.expires_at} onChange={e => setForm({ ...form, expires_at: e.target.value })}/></label>
-        <label>גובה מרבי (מטר)<input type="number" min="0.1" step="0.01" style={field} value={form.max_height_m} onChange={e => setForm({ ...form, max_height_m: e.target.value })}/></label>
+        <label>גובה לפי תמרור / שילוט (מטר)<input type="number" min="0.1" step="0.01" style={field} value={form.max_height_m} onChange={e => setForm({ ...form, max_height_m: e.target.value })}/></label>
+        <label>מרווח אנכי מדוד בפועל (מטר)<input type="number" min="0.5" max="20" step="0.01" style={field} value={form.measured_clearance_m} onChange={e => setForm({ ...form, measured_clearance_m: e.target.value })}/></label>
+        <label>תאריך המדידה<input type="date" style={field} value={form.measurement_date} onChange={e => setForm({ ...form, measurement_date: e.target.value })}/></label>
+        <label>דיוק המדידה (ס״מ)<input type="number" min="0.1" max="10" step="0.1" style={field} value={form.measurement_accuracy_cm} onChange={e => setForm({ ...form, measurement_accuracy_cm: e.target.value })} placeholder="לפי מסמך המדידה"/></label>
+        <label>שיטת המדידה<input style={field} value={form.measurement_method} onChange={e => setForm({ ...form, measurement_method: e.target.value })} placeholder="למשל: מד לייזר"/></label>
+        <label>קישור למסמך מדידה (HTTPS)<input type="url" style={field} value={form.measurement_document_url} onChange={e => setForm({ ...form, measurement_document_url: e.target.value })} placeholder="https://..."/></label>
+        <label style={{ gridColumn: "1/-1" }}>פירוט נתיבים ומיקומי מדידה<textarea rows="2" style={field} value={form.measurement_location_note} onChange={e => setForm({ ...form, measurement_location_note: e.target.value })} placeholder="יש לתעד את המדידות הרלוונטיות בכל נתיב ובמיקומים שנדרשו"/></label>
         <label>משקל מרבי (טון)<input type="number" min="0.1" step="0.1" style={field} value={form.max_weight_t} onChange={e => setForm({ ...form, max_weight_t: e.target.value })}/></label>
         <label>רוחב מרבי (מטר)<input type="number" min="0.1" step="0.01" style={field} value={form.max_width_m} onChange={e => setForm({ ...form, max_width_m: e.target.value })}/></label>
         <label>אורך מרבי (מטר)<input type="number" min="0.1" step="0.01" style={field} value={form.max_length_m} onChange={e => setForm({ ...form, max_length_m: e.target.value })}/></label>
@@ -252,7 +277,9 @@ export default function RoadRestrictionsPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: row.is_active ? "#16803c" : "#718096" }}>{row.is_active ? "פעילה" : "לא פעילה"}</span>{canEdit && <button disabled={busy} style={btn} onClick={() => toggle(row)}>{row.is_active ? "השבתה" : "הפעלה"}</button>}</div>
       </div>
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, fontSize: 13, color: "#536176" }}>
-        {row.max_height_m && <span>גובה: {row.max_height_m} מ׳</span>}{row.max_weight_t && <span>משקל: {row.max_weight_t} טון</span>}{row.max_width_m && <span>רוחב: {row.max_width_m} מ׳</span>}{row.max_length_m && <span>אורך: {row.max_length_m} מ׳</span>}
+        {row.max_height_m && <span>גובה בתמרור: {row.max_height_m} מ׳</span>}
+        {row.measured_clearance_m && <span>גובה מדוד: {row.measured_clearance_m} מ׳</span>}
+        {row.measurement_date && <span>תאריך מדידה: {new Date(row.measurement_date).toLocaleDateString("he-IL")}</span>}{row.max_weight_t && <span>משקל: {row.max_weight_t} טון</span>}{row.max_width_m && <span>רוחב: {row.max_width_m} מ׳</span>}{row.max_length_m && <span>אורך: {row.max_length_m} מ׳</span>}
         {(row.valid_from || row.valid_until) && <span>שעות: {row.valid_from || "—"}–{row.valid_until || "—"}</span>}
         {(row.active_from || row.active_until) && <span>תאריכים: {row.active_from || "—"} עד {row.active_until || "—"}</span>}
       </div>
@@ -264,6 +291,8 @@ export default function RoadRestrictionsPage() {
         {(row.start_latitude !== null && row.end_latitude !== null) ? " · מקטע: " + Number(row.start_latitude).toFixed(5) + ", " + Number(row.start_longitude).toFixed(5) + " עד " + Number(row.end_latitude).toFixed(5) + ", " + Number(row.end_longitude).toFixed(5) : ""}
         {row.expires_at ? " · תפוגה: " + new Date(row.expires_at).toLocaleDateString("he-IL") : ""}
       </div>
+      {row.measurement_method && <p style={{ margin: "6px 0 0", fontSize: 12, color: "#536176" }}>שיטת מדידה: {row.measurement_method} · דיוק: ±{row.measurement_accuracy_cm} ס״מ</p>}
+      {row.measurement_document_url && <p style={{ margin: "4px 0 0", fontSize: 12 }}><a href={row.measurement_document_url} target="_blank" rel="noreferrer">מסמך מדידה</a></p>}
       {row.verification_note && <p style={{ margin: "8px 0 0", fontSize: 12, color: "#536176" }}>הערת אימות: {row.verification_note}</p>}
       {row.verified_at && <p style={{ margin: "4px 0 0", fontSize: 12, color: "#536176" }}>אומת בתאריך: {new Date(row.verified_at).toLocaleString("he-IL")}</p>}
       {canVerify && row.verification_status !== "verified" && <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #e7ebf2" }}>
