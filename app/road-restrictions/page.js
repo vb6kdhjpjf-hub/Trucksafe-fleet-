@@ -253,6 +253,7 @@ export default function RoadRestrictionsPage() {
         <label>מספר אסמכתא / מזהה מקור<input style={field} value={form.source_reference} onChange={e => setForm({ ...form, source_reference: e.target.value })}/></label>
         <label>עודכן במקור בתאריך<input type="datetime-local" style={field} value={form.source_updated_at} onChange={e => setForm({ ...form, source_updated_at: e.target.value })}/></label>
         <label>תפוגת המגבלה<input type="datetime-local" style={field} value={form.expires_at} onChange={e => setForm({ ...form, expires_at: e.target.value })}/></label>
+        {form.restriction_type === "height" && <>
         <label>גובה לפי תמרור / שילוט (מטר)<input type="number" min="0.1" step="0.01" style={field} value={form.max_height_m} onChange={e => setForm({ ...form, max_height_m: e.target.value })}/></label>
         <label>מרווח אנכי מדוד בפועל (מטר)<input type="number" min="0.5" max="20" step="0.01" style={field} value={form.measured_clearance_m} onChange={e => setForm({ ...form, measured_clearance_m: e.target.value })}/></label>
         <label>תאריך המדידה<input type="date" style={field} value={form.measurement_date} onChange={e => setForm({ ...form, measurement_date: e.target.value })}/></label>
@@ -260,6 +261,7 @@ export default function RoadRestrictionsPage() {
         <label>שיטת המדידה<input style={field} value={form.measurement_method} onChange={e => setForm({ ...form, measurement_method: e.target.value })} placeholder="למשל: מד לייזר"/></label>
         <label>קישור למסמך מדידה (HTTPS)<input type="url" style={field} value={form.measurement_document_url} onChange={e => setForm({ ...form, measurement_document_url: e.target.value })} placeholder="https://..."/></label>
         <label style={{ gridColumn: "1/-1" }}>פירוט נתיבים ומיקומי מדידה<textarea rows="2" style={field} value={form.measurement_location_note} onChange={e => setForm({ ...form, measurement_location_note: e.target.value })} placeholder="יש לתעד את המדידות הרלוונטיות בכל נתיב ובמיקומים שנדרשו"/></label>
+        </>} 
         <label>משקל מרבי (טון)<input type="number" min="0.1" step="0.1" style={field} value={form.max_weight_t} onChange={e => setForm({ ...form, max_weight_t: e.target.value })}/></label>
         <label>רוחב מרבי (מטר)<input type="number" min="0.1" step="0.01" style={field} value={form.max_width_m} onChange={e => setForm({ ...form, max_width_m: e.target.value })}/></label>
         <label>אורך מרבי (מטר)<input type="number" min="0.1" step="0.01" style={field} value={form.max_length_m} onChange={e => setForm({ ...form, max_length_m: e.target.value })}/></label>
