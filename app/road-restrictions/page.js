@@ -18,6 +18,8 @@ export default function RoadRestrictionsPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [reviewNotes, setReviewNotes] = useState({});
+  const [reviewBusy, setReviewBusy] = useState(null);
 
   async function load(id) {
     const { data, error } = await supabase.from("road_restrictions").select("*").eq("fleet_id", id).order("is_active", { ascending: false }).order("road_name");
@@ -125,7 +127,90 @@ export default function RoadRestrictionsPage() {
     setBusy(false);
   }
 
+  async function reviewRestriction(row, decision) {
+    if (!["owner", "fleet_manager"].includes(fleet?.role)) {
+      setMessage("רק בעל הצי או מנהל צי יכולים לאמת מגבלת דרך.");
+      return;
+    }
+    const note = String(reviewNotes[row.id] || "").trim();
+    if (note.length < 12) {
+      setMessage("יש לתעד הערת אימות מפורטת (לפחות 12 תווים).");
+      return;
+    }
+    if (decision === "verified") {
+      if (!row.source_name?.trim() || !/^https:\/\//i.test(String(row.source_url || ""))) {
+        setMessage("כדי לאמת נדרשים שם מקור וקישור HTTPS למקור.");
+        return;
+      }
+      const hasPoint = row.latitude != null && row.longitude != null;
+      const hasSegment = row.start_latitude != null && row.start_longitude != null && row.end_latitude != null && row.end_longitude != null;
+      if (!hasPoint && !hasSegment) {
+        setMessage("לא ניתן לאמת מגבלה ללא מיקום נקודתי או מקטע כביש מלא.");
+        return;
+      }
+      const limitField = { height: "max_height_m", weight: "max_weight_t", width: "max_width_m", length: "max_length_m" }[row.restriction_type];
+      if (limitField && !(Number(row[limitField]) > 0)) {
+        setMessage("חסר ערך מגבלה תקין לסוג ההגבלה שנבחר.");
+        return;
+      }
+      if (row.restriction_type === "time_window" && (!row.valid_from || !row.valid_until)) {
+        setMessage("להגבלת שעות נדרשים שעת התחלה ושעת סיום.");
+        return;
+      }
+      if (!["official_authority", "municipal_authority", "road_operator"].includes(row.source_type)) {
+        setMessage("לא ניתן לאמת לניווט מקור שאינו רשות רשמית או מפעיל דרך.");
+        return;
+      }
+    }
+    setReviewBusy(row.id);
+    setMessage("");
+    try {
+      const checkedAt = new Date().toISOString();
+      const update = decision === "verified"
+        ? {
+            verification_status: "verified",
+            verified_at: checkedAt,
+            verified_by: session.user.id,
+            source_last_checked_at: checkedAt,
+            verification_note: note,
+            verification_notes: note,
+            updated_at: checkedAt
+          }
+        : {
+            verification_status: "rejected",
+            verified_at: null,
+            verified_by: null,
+            source_last_checked_at: checkedAt,
+            verification_note: note,
+            verification_notes: note,
+            updated_at: checkedAt
+          };
+      const { data, error } = await supabase.from("road_restrictions")
+        .update(update)
+        .eq("id", row.id)
+        .eq("fleet_id", fleet.id)
+        .select("id,verification_status")
+        .maybeSingle();
+      if (error) {
+        setMessage("שמירת החלטת האימות נכשלה: " + error.message);
+        return;
+      }
+      if (!data) {
+        setMessage("לא ניתן לשמור את ההחלטה. בדוק הרשאות או רענן את המסך.");
+        return;
+      }
+      setReviewNotes(current => ({ ...current, [row.id]: "" }));
+      await load(fleet.id);
+      setMessage(decision === "verified" ? "המגבלה אומתה ונרשם תיעוד הבדיקה." : "המגבלה נדחתה ונשמר תיעוד הבדיקה.");
+    } catch (error) {
+      setMessage("שגיאה בשמירת האימות: " + (error?.message || "שגיאה לא ידועה"));
+    } finally {
+      setReviewBusy(null);
+    }
+  }
+
   const canEdit = ["owner", "fleet_manager", "dispatcher"].includes(fleet?.role);
+  const canVerify = ["owner", "fleet_manager"].includes(fleet?.role);
   const card = { background: "white", border: "1px solid #e7ebf2", borderRadius: 14, padding: 16, marginBottom: 12 };
   const field = { width: "100%", padding: 10, border: "1px solid #dce3ee", borderRadius: 8, marginTop: 5, background: "white" };
   const btn = { display: "inline-flex", alignItems: "center", gap: 7, border: "1px solid #dce3ee", borderRadius: 9, padding: "9px 12px", background: "white", cursor: "pointer" };
@@ -192,6 +277,17 @@ export default function RoadRestrictionsPage() {
         {(row.start_latitude !== null && row.end_latitude !== null) ? " · מקטע: " + Number(row.start_latitude).toFixed(5) + ", " + Number(row.start_longitude).toFixed(5) + " עד " + Number(row.end_latitude).toFixed(5) + ", " + Number(row.end_longitude).toFixed(5) : ""}
         {row.expires_at ? " · תפוגה: " + new Date(row.expires_at).toLocaleDateString("he-IL") : ""}
       </div>
+      {row.verification_note && <p style={{ margin: "8px 0 0", fontSize: 12, color: "#536176" }}>הערת אימות: {row.verification_note}</p>}
+      {row.verified_at && <p style={{ margin: "4px 0 0", fontSize: 12, color: "#536176" }}>אומת בתאריך: {new Date(row.verified_at).toLocaleString("he-IL")}</p>}
+      {canVerify && row.verification_status !== "verified" && <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #e7ebf2" }}>
+        <label style={{ display: "block", fontSize: 13, fontWeight: 600 }}>הערת בדיקה למנהל (חובה)
+          <textarea rows="2" style={field} value={reviewNotes[row.id] || ""} onChange={e => setReviewNotes(current => ({ ...current, [row.id]: e.target.value }))} placeholder="מה נבדק, מול איזה מסמך או הודעה רשמית, ומה הוחלט?"/>
+        </label>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+          <button type="button" disabled={reviewBusy === row.id || busy} style={{ ...btn, background: "#16803c", color: "white", borderColor: "#16803c" }} onClick={() => reviewRestriction(row, "verified")}>{reviewBusy === row.id ? "שומר..." : "אימות מגבלה"}</button>
+          <button type="button" disabled={reviewBusy === row.id || busy} style={{ ...btn, background: "#fff1f0", color: "#a12622", borderColor: "#f0c5c2" }} onClick={() => reviewRestriction(row, "rejected")}>דחיית מגבלה</button>
+        </div>
+      </div>}
       {row.notes && <p style={{ marginBottom: 0, whiteSpace: "pre-wrap" }}>{row.notes}</p>}
     </article>)}
     <p style={{ color: "#718096", fontSize: 12 }}>TruckSafe Fleet · יש לוודא כל מגבלה מול מקור רשמי ועדכני</p>
