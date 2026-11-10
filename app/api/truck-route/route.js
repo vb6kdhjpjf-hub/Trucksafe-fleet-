@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { evaluateFleetRestrictions } from "../../../lib/road-restriction-geometry.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -154,6 +155,40 @@ export async function POST(request) {
     const route = routeData?.routes?.[0];
     if (!route?.sections?.length) return response({ error: "לא נמצא מסלול למשאית לפי הנתונים שהוזנו. אין להחליף למסלול רכב פרטי." }, 422);
 
+    // Load the current fleet restriction catalogue through the caller's RLS-scoped client.
+    // A failed query must never be interpreted as an empty catalogue.
+    const { data: restrictions, error: restrictionsError } = await db
+      .from("road_restrictions")
+      .select("id,road_name,restriction_type,max_height_m,max_weight_t,max_width_m,max_length_m,valid_from,valid_until,active_from,active_until,is_active,latitude,longitude,radius_m,verification_status,source_url,verified_at,verified_by,source_last_checked_at,verification_note,expires_at")
+      .eq("fleet_id", membership.fleet_id)
+      .eq("country_code", "IL");
+    if (restrictionsError || !Array.isArray(restrictions)) {
+      return response({ error: "לא ניתן לאמת את מאגר מגבלות הדרך של הצי. המסלול לא אושר." }, 503);
+    }
+
+    const restrictionValidation = evaluateFleetRestrictions({
+      sections: route.sections,
+      restrictions,
+      restrictionCatalogLoaded: true,
+      vehicle: { heightCm, widthCm, lengthCm },
+      currentWeightKg,
+      now: new Date()
+    });
+    if (!restrictionValidation.validated) {
+      const conflicts = restrictionValidation.conflicts.map(item => ({
+        roadName: item.roadName,
+        restrictionType: item.restrictionType
+      }));
+      const unresolved = restrictionValidation.unresolved.map(item => ({
+        roadName: item.roadName,
+        reason: item.reason
+      }));
+      return response({
+        error: "לא ניתן לאשר את המסלול מול מגבלות הדרך הרשומות בצי. יש לבדוק את הפרטים לפני נסיעה.",
+        restrictionValidation: { validated: false, conflicts, unresolved }
+      }, 409);
+    }
+
     const notices = route.sections.flatMap(section => (section.notices || []).map(notice => ({
       code: String(notice.code || "notice").slice(0, 100),
       severity: String(notice.severity || "info").slice(0, 30),
@@ -176,6 +211,11 @@ export async function POST(request) {
       distanceMeters: distance,
       durationSeconds: duration,
       hasCriticalNotices: critical,
+      restrictionValidation: {
+        validated: true,
+        scope: "fleet_catalogue_only",
+        checkedRecords: restrictions.length
+      },
       notices,
       actions,
       sections: route.sections.map(section => ({ polyline: section.polyline || "" }))
