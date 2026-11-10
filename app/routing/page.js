@@ -237,7 +237,14 @@ export default function TruckRoutingPage() {
         })
       });
       const data = await response.json();
-      if (!response.ok) { setMessage(data.error || "לא הצלחנו לחשב מסלול."); return; }
+      if (!response.ok) {
+        const details = [
+          ...(data.restrictionValidation?.conflicts || []).map(item => item.roadName ? item.roadName + " — התנגשות עם מגבלה" : "התנגשות עם מגבלת דרך"),
+          ...(data.restrictionValidation?.unresolved || []).map(item => item.roadName ? item.roadName + " — נדרש אימות" : "רשומת מגבלה דורשת אימות")
+        ];
+        setMessage((data.error || "לא הצלחנו לחשב מסלול.") + (details.length ? " " + details.join("; ") : ""));
+        return;
+      }
       setResult(data);
       if (data.hasCriticalNotices) setMessage("המסלול כולל התראות קריטיות. אין לצאת לדרך על סמך מסלול זה.");
       else setMessage("המסלול חושב. יש לאמת שילוט והגבלות בשטח לפני היציאה.");
@@ -303,6 +310,10 @@ export default function TruckRoutingPage() {
       </form>
 
       {result && <section style={{ marginTop: 16, display: "grid", gap: 14 }}>
+        {result.restrictionValidation?.validated && <div style={{ background: "#eef7f0", border: "1px solid #cde7d3", borderRadius: 12, padding: 12, fontSize: 13, lineHeight: 1.5 }}>
+          <b>בדיקת מאגר מגבלות הצי הושלמה.</b>
+          <div>נבדקו {result.restrictionValidation.checkedRecords} רשומות פעילות/לא פעילות. הבדיקה מוגבלת למידע שהוזן ואומת בצי ואינה כוללת בהכרח את כל ההגבלות הרשמיות בישראל.</div>
+        </div>}
         <div style={{ background: "white", border: "1px solid #e5eaf1", borderRadius: 14, padding: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
             <div><b>{result.origin}</b><div style={{ color: "#718096", margin: "5px 0" }}>אל</div><b>{result.destination}</b></div>
