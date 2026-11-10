@@ -4,30 +4,52 @@ import { getSavedTruckRoutingProfile } from "../../lib/truck-routing-profile.mjs
 
 const validVehicle = {
   is_demo: false,
+  registration_verification_status: "verified",
+  registration_document_path: "fleet-id/vehicle-id/registration.pdf",
+  registration_verified_at: "2026-11-10T08:00:00.000Z",
+  registration_verified_by: "00000000-0000-4000-8000-000000000001",
   routing_vehicle_type: "StraightTruck",
   height_cm: 420,
   width_cm: 250,
   length_cm: 900,
   gross_weight_kg: 26000,
+  empty_weight_kg: 9000,
   axle_count: 4,
   trailer_count: 0,
   weight_per_axle_kg: 10000
 };
 
-test("accepts a complete saved vehicle profile and normalizes numeric values", () => {
+test("accepts only a complete, human-verified saved vehicle profile", () => {
   const profile = getSavedTruckRoutingProfile({ ...validVehicle, height_cm: "420" });
   assert.equal(profile.heightCm, 420);
   assert.equal(profile.grossWeightKg, 26000);
+  assert.equal(profile.emptyWeightKg, 9000);
   assert.equal(profile.vehicleType, "StraightTruck");
 });
 
-test("rejects missing or out-of-range dimensions and weights", () => {
+test("rejects unverified, pending, rejected, or missing registration evidence", () => {
+  for (const change of [
+    { registration_verification_status: "unverified" },
+    { registration_verification_status: "pending" },
+    { registration_verification_status: "rejected" },
+    { registration_verification_status: undefined },
+    { registration_document_path: null },
+    { registration_verified_at: null },
+    { registration_verified_by: null }
+  ]) {
+    assert.equal(getSavedTruckRoutingProfile({ ...validVehicle, ...change }), null);
+  }
+});
+
+test("rejects missing or out-of-range dimensions, weights, and vehicle configuration", () => {
   for (const change of [
     { height_cm: null },
     { height_cm: 99 },
     { width_cm: 351 },
     { length_cm: 199 },
     { gross_weight_kg: 100001 },
+    { empty_weight_kg: null },
+    { empty_weight_kg: 27000 },
     { axle_count: 1 },
     { trailer_count: 4 },
     { routing_vehicle_type: "Car" },
@@ -37,7 +59,7 @@ test("rejects missing or out-of-range dimensions and weights", () => {
   }
 });
 
-test("requires a measured axle load and defaults a missing trailer count to zero", () => {
+test("requires an axle-load value and defaults a missing trailer count to zero", () => {
   const profile = getSavedTruckRoutingProfile({
     ...validVehicle,
     trailer_count: null,
