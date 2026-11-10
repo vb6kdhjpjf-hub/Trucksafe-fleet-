@@ -23,6 +23,7 @@ TruckSafe has a substantial fleet-management application and an isolated validat
 | Vehicle registration verification | Guarded workflow implemented in the development branch | Private registration document and authorized review are required; material technical-profile, registration-number, make/model and vehicle-type edits invalidate prior approval; a database INSERT trigger clears any client-supplied approval or document metadata. SQL integration tests cover forged INSERT metadata and re-review after a registration identity change. Rollout to Production has not been authorized. |
 | Fleet road-restriction catalogue | Implemented as fleet-scoped workflow | Geometry, time validity and verification evidence checks exist. It is not a national authoritative road database. |
 | Route API security and quota | Implemented in the development branch | Authenticated fleet access with ambiguous multi-fleet membership rejected, saved verified vehicle selection in the routing UI, server-trusted vehicle profile, streamed 16 KB request-body limit, strict UTF-8/JSON parsing, request validation and fail-closed quota enforcement are tested in the isolated test project. |
+| Cross-fleet relational integrity | Additional database safeguards required | Live test-schema review found single-column foreign keys on task, trip, incident, inspection, maintenance and trip-location relationships where composite fleet-scoped references are needed. RLS tests prevent cross-fleet row access, but database-level relationship consistency is not yet fully enforced. A reviewed migration and rollback-only negative tests are required before release. |
 | HERE truck-routing integration | Code path exists, but routing is disabled by safety gate | Requires approved credentials/plan, validated Israel coverage and independent restriction checks. A provider route alone is not a safety approval. |
 | PTV integration | Experimental preparation only | Preview catalogue diagnostic returned 22 profiles (16 truck candidates). No live route integration is approved. Commercial/production rights and Israel coverage must be confirmed in writing. |
 | Israeli restriction data acquisition | Research and request draft completed | Ministry specification and other candidate leads are documented. No verified nationwide feed or commercial-use agreement has been received. |
@@ -51,10 +52,11 @@ These results establish that the tested code passed those checks. They do not es
 2. **Commercial rights:** obtain written permission for commercial storage, transformation, display and route decisions for every source and routing provider.
 3. **Coverage and freshness:** document included road owners/classes and all gaps. Prove how expired, withdrawn, temporary and emergency restrictions reach the system.
 4. **Independent validation:** compare a representative sample against official documents and field/authority checks; measure false negatives separately and define an approved safety threshold.
-5. **Vehicle profile correctness:** validate registration-derived dimensions and weights, actual loaded weight and axle-weight semantics; do not infer missing values.
-6. **Geospatial correctness:** replace coarse geographic bounds with a trusted Israel boundary and road-access checks before any routing release.
-7. **End-to-end pilot:** run staging-only imports and shadow routes, test time windows and Israel daylight-saving transitions, and obtain sign-off from the data owner, safety reviewer and operational owner.
-8. **Production governance:** review migrations, RLS/storage permissions, monitoring, incident response, backups and rollback before any production change.
+5. **Cross-fleet relationship integrity:** add and verify composite foreign keys or equivalent database constraints so task, trip, incident, inspection, maintenance and trip-location references cannot point to a driver, vehicle or parent record from another fleet.
+6. **Vehicle profile correctness:** validate registration-derived dimensions and weights, actual loaded weight and axle-weight semantics; do not infer missing values.
+7. **Geospatial correctness:** replace coarse geographic bounds with a trusted Israel boundary and road-access checks before any routing release.
+8. **End-to-end pilot:** run staging-only imports and shadow routes, test time windows and Israel daylight-saving transitions, and obtain sign-off from the data owner, safety reviewer and operational owner.
+9. **Production governance:** review migrations, RLS/storage permissions, monitoring, incident response, backups and rollback before any production change.
 
 ## Next milestones
 
