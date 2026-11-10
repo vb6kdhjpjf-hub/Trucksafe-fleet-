@@ -52,15 +52,16 @@ export async function stageCandidate({ input, quarantineDir, source, retrievedAt
   try { payload = JSON.parse(rawPayload); } catch { throw new Error("Input is not valid JSON"); }
   if (payload === null || typeof payload !== "object") throw new Error("Payload must be a JSON object or array");
 
+  const canonicalPayload = JSON.stringify(payload);
   const envelope = {
     schema_version: "1.0",
     source,
     retrieved_at: retrievedAt,
     payload,
-    payload_sha256: createHash("sha256").update(rawPayload, "utf8").digest("hex"),
+    payload_sha256: createHash("sha256").update(canonicalPayload, "utf8").digest("hex"),
     review: { status: "unreviewed", approved_for_routing: false }
   };
-  const validation = validateCandidateRestrictionEnvelope(envelope, rawPayload);
+  const validation = validateCandidateRestrictionEnvelope(envelope, canonicalPayload);
   if (!validation.valid) throw new Error(`Candidate validation failed: ${validation.errors.join("; ")}`);
 
   const requestedDir = path.resolve(quarantineDir);
