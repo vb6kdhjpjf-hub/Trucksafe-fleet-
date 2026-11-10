@@ -54,30 +54,26 @@ export default function Home() {
     setWorkspaceChecked(false);
     setWorkspaceError("");
     const isCurrent=()=>requestId===fleetLoadRef.current;
-    let membership=null;
-    const membershipResult=await supabase.from("fleet_members").select("fleet_id,role").eq("user_id",user.id).limit(1).maybeSingle();
+    const membershipResult=await supabase.from("fleet_members").select("fleet_id,role").eq("user_id",user.id).limit(2);
     if(!isCurrent())return;
-    membership=membershipResult.data;
+    if(membershipResult.error){
+      setFleet(null);
+      setWorkspaceError("לא הצלחנו לאמת את החברות בצי. לא נבחר צי באופן אוטומטי ולא ניצור ארגון חדש. פרטים: "+membershipResult.error.message);
+      setWorkspaceChecked(true);
+      return;
+    }
+    const memberships=membershipResult.data||[];
+    if(memberships.length>1){
+      setFleet(null);
+      setWorkspaceError("לחשבון משויכים כמה ציים. כדי למנוע הצגת נתונים או ביצוע פעולות בצי הלא נכון, נדרש לבחור צי במפורש לפני המשך העבודה.");
+      setWorkspaceChecked(true);
+      return;
+    }
     let current=null;
-    let role=membership?.role||"owner";
-    if(membershipResult.error||!membership){
-      // Recover an existing owner's workspace before ever offering to create a new one.
-      const ownedResult=await supabase.from("fleets").select("id,name").eq("owner_user_id",user.id).limit(1).maybeSingle();
-      if(!isCurrent())return;
-      if(ownedResult.error){
-        setFleet(null);
-        setWorkspaceError("לא הצלחנו לבדוק את הארגון הקיים. לא ניצור ארגון חדש כדי למנוע כפילות. פרטים: "+ownedResult.error.message);
-        setWorkspaceChecked(true);
-        return;
-      }
-      current=ownedResult.data;
-      if(!current&&membershipResult.error){
-        setFleet(null);
-        setWorkspaceError("לא הצלחנו לטעון את החברות בארגון. נסה לטעון מחדש. פרטים: "+membershipResult.error.message);
-        setWorkspaceChecked(true);
-        return;
-      }
-    } else {
+    let role="owner";
+    if(memberships.length===1){
+      const membership=memberships[0];
+      role=membership.role||"owner";
       const fleetResult=await supabase.from("fleets").select("id,name").eq("id",membership.fleet_id).single();
       if(!isCurrent())return;
       if(fleetResult.error){
@@ -87,6 +83,24 @@ export default function Home() {
         return;
       }
       current=fleetResult.data;
+    }else{
+      // Recover an existing owner's workspace before ever offering to create a new one.
+      const ownedResult=await supabase.from("fleets").select("id,name").eq("owner_user_id",user.id).limit(2);
+      if(!isCurrent())return;
+      if(ownedResult.error){
+        setFleet(null);
+        setWorkspaceError("לא הצלחנו לבדוק את הארגון הקיים. לא ניצור ארגון חדש כדי למנוע כפילות. פרטים: "+ownedResult.error.message);
+        setWorkspaceChecked(true);
+        return;
+      }
+      const ownedFleets=ownedResult.data||[];
+      if(ownedFleets.length>1){
+        setFleet(null);
+        setWorkspaceError("לחשבון יש כמה ציים בבעלותך. נדרשת בחירת צי מפורשת לפני המשך העבודה.");
+        setWorkspaceChecked(true);
+        return;
+      }
+      current=ownedFleets[0]||null;
     }
     if(!current){
       setFleet(null);
