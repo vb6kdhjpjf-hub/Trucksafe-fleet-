@@ -7,12 +7,13 @@ on:
     branches:
       - feat/pretrip-defect-reporting
       - fix/pretrip-safe-integration
+      - feat/truck-vehicle-routing-profile
 
 permissions:
   contents: read
 
 concurrency:
-  group: pretrip-sql-${{ github.event.pull_request.number || github.ref }}
+  group: pretrip-sql-${{ github.event.pull_request.head.ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -48,3 +49,63 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f .github/tests/pretrip-assertions.sql
+      - name: Prepare isolated road restriction schema
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f .github/tests/road-restrictions-fixture.sql
+      - name: Apply geospatial road restrictions migration in isolation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108120000_add_geospatial_road_restrictions.sql
+      - name: Validate road restriction active date ranges
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108280000_validate_road_restriction_active_date_range.sql
+      - name: Apply verified restriction immutability hardening
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108210000_harden_verified_road_restriction_immutability.sql
+      - name: Apply SECURITY DEFINER execution grants
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108220000_restrict_security_definer_function_execution.sql
+      - name: Protect verified restrictions from deletion
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108230000_block_verified_road_restriction_deletion.sql
+      - name: Verify road restriction provenance and constraints
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f .github/tests/road-restrictions-assertions.sql
+      - name: Verify protected fields and function grants
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f .github/tests/security-definer-grants-assertions.sql
+      - name: Verify road restriction tenant isolation and RLS
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f .github/tests/road-restriction-rls-assertions.sql
+      - name: Apply per-user truck route quota migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108240000_add_truck_route_rate_limit.sql
+      - name: Apply invoker-scoped quota RLS hardening
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108250000_make_truck_route_quota_invoker_scoped.sql
+      - name: Prevent client-side truck route quota resets
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108260000_prevent_truck_route_quota_reset.sql
+      - name: Validate client truck route quota timestamps
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108270000_validate_truck_route_quota_timestamps.sql
+      - name: Add route quota ledger primary key
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261108290000_add_route_quota_primary_key.sql
+      - name: Verify rolling truck route quota and grants
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d trucksafe_test -v ON_ERROR_STOP=1 -f .github/tests/truck-route-rate-limit-assertions.sql

@@ -1,11 +1,15 @@
 import { getTruckRoutingConfig } from "../../../lib/truck-routing-config.mjs";
+import { getSavedTruckRoutingProfile } from "../../../lib/truck-routing-profile.mjs";
+import { selectSafeTruckRoute } from "../../../lib/road-restriction-geometry.mjs";
+import { buildHereTruckVehicleParams } from "../../../lib/here-truck-parameters.mjs";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
-const response = (body, status = 200) =>
-  Response.json(body, { status, headers: { "Cache-Control": "no-store, max-age=0" } });
+const response = (body, status = 200, extraHeaders = {}) =>
+  Response.json(body, { status, headers: { "Cache-Control": "no-store, max-age=0", ...extraHeaders } });
 
 const numberInRange = (value, min, max) =>
   typeof value === "number" && Number.isFinite(value) && value >= min && value <= max;
@@ -21,7 +25,9 @@ async function geocode(address, apiKey) {
   }).toString();
 
   const result = await fetch(url, { signal: AbortSignal.timeout(12000), cache: "no-store" });
-  if (!result.ok) throw new Error("geocoding_unavailable");
+  if (!result.ok) {
+    throw new Error(`geocoding_unavailable_http_${result.status}`);
+  }
   const data = await result.json();
   const place = data.items?.[0];
   if (!place?.position || place.address?.countryCode !== "ISR") return null;
@@ -34,20 +40,21 @@ async function geocode(address, apiKey) {
 }
 
 export async function GET() {
-  // Use the exact same three-part readiness gate as POST. Otherwise the UI
-  // could enable routing while the explicit safety switch is still disabled.
   return response({ configured: getTruckRoutingConfig().configured });
 }
 
 export async function POST(request) {
+  let stage = "request_start";
   try {
-    if (!request.headers.get("content-type")?.includes("application/json")) {
+    if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get("content-type") || "")) {
       return response({ error: "יש לשלוח בקשה בפורמט JSON." }, 415);
     }
+    stage = "read_authorization";
     const authorization = request.headers.get("authorization") || "";
     const token = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
     if (!token || token.length > 8192) return response({ error: "נדרשת התחברות מחדש למערכת." }, 401);
 
+    stage = "read_supabase_config";
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!supabaseUrl || !publishableKey) return response({ error: "חיבור מסד הנתונים אינו מוגדר." }, 503);
@@ -56,28 +63,24 @@ export async function POST(request) {
       global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
     });
+    stage = "validate_user_session";
     const { data: authData, error: authError } = await db.auth.getUser(token);
     if (authError || !authData?.user) return response({ error: "החיבור אינו תקף. יש להתחבר מחדש." }, 401);
 
-    const { data: membership, error: membershipError } = await db
-      .from("fleet_members")
-      .select("fleet_id")
-      .eq("user_id", authData.user.id)
-      .limit(1)
-      .maybeSingle();
-    if (membershipError || !membership) return response({ error: "אין לחשבון הרשאה לתכנון מסלולים בצי." }, 403);
-
-    const routing = getTruckRoutingConfig();
-    const apiKey = routing.apiKey;
-    if (!apiKey) return response({ error: "מנוע ניתוב המשאיות מושבת או לא הוגדר במלואו. אין להשתמש במסלול עד להשלמת אישור הספק, הגדרה ובדיקות בטיחות." }, 503);
-
-    const rawBody = await request.text();
-    if (new TextEncoder().encode(rawBody).byteLength > 16000) {
+    stage = "read_request_body";
+    const declaredLength = Number(request.headers.get("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > 16000) {
       return response({ error: "הבקשה גדולה מדי." }, 413);
+    }
+    const { readBoundedBody } = await import("../../../lib/read-bounded-body.mjs");
+    const bodyResult = await readBoundedBody(request.body, 16000);
+    if (!bodyResult.ok) {
+      if (bodyResult.reason === "too_large") return response({ error: "הבקשה גדולה מדי." }, 413);
+      return response({ error: "לא ניתן לקרוא את נתוני הבקשה בפורמט תקין." }, 400);
     }
     let raw;
     try {
-      raw = JSON.parse(rawBody);
+      raw = JSON.parse(bodyResult.text);
     } catch {
       return response({ error: "נתוני הבקשה אינם JSON תקין." }, 400);
     }
@@ -98,29 +101,71 @@ export async function POST(request) {
       return response({ error: "המיקום הנוכחי אינו תקין או נמצא מחוץ לישראל. אפשר להזין מוצא ידני." }, 400);
     }
 
-    const heightCm = Number(raw.heightCm);
-    const widthCm = Number(raw.widthCm);
-    const lengthCm = Number(raw.lengthCm);
-    const grossWeightKg = Number(raw.grossWeightKg);
-    const currentWeightKg = Number(raw.currentWeightKg);
-    const weightPerAxleKg = raw.weightPerAxleKg === "" || raw.weightPerAxleKg == null ? null : Number(raw.weightPerAxleKg);
-    const axleCount = Number(raw.axleCount);
-    const trailerCount = Number(raw.trailerCount);
-    const vehicleType = raw.vehicleType;
-
-    if (!numberInRange(heightCm, 100, 600) ||
-        !numberInRange(widthCm, 100, 350) ||
-        !numberInRange(lengthCm, 200, 3000) ||
-        !numberInRange(grossWeightKg, 1000, 100000) ||
-        !numberInRange(currentWeightKg, 1000, 100000) ||
-        currentWeightKg > grossWeightKg ||
-        !Number.isInteger(axleCount) || axleCount < 2 || axleCount > 12 ||
-        !Number.isInteger(trailerCount) || trailerCount < 0 || trailerCount > 3 ||
-        !["StraightTruck", "Tractor"].includes(vehicleType) ||
-        (weightPerAxleKg !== null && !numberInRange(weightPerAxleKg, 500, 30000))) {
-      return response({ error: "יש לבדוק את סוג המשאית, מספר הסרנים והנגררים, המידות והמשקלים. המשקל בפועל חייב להיות קטן או שווה למשקל הכולל המותר." }, 400);
+    const vehicleId = typeof raw.vehicleId === "string" ? raw.vehicleId : "";
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(vehicleId)) {
+      return response({ error: "יש לבחור רכב שמור מהצי לפני חישוב מסלול." }, 400);
     }
 
+    stage = "load_saved_vehicle_profile";
+    const { data: vehicle, error: vehicleError } = await db
+      .from("vehicles")
+      .select("id,fleet_id,is_demo,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,axle_count,trailer_count,weight_per_axle_kg")
+      .eq("id", vehicleId)
+      .eq("is_demo", false)
+      .maybeSingle();
+    if (vehicleError || !vehicle) {
+      return response({ error: "הרכב לא נמצא בצי שלך או שאין לך הרשאה להשתמש בו." }, 403);
+    }
+
+    stage = "check_fleet_membership";
+    const { data: membership, error: membershipError } = await db
+      .from("fleet_members")
+      .select("fleet_id")
+      .eq("user_id", authData.user.id)
+      .eq("fleet_id", vehicle.fleet_id)
+      .maybeSingle();
+    if (membershipError || !membership) {
+      return response({ error: "אין לחשבון הרשאה לתכנון מסלולים עבור הרכב שנבחר." }, 403);
+    }
+
+    const profile = getSavedTruckRoutingProfile(vehicle);
+    if (!profile) {
+      return response({ error: "חסרים נתוני רכב תקינים בפרופיל השמור. יש לעדכן מידות, משקל כולל, מספר סרנים ועומס בפועל על הסרן הכבד ביותר לפי רישיון הרכב, מסמכי היצרן או שקילה מאומתת לפני חישוב מסלול." }, 422);
+    }
+
+    const currentWeightKg = raw.currentWeightKg;
+    if (typeof currentWeightKg !== "number" || !numberInRange(currentWeightKg, 1000, 100000) || currentWeightKg > profile.grossWeightKg) {
+      return response({ error: "המשקל בפועל חייב להיות תקין וקטן או שווה למשקל הכולל המותר בפרופיל הרכב." }, 400);
+    }
+
+
+    stage = "read_fleet_road_restrictions";
+    const { data: fleetRestrictions, error: restrictionsError, count: restrictionsCount } = await db
+      .from("road_restrictions")
+      .select("id,road_name,restriction_type,max_height_m,max_weight_t,max_width_m,max_length_m,valid_from,valid_until,active_from,active_until,is_active,latitude,longitude,radius_m,source_url,verification_status,verified_at,verified_by,source_last_checked_at,verification_note", { count: "exact" })
+      .eq("fleet_id", vehicle.fleet_id)
+      .eq("is_active", true)
+      .limit(500);
+    if (restrictionsError || (restrictionsCount ?? 0) > 500) {
+      return response({ error: "לא ניתן לבדוק את כל מגבלות הדרך של הצי. לא הוצג מסלול כדי למנוע הסתמכות על בדיקה חלקית." }, 503);
+    }
+
+    stage = "read_routing_config";
+    const routing = getTruckRoutingConfig();
+    const apiKey = routing.apiKey;
+    if (!apiKey) return response({ error: "מנוע ניתוב המשאיות מושבת או לא הוגדר במלואו. אין להשתמש במסלול עד להשלמת אישור הספק, הגדרה ובדיקות בטיחות." }, 503);
+
+    stage = "consume_truck_route_quota";
+    const { data: quotaAllowed, error: quotaError } = await db.rpc("consume_truck_route_quota");
+    if (quotaError || quotaAllowed !== true) {
+      if (quotaError) {
+        console.error("Truck route quota check failed", { stage, code: String(quotaError.code || "unknown").slice(0, 40) });
+        return response({ error: "לא ניתן לאמת כרגע את מכסת בקשות הניווט. לא נשלחה בקשה לספק הניווט." }, 503);
+      }
+      return response({ error: "הגעת למכסת חישובי המסלול. אפשר לנסות שוב לאחר שהמכסה תתחדש." }, 429);
+    }
+
+    stage = "geocode_addresses";
     const [origin, destination] = await Promise.all([
       hasOriginCoordinates
         ? Promise.resolve({ lat: originCoordinates.lat, lng: originCoordinates.lng, label: "המיקום הנוכחי" })
@@ -132,49 +177,105 @@ export async function POST(request) {
     }
 
     const url = new URL("https://router.hereapi.com/v8/routes");
+    const departureAt = new Date();
     const params = {
+      ...buildHereTruckVehicleParams(profile, currentWeightKg),
       transportMode: "truck",
       origin: `${origin.lat},${origin.lng}`,
       destination: `${destination.lat},${destination.lng}`,
-      departureTime: new Date().toISOString(),
-      return: "polyline,summary,actions",
+      departureTime: departureAt.toISOString(),
+      return: "polyline,summary,actions,instructions,potentialTimeDependentViolations",
       lang: "he-IL",
       "avoid[features]": "dirtRoad,uTurns",
-      "vehicle[height]": String(Math.round(heightCm)),
-      "vehicle[width]": String(Math.round(widthCm)),
-      "vehicle[length]": String(Math.round(lengthCm)),
-      "vehicle[grossWeight]": String(Math.round(grossWeightKg)),
-      "vehicle[currentWeight]": String(Math.round(currentWeightKg)),
-      "vehicle[type]": vehicleType,
-      "vehicle[axleCount]": String(axleCount),
-      "vehicle[trailerCount]": String(trailerCount),
+      alternatives: "3",
       apiKey
     };
-    if (weightPerAxleKg !== null) params["vehicle[weightPerAxle]"] = String(Math.round(weightPerAxleKg));
     url.search = new URLSearchParams(params).toString();
 
+    stage = "call_here_truck_router";
     const routeResponse = await fetch(url, { signal: AbortSignal.timeout(15000), cache: "no-store" });
+    stage = "parse_here_route_response";
     const routeData = await routeResponse.json().catch(() => null);
     if (!routeResponse.ok) return response({ error: "ספק הניווט לא הצליח לחשב מסלול. בדוק את פרטי הרכב ונסה שוב." }, 502);
 
-    const route = routeData?.routes?.[0];
-    if (!route?.sections?.length) return response({ error: "לא נמצא מסלול למשאית לפי הנתונים שהוזנו. אין להחליף למסלול רכב פרטי." }, 422);
+    const routes = Array.isArray(routeData?.routes) ? routeData.routes : [];
+    if (routes.length === 0) return response({ error: "לא נמצא מסלול למשאית לפי הנתונים שהוזנו. אין להחליף למסלול רכב פרטי." }, 422);
 
-    const notices = route.sections.flatMap(section => (section.notices || []).map(notice => ({
-      code: String(notice.code || "notice").slice(0, 100),
-      severity: String(notice.severity || "info").slice(0, 30),
-      title: String(notice.title || notice.code || "הודעת ניווט").slice(0, 240)
-    })));
-    const actions = route.sections.flatMap(section => (section.actions || [])
-      .filter(action => typeof action.instruction === "string" && action.instruction.trim())
+    const selection = selectSafeTruckRoute({
+      routes,
+      restrictions: fleetRestrictions || [],
+      vehicle: profile,
+      currentWeightKg,
+      now: departureAt
+    });
+    if (!selection.route) {
+      const unresolved = selection.rejected
+        .filter(item => item.reason === "unresolved_fleet_restrictions")
+        .flatMap(item => item.restrictionCheck.unresolved);
+      if (unresolved.length > 0) {
+        return response({
+          error: "לא ניתן לאמת את כל מגבלות הדרך הרלוונטיות באף אחת מהחלופות. לא הוצג מסלול.",
+          unresolvedRestrictions: unresolved.map(item => ({
+            roadName: item.roadName,
+            reason: item.reason
+          }))
+        }, 409);
+      }
+
+      const conflicts = selection.rejected
+        .filter(item => item.reason === "fleet_restriction_conflict")
+        .flatMap(item => item.restrictionCheck.conflicts);
+      if (conflicts.length > 0) {
+        return response({
+          error: "כל חלופות המסלול שנבדקו מתנגשות במגבלת דרך מאומתת. לא הוצג מסלול לנסיעה.",
+          restrictionConflicts: conflicts.map(item => ({
+            roadName: item.roadName,
+            restrictionType: item.restrictionType
+          }))
+        }, 422);
+      }
+
+      const providerNotices = selection.rejected
+        .filter(item => item.reason === "provider_restriction_notice")
+        .flatMap(item => item.notices)
+        .map(notice => ({
+          code: String(notice?.code || "notice").slice(0, 100),
+          severity: String(notice?.severity || "info").slice(0, 30),
+          title: String(notice?.title || notice?.code || "הודעת ניווט").slice(0, 240)
+        }));
+      if (providerNotices.length > 0) {
+        return response({
+          error: "ספק הניווט דיווח על הפרת מגבלת משאית בכל החלופות שנבדקו. לא הוצג מסלול.",
+          criticalNotices: providerNotices
+        }, 422);
+      }
+
+      if (selection.rejected.length > 0 && selection.rejected.every(item => ["invalid_route_geometry", "invalid_route_summary"].includes(item.reason))) {
+        return response({ error: "נתוני הגיאומטריה של חלופות המסלול אינם תקינים. המסלול נחסם ולא יוצג לנהג." }, 502);
+      }
+      return response({ error: "לא נמצאה חלופת מסלול שניתן לאמת בבטחה. לא הוצג מסלול." }, 422);
+    }
+
+    const route = selection.route;
+    const restrictionCheck = selection.restrictionCheck;
+    const notices = selection.notices.map(notice => ({
+      code: String(notice?.code || "notice").slice(0, 100),
+      severity: String(notice?.severity || "info").slice(0, 30),
+      title: String(notice?.title || notice?.code || "הודעת ניווט").slice(0, 240)
+    }));
+    const actions = route.sections.flatMap(section => (Array.isArray(section.actions) ? section.actions : [])
+      .filter(action => typeof action?.instruction === "string" && action.instruction.trim())
       .map(action => ({
         instruction: action.instruction.slice(0, 300),
-        length: Number.isFinite(action.length) ? action.length : null,
-        duration: Number.isFinite(action.duration) ? action.duration : null
+        length: Number.isFinite(action.length) && action.length >= 0 ? action.length : null,
+        duration: Number.isFinite(action.duration) && action.duration >= 0 ? action.duration : null
       })));
     const critical = notices.some(notice => notice.severity.toLowerCase() === "critical");
-    const distance = route.sections.reduce((sum, section) => sum + (Number(section.summary?.length) || 0), 0);
-    const duration = route.sections.reduce((sum, section) => sum + (Number(section.summary?.duration) || 0), 0);
+    const distance = route.sections.reduce((sum, section) => sum + section.summary.length, 0);
+    const duration = route.sections.reduce((sum, section) => sum + section.summary.duration, 0);
+    if (!Number.isFinite(distance) || !Number.isFinite(duration)) {
+      return response({ error: "סיכום המסלול שהתקבל אינו תקין. המסלול נחסם ולא יוצג לנהג." }, 502);
+    }
 
     return response({
       origin: origin.label,
@@ -182,11 +283,19 @@ export async function POST(request) {
       distanceMeters: distance,
       durationSeconds: duration,
       hasCriticalNotices: critical,
+      restrictionValidation: {
+        manualRestrictionsValidated: restrictionCheck.validated,
+        unresolvedNearbyRestrictions: restrictionCheck.unresolved.length,
+        officialNationalRestrictionsIntegrated: false
+      },
       notices,
       actions,
       sections: route.sections.map(section => ({ polyline: section.polyline || "" }))
     });
   } catch (error) {
+    // Do not log raw exception messages: provider/network errors can contain full
+    // request URLs, and HERE URLs include the server-side API key in the query.
+    console.error("Truck route API failure", { stage, name: String(error?.name || "Error").slice(0, 80) });
     const message = error?.name === "TimeoutError"
       ? "שירות הניווט לא הגיב בזמן. בדוק חיבור ונסה שוב."
       : "אירעה תקלה זמנית בחישוב המסלול. נסה שוב בעוד רגע.";

@@ -1,0 +1,72 @@
+# PTV Routing API integration readiness
+
+Status: preparation only. This document does not enable routing and does not authorize provider requests.
+
+## Verified API contract
+
+- Routing endpoint: `GET https://api.myptv.com/routing/v1/routes`.
+- Authenticate with the `ApiKey` request header. Do not put the key in the URL or log request URLs.
+- Supply at least two WGS84 waypoints as latitude,longitude.
+- The simple routing response is a root object with `distance` (meters), `travelTime` (seconds), and `violated` (boolean); it is not a HERE-style `routes[]` array.
+- The response can additionally contain `events`. PTV documents them as chronologically ordered and each event has basic location/progress fields such as latitude, longitude, distanceFromStart and travelTimeFromStart, plus event-specific data.
+- Request `POLYLINE`, `LEGS_POLYLINE`, `MANEUVER_EVENTS`, and `VIOLATION_EVENTS_POLYLINE` for safety-oriented evaluation. `VIOLATION_EVENTS_POLYLINE` automatically includes `VIOLATION_EVENTS`; `LEGS_POLYLINE` automatically includes `LEGS`.
+- Set `options[polylineMapType]=VECTOR`. PTV's official tutorials demonstrate that the returned `polyline` is a JSON-encoded GeoJSON string and is parsed with `JSON.parse`. TruckSafe converts the supported GeoJSON LineString into its existing flexible-polyline format for the current geometry validator.
+- Request `ALTERNATIVE_ROUTES` only for a two-waypoint route; PTV documents up to three alternatives in addition to the optimal route and warns that additional calculations degrade performance.
+- PTV's route-level and leg-level `violated` flags must be treated as unsafe. Violation events identify location and reason. A route must not be returned as safe if it is marked violated or if required event/geometry data is missing or malformed.
+- PTV documents violation types `PROHIBITED`, `DELIVERY_ONLY`, `RESTRICTED_ACCESS`, `VEHICLE_PROPERTY`, `COMBINED_TRANSPORT`, `SCHEDULE`, and `BLOCKED_ROAD_BY_INTERSECTION`. `VEHICLE_PROPERTY` includes weight/height restrictions. PTV warns that restriction data and modeling vary worldwide.
+- PTV's Geocoding & Places API provides `GET https://api.myptv.com/geocoding/v1/locations/by-text` with `searchText`; use the `ApiKey` header and `countryFilter=IL`. The response envelope is `{ locations: [...] }`; each record may include `referencePosition`, optional `roadAccessPosition`, `address.countryCodeIsoAlpha2`, and `formattedAddress`. Prefer road-access coordinates for routing and validate the country and coordinates before routing.
+- Country filters use ISO 3166-1 alpha-2 codes. Geocoding records are ordered by matching score; score ranges from 0 to 100. Do not infer that a city-level match is a precise delivery entrance.
+- PTV's published vehicle-profile example uses dimensions in centimeters and weights in kilograms. Fields include `height`, `width`, `length`, `totalPermittedWeight`, `axleWeight`, `numberOfAxles`, `emptyWeight`, and `loadWeight`. PTV defines actual weight as `emptyWeight + loadWeight`.
+- PTV supports time-dependent truck restrictions. The selected departure time must be explicit for future trips; verify the exact `options[startTime]` request shape and timezone handling before implementation.
+
+## Vehicle profile mapping notes
+
+TruckSafe currently stores height, width, length, permitted gross weight, axle count, trailer count, and an axle-load field, plus a trip-time actual total weight. It does not currently store a separately verified empty vehicle weight and cargo/load weight. PTV requires actual weight to be represented as the sum of `emptyWeight + loadWeight`; do not silently invent that split. Also confirm whether TruckSafe's `weight_per_axle_kg` is the same semantic as PTV's `axleWeight` before mapping it. The vehicle profile schema must be reconciled before PTV requests are enabled.
+
+## Existing TruckSafe constraints
+
+- The current route handler is HERE-specific: HERE geocoding, HERE query format, HERE route sections/actions, and HERE notice semantics.
+- TruckSafe independently checks fleet-entered road restrictions and fails closed when any relevant restriction cannot be verified.
+- PTV integration must preserve authentication, fleet membership, saved vehicle profile validation, actual-weight validation, per-user route quota, bounded input, no-store responses, and the independent fleet-restriction check.
+- PTV must remain behind separate explicit gates. The presence of `PTV_API_KEY` must never enable requests by itself.
+- Do not reuse HERE approval flags or HERE credentials for PTV.
+
+## Request-builder progress (preparation only)
+
+- Added `lib/ptv-routing-request.mjs`, a pure request builder for the standard Routing API. It validates Israeli coordinates, requires an explicitly supplied profile, sends the API key only in the `ApiKey` header, requests `POLYLINE`, `LEGS_POLYLINE`, `MANEUVER_EVENTS`, and `VIOLATION_EVENTS_POLYLINE` with average traffic, and explicitly requests VECTOR GeoJSON geometry.
+- Added `.github/tests/ptv-routing-request.test.mjs`; the five tests passed in a local Node test run. This is not a GitHub Actions result and no PTV request was sent.
+- The request builder is not connected to the production/Preview route handler. It intentionally does not serialize vehicle parameters or parse provider geometry until profile compatibility, vehicle-field mapping, and polyline format are confirmed.
+
+## PTV geometry adapter (preparation only)
+
+- Reused the existing `lib/ptv-route-adapter.mjs` rather than keeping a duplicate normalizer. It parses PTV VECTOR GeoJSON route and per-leg polylines and converts them into TruckSafe's flexible-polyline sections.
+- The adapter validates each leg's distance, duration, and geometry, validates coordinates against the current Israel envelope, rejects unsupported/malformed GeoJSON, checks provider route/leg violation flags and violation events, and blocks provider warnings that may indicate ignored truck parameters or profile mismatch.
+- Added `.github/tests/ptv-route-adapter.test.mjs` for route/leg conversion, flexible-polyline compatibility, invalid geometry, violations, and warnings. These tests are committed but have not yet been run in GitHub Actions. The flexible-polyline encoder/decoder round-trip was smoke-tested locally with sample Israel coordinates; this does not replace the full automated suite.
+
+## Preliminary response safety gate
+
+- Added `lib/ptv-route-safety.mjs` to reject malformed route summaries, route-level `violated=true`, leg-level `violated=true`, and recognized violation events.
+- Added `.github/tests/ptv-route-safety.test.mjs`; all six tests passed in a local Node test run. This is not a GitHub Actions result and no provider request was made.
+- Critical guardrail: this helper alone never authorizes a route; it returns `safe: false` with `geometry_not_validated` even when provider flags are clear. The separate `ptv-route-adapter.mjs` must also validate route and per-leg GeoJSON geometry before any internal route can be evaluated by TruckSafe.
+- PTV's documentation confirms the route and leg `violated` flags, and explains that `VIOLATION_EVENTS_POLYLINE` provides geometry for violation events with ENTER access; EXIT does not repeat the geometry and PASS is a point event. Do not assume every violation event carries a polyline.
+
+## Work required before enabling PTV
+
+1. Reconcile TruckSafe's vehicle data with PTV's documented fields and units: height/width/length in cm; permitted and actual weights and axleWeight in kg; actual weight as emptyWeight + loadWeight; numberOfAxles. Decide whether to add a verified empty-weight field and validate axleWeight semantics. Do not assume HERE field names or unit suffixes transfer.
+2. Confirm live response examples and exact leg/event object details, violation-event geometry, alternatives, and warnings. Official PTV tutorials confirm VECTOR output is a JSON-encoded GeoJSON polyline; the adapter currently accepts LineString and Feature-wrapped LineString geometry and fails closed for unsupported shapes.
+3. Retrieve the actual predefined vehicle-profile list from `GET https://api.myptv.com/data/v1/vehicle-profiles/predefined` using the PTV key only as a server-side header. Do not assume the standard Routing API catalogue contains an IMEA truck profile: the published standard profile documentation describes regional predefined profiles and warns about American-vs-non-American mismatches, while IMEA-specific OSM profiles belong to the separate OSM API and are not interchangeable. Confirm the exact supported standard profile and baseline attributes for Israel from the live catalogue and PTV support before choosing. Then confirm map-data coverage for Israel with real-world checks on known restricted roads. Do not call this endpoint until test API usage has been explicitly approved.
+4. Use a dedicated PTV geocoding flow or coordinates. Do not keep the HERE geocoder in the PTV path unless a separately approved, rotated HERE credential is available.
+5. Implement a provider adapter that maps PTV results into the exact internal route shape only after schema verification.
+6. Add unit tests for request serialization, response normalization, missing/malformed geometry, violations, alternatives, and fail-closed behavior.
+7. Run automated tests in GitHub Actions. Real provider testing must be limited, explicitly approved, and isolated to Preview.
+8. Do not enable the feature, merge, or deploy to Production until all tests and Israel coverage validation pass and the user explicitly approves.
+
+## Billing and safety guardrails
+
+- Keep `TRUCK_ROUTING_ENABLED=false` until a separate approval.
+- Keep `TRUCK_ROUTING_PROVIDER` unchanged until the adapter and tests are ready.
+- Keep `PTV_PROVIDER_USAGE_APPROVED=false` and `PTV_FREE_PLAN_CONFIRMED=false` until the account's actual free-tier terms and request quota have been confirmed.
+- PTV documents regional vehicle-profile families, including IMEA profiles for the Middle East. The exact identifier and vehicle defaults must be read from the Data API, not inferred from naming conventions.
+- PTV's free subscription is intended for testing/integration rather than commercial/productive operation. API rate limits apply; verify the account's usage monitor before any test batch.
+- Never print, copy, or log `PTV_API_KEY`.
+- No card, upgrade, paid subscription, Production environment change, merge, or deployment without explicit approval.

@@ -1,17 +1,17 @@
 name: Build and dependency audit
 
 on:
+  # Run validation for every PR target, including the active safety-integration base.
   pull_request:
-    branches: [main]
   push:
-    branches: [main, fix/pretrip-safe-integration]
+    branches: [main, fix/pretrip-safe-integration, feat/truck-vehicle-routing-profile]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: build-${{ github.ref }}
+  group: build-${{ github.event.pull_request.head.ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
