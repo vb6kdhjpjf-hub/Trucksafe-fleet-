@@ -90,7 +90,7 @@ export default function Home() {
     setFleet({...current,role});
     setWorkspaceChecked(true);
     const [v,d,tr,inc,incRows,ta,active,maint]=await Promise.all([
-      supabase.from("vehicles").select("id,registration_number,make,model,vehicle_type,status,assigned_driver_id,test_due_at,insurance_due_at,registration_due_at,next_service_at,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,empty_weight_kg,axle_count,trailer_count,weight_per_axle_kg").eq("fleet_id",current.id).order("created_at",{ascending:false}),
+      supabase.from("vehicles").select("id,registration_number,make,model,vehicle_type,status,assigned_driver_id,test_due_at,insurance_due_at,registration_due_at,next_service_at,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,empty_weight_kg,axle_count,trailer_count,weight_per_axle_kg,is_demo").eq("fleet_id",current.id).order("created_at",{ascending:false}),
       supabase.from("drivers").select("id,full_name,phone,status,license_number,license_class,license_expires_at").eq("fleet_id",current.id).order("created_at",{ascending:false}),
       supabase.from("trips").select("id",{count:"exact",head:true}).eq("fleet_id",current.id).eq("status","active"),
       supabase.from("incidents").select("id",{count:"exact",head:true}).eq("fleet_id",current.id).neq("status","resolved"),
@@ -300,6 +300,38 @@ export default function Home() {
     setBusy(false);
   }
 
+  async function markVehicleAsDemo(vehicle) {
+    if (!fleet?.id || !["owner", "fleet_manager", "dispatcher"].includes(fleet.role)) {
+      setMessage("אין לחשבון הרשאה לעדכן את פרטי הרכב.");
+      return;
+    }
+    const confirmed = window.confirm("לסמן את משאית MAN כרכב הדגמה בלבד ולאפס את מספר הנגררים ל־0? הנתונים לא ישמשו לניווט אמיתי.");
+    if (!confirmed) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const { data, error } = await supabase
+        .from("vehicles")
+        .update({ is_demo: true, trailer_count: 0, updated_at: new Date().toISOString() })
+        .eq("id", vehicle.id)
+        .eq("fleet_id", fleet.id)
+        .select("id,is_demo,trailer_count")
+        .maybeSingle();
+      if (error) {
+        setMessage("העדכון נחסם על ידי הרשאות המערכת: " + error.message);
+      } else if (!data) {
+        setMessage("לא בוצע עדכון. ייתכן שאין לך הרשאת בעלים או שהרכב אינו שייך לצי הפעיל.");
+      } else {
+        await loadFleet(session.user);
+        setMessage("המשאית סומנה כרכב הדגמה בלבד ומספר הנגררים עודכן ל־0. נתוני המידות והמשקלים נשארו לא מאומתים.");
+      }
+    } catch (error) {
+      setMessage("לא הצלחנו לעדכן את הרכב: " + (error?.message || "שגיאה לא ידועה"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function signOut(){await supabase.auth.signOut();setMessage("התנתקת מהמערכת.");}
 
   if(!isSupabaseConfigured)return <main className="auth-wrap"><section className="auth-card"><Truck size={36}/><h1>TruckSafe Fleet</h1><p>החיבור למסד הנתונים עדיין לא הוגדר. יש לבדוק את משתני הסביבה ב-Vercel.</p></section></main>;
@@ -379,7 +411,7 @@ export default function Home() {
         <label>משקל מרבי לסרן (ק״ג)<input type="number" min="500" max="30000" step="100" value={weightPerAxleKg} onChange={e=>setWeightPerAxleKg(e.target.value)} placeholder="לפי רישיון / נתון מאומת"/></label>
         <button className="primary-btn" disabled={busy}>שמירת רכב</button>
       </form>}
-      {vehicles.length===0?<div className="fleet-empty">עדיין לא הוספת כלי רכב. לחץ על "הוספת רכב" כדי להתחיל.</div>:<div className="vehicle-list">{vehicles.map(v=><div className="vehicle-row" key={v.id}><Truck size={20}/><div><b>{v.registration_number}</b><small>{[v.make,v.model,v.vehicle_type].filter(Boolean).join(" · ")}{v.assigned_driver_id ? " · נהג: "+(drivers.find(d=>d.id===v.assigned_driver_id)?.full_name||"לא נמצא") : " · ללא נהג משויך"}</small></div><span>{v.status==="available"?"זמין":v.status==="assigned"?"משויך":v.status==="on_trip"?"בנסיעה":v.status==="maintenance"?"בטיפול":v.status==="inactive"?"לא פעיל":v.status}</span></div>)}</div>}
+      {vehicles.length===0?<div className="fleet-empty">עדיין לא הוספת כלי רכב. לחץ על "הוספת רכב" כדי להתחיל.</div>:<div className="vehicle-list">{vehicles.map(v=><div className="vehicle-row" key={v.id}><Truck size={20}/><div><b>{v.registration_number}</b><small>{[v.make,v.model,v.vehicle_type].filter(Boolean).join(" · ")}{v.assigned_driver_id ? " · נהג: "+(drivers.find(d=>d.id===v.assigned_driver_id)?.full_name||"לא נמצא") : " · ללא נהג משויך"}</small>{v.is_demo&&<small style={{color:"#9a6700",fontWeight:700}}>רכב הדגמה בלבד · אין להשתמש לניווט אמיתי</small>}</div>{!v.is_demo&&String(v.make||"").toLowerCase()==="man"&&["owner","fleet_manager","dispatcher"].includes(fleet.role)&&<button type="button" className="nav-link" disabled={busy} onClick={()=>markVehicleAsDemo(v)}>סמן כרכב הדגמה</button>}<span>{v.status==="available"?"זמין":v.status==="assigned"?"משויך":v.status==="on_trip"?"בנסיעה":v.status==="maintenance"?"בטיפול":v.status==="inactive"?"לא פעיל":v.status}</span></div>)}</div>}
       </section>
       <p className="fleet-foot">TruckSafe Fleet V1 · מחובר למסד הנתונים · נתוני הצי מוצגים מהמערכת</p>
     </section>
