@@ -83,3 +83,9 @@ test("rejects a symlink used as the input file", async t => {
   await symlink(paths.input, linkInput);
   await assert.rejects(stageCandidate({ ...paths, input: linkInput, source }), { code: "ELOOP" });
 });
+
+test("rejects invalid UTF-8 instead of silently replacing source bytes", async t => {
+  const paths = await fixture(t);
+  await writeFile(paths.input, Buffer.from([0x7b, 0x22, 0x78, 0x22, 0x3a, 0xff, 0x7d]));
+  await assert.rejects(stageCandidate({ ...paths, source }), /not valid UTF-8/);
+});
