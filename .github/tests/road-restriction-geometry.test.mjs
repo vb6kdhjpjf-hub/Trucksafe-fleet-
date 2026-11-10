@@ -75,7 +75,7 @@ test("blocks a nearby verified height restriction that the truck exceeds", () =>
   assert.equal(result.conflicts[0].restrictionType, "height");
 });
 
-test("does not reject a route for a distant restriction and validates an empty restriction set", () => {
+test("does not reject a route for a distant, verified restriction", () => {
   const distant = verifiedRestriction({ latitude: 32.85, longitude: 35.505 });
   const result = evaluateFleetRestrictions({
     sections,
@@ -87,4 +87,43 @@ test("does not reject a route for a distant restriction and validates an empty r
   assert.equal(result.validated, true);
   assert.deepEqual(result.conflicts, []);
   assert.deepEqual(result.unresolved, []);
+});
+
+test("fails closed when the restriction catalogue is empty or unavailable", () => {
+  for (const restrictions of [[], undefined, null]) {
+    const result = evaluateFleetRestrictions({ sections, restrictions, vehicle, currentWeightKg: 10000, now });
+    assert.equal(result.validated, false);
+    assert.equal(result.unresolved[0].reason, "restriction_catalog_unavailable");
+  }
+});
+
+test("fails closed when the truck profile or current weight is incomplete", () => {
+  const missingDimension = evaluateFleetRestrictions({
+    sections, restrictions: [verifiedRestriction({})],
+    vehicle: { ...vehicle, heightCm: null }, currentWeightKg: 10000, now
+  });
+  assert.equal(missingDimension.validated, false);
+  assert.equal(missingDimension.unresolved[0].reason, "vehicle_profile_incomplete");
+
+  const missingWeight = evaluateFleetRestrictions({
+    sections, restrictions: [verifiedRestriction({})], vehicle, currentWeightKg: NaN, now
+  });
+  assert.equal(missingWeight.validated, false);
+  assert.equal(missingWeight.unresolved[0].reason, "vehicle_profile_incomplete");
+});
+
+test("fails closed when an active catalogue record is unverified or has an invalid limit", () => {
+  const unverified = evaluateFleetRestrictions({
+    sections, restrictions: [verifiedRestriction({ verification_status: "pending" })],
+    vehicle, currentWeightKg: 10000, now
+  });
+  assert.equal(unverified.validated, false);
+  assert.equal(unverified.unresolved[0].reason, "restriction_not_verified");
+
+  const invalidLimit = evaluateFleetRestrictions({
+    sections, restrictions: [verifiedRestriction({ max_height_m: "unknown" })],
+    vehicle, currentWeightKg: 10000, now
+  });
+  assert.equal(invalidLimit.validated, false);
+  assert.equal(invalidLimit.unresolved[0].reason, "missing_or_invalid_restriction_limit");
 });
