@@ -134,6 +134,7 @@ declare
   dispatcher_id uuid := 'f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf52';
   fleet_id uuid := 'b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d51';
   vehicle_id uuid := 'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51';
+  untrusted_vehicle_id uuid := 'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf53';
   restriction_id uuid;
   message_text_value text;
   status_value text;
@@ -155,6 +156,31 @@ begin
   on conflict do nothing;
   insert into public.fleet_members(fleet_id,user_id,role)
   values(fleet_id,dispatcher_id,'dispatcher');
+
+  -- A direct INSERT must never be able to create a pre-verified vehicle.
+  insert into public.vehicles(
+    id,fleet_id,registration_number,make,model,vehicle_type,status,
+    test_due_at,insurance_due_at,registration_due_at,is_demo,
+    registration_verification_status,registration_document_path,
+    registration_document_uploaded_at,registration_verified_at,
+    registration_verified_by,registration_verification_note
+  ) values (
+    untrusted_vehicle_id,fleet_id,'CI-UNTRUSTED-001','Test','Truck','truck','available',
+    current_date+365,current_date+365,current_date+365,false,
+    'verified',fleet_id::text || '/' || untrusted_vehicle_id::text || '/forged.pdf',
+    now(),now(),owner_id,'Forged approval submitted during vehicle creation'
+  );
+
+  if (select registration_verification_status from public.vehicles where id=untrusted_vehicle_id) <> 'unverified'
+     or (select registration_document_path from public.vehicles where id=untrusted_vehicle_id) is not null
+     or (select registration_document_uploaded_at from public.vehicles where id=untrusted_vehicle_id) is not null
+     or (select registration_verified_at from public.vehicles where id=untrusted_vehicle_id) is not null
+     or (select registration_verified_by from public.vehicles where id=untrusted_vehicle_id) is not null
+     or (select registration_verification_note from public.vehicles where id=untrusted_vehicle_id) is not null then
+    raise exception 'Vehicle INSERT accepted forged registration verification metadata';
+  end if;
+  insert into pg_temp.road_vehicle_security_results
+  values('direct vehicle insert cannot forge registration approval','PASS','Insert trigger forces unverified state and clears all supplied document/approval metadata');
 
   -- An authorized fleet owner can verify a restriction with official evidence.
   insert into public.road_restrictions(
