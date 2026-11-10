@@ -18,7 +18,7 @@ TruckSafe has a substantial fleet-management application and an isolated validat
 | Workstream | Current status | Evidence / remaining gate |
 |---|---|---|
 | Fleet workspace and dashboard | Implemented in the application | Login, fleet membership, fleet dashboard and operational modules exist; dashboard loading now fails closed when an account has multiple fleet memberships or multiple owned fleets instead of selecting one arbitrarily. Complete user-acceptance testing is still required. |
-| Drivers, vehicles and tasks | Implemented; safety checks added | Driver eligibility, vehicle lifecycle and task/pre-trip flows have automated tests. Real-user acceptance and edge-case review remain. |
+| Drivers, vehicles and tasks | Implemented; safety checks added | Driver eligibility, vehicle lifecycle and task/pre-trip flows have automated tests. Isolated authenticated-role tests now verify cross-fleet row isolation, dispatcher write denial, driver assignment-scoped vehicle reads, and authenticated driver start/finish RPC authorization. Real-user acceptance and edge-case review remain. |
 | Maintenance, incidents, history and reports | Implemented in the application | Pages and data workflows exist; full operational acceptance and permissions review remain. |
 | Vehicle registration verification | Guarded workflow implemented in the development branch | Private registration document and authorized review are required; material technical-profile, registration-number, make/model and vehicle-type edits invalidate prior approval; a database INSERT trigger clears any client-supplied approval or document metadata. SQL integration tests cover forged INSERT metadata and re-review after a registration identity change. Rollout to Production has not been authorized. |
 | Fleet road-restriction catalogue | Implemented as fleet-scoped workflow | Geometry, time validity and verification evidence checks exist. It is not a national authoritative road database. |
@@ -31,15 +31,17 @@ TruckSafe has a substantial fleet-management application and an isolated validat
 
 ## Verified engineering baseline
 
-The latest verified isolated validation run is [GitHub Actions run 42873983249](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/42873983249), on commit `77f73b30ac20cfbaeed9de3bc2489973475d77fc`.
+The latest verified isolated validation run is [GitHub Actions run 42875131116](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/42875131116), on commit `70f107243f630803bd8d99b1a5037e3d8f4d77d9`.
 
 Recorded results:
 - Application and safety unit-test step passed (161 tests), including streamed request-body limit and routing-profile validation tests.
-- Vehicle-registration security integration test passed: direct vehicle INSERT cannot forge a verified status or inject document/approval metadata; technical-profile edits and registration-identity changes invalidate prior approval and clear reviewer metadata. Fleet dashboard code also rejects ambiguous multi-fleet selection rather than silently choosing a workspace.
+- Vehicle-registration and RLS integration tests passed: direct vehicle INSERT cannot forge a verified status or inject document/approval metadata; technical-profile edits and registration-identity changes invalidate prior approval and clear reviewer metadata. Fourteen rollback-only security scenarios passed, including owner/other-fleet row isolation, dispatcher vehicle write denial, driver assignment-scoped vehicle reads, and authenticated driver trip start/finish with cross-fleet rejection. Fleet dashboard code also rejects ambiguous multi-fleet selection rather than silently choosing a workspace.
 - Isolated database integration job passed; its connection was verified to target only the dedicated test project.
 - Next.js production build passed.
 - Production dependency audit reported 0 vulnerabilities.
 - Synthetic database fixtures are rollback-only.
+
+Supabase Security Advisor review on the isolated test project reported two warnings for the authenticated RPC functions `start_trip_with_inspection` and `finish_trip`, which are intentionally SECURITY DEFINER so they can perform controlled trip lifecycle writes. Their bodies enforce authenticated membership, fleet/task/driver/vehicle matching and driver-or-manager authorization; CI now exercises the assigned-driver path and rejects a cross-fleet start. These warnings remain visible and should be re-reviewed if the RPC authorization logic changes.
 
 These results establish that the tested code passed those checks. They do not establish live provider correctness, source-data coverage, production readiness, or road safety.
 
