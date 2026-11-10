@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import { lstat, open, realpath } from "node:fs/promises";
 import path from "node:path";
+import { hashRestrictionPayload } from "../lib/restriction-source-envelope.mjs";
 import { pathToFileURL } from "node:url";
 
 const sha256 = value => createHash("sha256").update(value).digest("hex");
@@ -24,6 +25,7 @@ export async function createHumanReviewEvent({ candidateFile, assessmentReportFi
 
   const candidate = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(await readBytes(candidateFile)));
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate) || !isHash(candidate.payload_sha256) || candidate.review?.approved_for_routing !== false) throw new Error("Candidate must be a valid, explicitly unapproved envelope");
+  if (hashRestrictionPayload(candidate.payload) !== candidate.payload_sha256) throw new Error("Candidate payload hash does not match stored payload");
   const source = candidate.source;
   const sourceFields = ["source_id", "publisher", "dataset_name", "dataset_version", "licence_reference"];
   if (!source || typeof source !== "object" || Array.isArray(source) || sourceFields.some(key => typeof source[key] !== "string" || !source[key].trim() || source[key].length > 1000) ||
