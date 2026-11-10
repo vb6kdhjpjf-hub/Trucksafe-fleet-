@@ -47,7 +47,15 @@ test("detects candidate and assessment report changes", async t => {
     retrieved_at: "2026-11-10T17:00:00Z",
     schema_version: "1.0", review: { approved_for_routing: false } }));
   await assert.rejects(verifyHumanReviewEvent(f), /Candidate payload hash/);
-  await writeFile(f.candidateFile, JSON.stringify({ payload_sha256: "a".repeat(64), review: { approved_for_routing: false } }));
+  await writeFile(f.candidateFile, JSON.stringify({ payload_sha256: "a".repeat(64), source: {
+      source_id: "agency-dataset-id",
+      publisher: "Publishing authority",
+      dataset_name: "Road restrictions export",
+      dataset_version: "2026-11",
+      licence_reference: "permission-123"
+    },
+    retrieved_at: "2026-11-10T17:00:00Z",
+    schema_version: "1.0", review: { approved_for_routing: false } }));
   await writeFile(f.assessmentReportFile, JSON.stringify({ valid: false, approved_for_routing: false, dimensions: {} }));
   await assert.rejects(verifyHumanReviewEvent(f), /Assessment report hash/);
 });
@@ -61,4 +69,13 @@ test("detects event tampering and unexpected routing fields", async t => {
   event.approved_for_routing = true;
   await writeFile(f.eventFile, JSON.stringify(event));
   await assert.rejects(verifyHumanReviewEvent(f), /missing or unexpected fields/);
+});
+
+
+test("invalidates review when source identity or dataset version changes", async t => {
+  const f = await fixture(t);
+  const candidate = JSON.parse(await readFile(f.candidateFile, "utf8"));
+  candidate.source.dataset_version = "2026-12";
+  await writeFile(f.candidateFile, JSON.stringify(candidate));
+  await assert.rejects(verifyHumanReviewEvent(f), /source provenance does not match/);
 });
