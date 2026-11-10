@@ -106,7 +106,7 @@ export async function POST(request) {
 
     const { data: savedVehicle, error: vehicleError } = await db
       .from("vehicles")
-      .select("id,fleet_id,status,is_demo,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,empty_weight_kg,axle_count,trailer_count,weight_per_axle_kg")
+      .select("id,fleet_id,status,is_demo,registration_verification_status,registration_document_path,registration_verified_at,registration_verified_by,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,empty_weight_kg,axle_count,trailer_count,weight_per_axle_kg")
       .eq("id", vehicleId)
       .eq("fleet_id", membership.fleet_id)
       .maybeSingle();
