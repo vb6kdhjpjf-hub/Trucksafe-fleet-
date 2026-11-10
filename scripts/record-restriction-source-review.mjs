@@ -1,4 +1,4 @@
-import { constants, createHash } from "node:crypto";
+import { createHash } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import { lstat, open, realpath } from "node:fs/promises";
 import path from "node:path";
@@ -24,6 +24,13 @@ export async function createHumanReviewEvent({ candidateFile, assessmentReportFi
 
   const candidate = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(await readBytes(candidateFile)));
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate) || !isHash(candidate.payload_sha256) || candidate.review?.approved_for_routing !== false) throw new Error("Candidate must be a valid, explicitly unapproved envelope");
+  const source = candidate.source;
+  const sourceFields = ["source_id", "publisher", "dataset_name", "dataset_version", "licence_reference"];
+  if (!source || typeof source !== "object" || Array.isArray(source) || sourceFields.some(key => typeof source[key] !== "string" || !source[key].trim() || source[key].length > 1000) ||
+      typeof candidate.schema_version !== "string" || typeof candidate.retrieved_at !== "string" ||
+      !/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$/.test(candidate.retrieved_at) || !Number.isFinite(Date.parse(candidate.retrieved_at))) {
+    throw new Error("Candidate source provenance metadata is incomplete or invalid");
+  }
   const reportBytes = await readBytes(assessmentReportFile);
   const report = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(reportBytes));
   if (!report || typeof report !== "object" || Array.isArray(report) || report.approved_for_routing !== false || typeof report.valid !== "boolean" || !Array.isArray(report.dimensions)) {
@@ -34,6 +41,13 @@ export async function createHumanReviewEvent({ candidateFile, assessmentReportFi
   const evidenceRefs = Object.values(report.dimensions).flatMap(item => Array.isArray(item?.evidence_refs) ? item.evidence_refs : []);
   const event = {
     schema_version: 1,
+    candidate_schema_version: candidate.schema_version,
+    source_id: source.source_id,
+    publisher: source.publisher,
+    dataset_name: source.dataset_name,
+    dataset_version: source.dataset_version,
+    licence_reference: source.licence_reference,
+    retrieved_at: candidate.retrieved_at,
     candidate_payload_sha256: candidate.payload_sha256,
     assessment_report_sha256: sha256(reportBytes),
     reviewer: reviewer.trim(),
