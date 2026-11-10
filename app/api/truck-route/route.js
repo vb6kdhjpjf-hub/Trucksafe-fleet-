@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { evaluateFleetRestrictions } from "../../../lib/road-restriction-geometry.mjs";
+import { isTruckRouteConfigured } from "../../../lib/truck-route-readiness.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,8 +35,12 @@ async function geocode(address, apiKey) {
 }
 
 export async function GET() {
-  const providerEnabled = process.env.TRUCK_ROUTING_PROVIDER === "here";
-  return response({ configured: providerEnabled && Boolean(process.env.HERE_API_KEY) });
+  const configured = isTruckRouteConfigured({
+    provider: process.env.TRUCK_ROUTING_PROVIDER,
+    apiKey: process.env.HERE_API_KEY,
+    restrictionCoverageApproved: process.env.TRUCK_RESTRICTION_COVERAGE_APPROVED
+  });
+  return response({ configured });
 }
 
 export async function POST(request) {
@@ -65,6 +70,10 @@ export async function POST(request) {
       .limit(1)
       .maybeSingle();
     if (membershipError || !membership) return response({ error: "אין לחשבון הרשאה לתכנון מסלולים בצי." }, 403);
+
+    if (process.env.TRUCK_RESTRICTION_COVERAGE_APPROVED !== "true") {
+      return response({ error: "ניווט משאיות חסום עד לאימות כיסוי ארצי ועדכני של מגבלות הדרך. אין להסתמך על המאגר החלקי כמסלול בטוח." }, 503);
+    }
 
     const apiKey = process.env.TRUCK_ROUTING_PROVIDER === "here" ? process.env.HERE_API_KEY : null;
     if (!apiKey) return response({ error: "מנוע ניתוב המשאיות עדיין לא הופעל. יש להשלים חיבור לספק מאושר ולבדוק אותו לפני שימוש." }, 503);
