@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 import { resolveSingleFleetMembership } from "../../lib/fleet-membership.mjs";
 import { resolveAuthenticatedFleetMembership } from "../../lib/authenticated-fleet-membership.mjs";
+import { resolveFleetApiAccess } from "../../lib/fleet-api-access.mjs";
 
 function client({ user = { id: "user-a" }, authError = null, memberships = [], membershipError = null, fleet = { id: "fleet-a", name: "Fleet A" }, fleetError = null } = {}) {
   const calls = [];
@@ -154,6 +155,73 @@ test("single-fleet membership resolver fails closed for missing, ambiguous, or f
   assert.deepEqual(valid, { data: { fleet_id: "fleet-a", role: "dispatcher" }, error: null });
 });
 
+
+test("fleet API access gate maps invalid sessions, missing and ambiguous membership to denial", async () => {
+  const invalid = await resolveFleetApiAccess({
+    auth: { getUser: async () => ({ data: { user: null }, error: new Error("expired") }) }
+  }, "expired-token");
+  assert.deepEqual(invalid, { data: null, status: 401, reason: "invalid_session" });
+
+  const makeClient = (rows) => ({
+    auth: { getUser: async (token) => {
+      assert.equal(token, "valid-token");
+      return { data: { user: { id: "verified-user" } }, error: null };
+    } },
+    from(table) {
+      assert.equal(table, "fleet_members");
+      const query = {
+        select() { return query; },
+        eq(column, value) { assert.equal(column, "user_id"); assert.equal(value, "verified-user"); return query; },
+        limit(value) { assert.equal(value, 2); return query; },
+        then(resolve, reject) { return Promise.resolve({ data: rows, error: null }).then(resolve, reject); }
+      };
+      return query;
+    }
+  });
+
+  const noFleet = await resolveFleetApiAccess(makeClient([]), "valid-token");
+  assert.deepEqual(noFleet, { data: null, status: 403, reason: "fleet_membership_required" });
+
+  const multiple = await resolveFleetApiAccess(makeClient([
+    { fleet_id: "fleet-a", role: "owner" },
+    { fleet_id: "fleet-b", role: "driver" }
+  ]), "valid-token");
+  assert.deepEqual(multiple, { data: null, status: 403, reason: "fleet_membership_required" });
+});
+
+test("fleet API access gate enforces management roles and returns only verified membership", async () => {
+  const makeClient = (role) => ({
+    auth: { getUser: async () => ({ data: { user: { id: "verified-user" } }, error: null }) },
+    from() {
+      const query = {
+        select() { return query; },
+        eq() { return query; },
+        limit() { return query; },
+        then(resolve, reject) {
+          return Promise.resolve({ data: [{ fleet_id: "fleet-a", role }], error: null }).then(resolve, reject);
+        }
+      };
+      return query;
+    }
+  });
+
+  const driver = await resolveFleetApiAccess(makeClient("driver"), "valid-token", {
+    allowedRoles: ["owner", "fleet_manager"]
+  });
+  assert.deepEqual(driver, { data: null, status: 403, reason: "fleet_manager_required" });
+
+  const manager = await resolveFleetApiAccess(makeClient("fleet_manager"), "valid-token", {
+    allowedRoles: ["owner", "fleet_manager"]
+  });
+  assert.equal(manager.status, 200);
+  assert.equal(manager.reason, null);
+  assert.deepEqual(manager.data.membership, { fleet_id: "fleet-a", role: "fleet_manager" });
+  assert.equal(manager.data.user.id, "verified-user");
+
+  const dispatcher = await resolveFleetApiAccess(makeClient("dispatcher"), "valid-token");
+  assert.equal(dispatcher.status, 200);
+  assert.deepEqual(dispatcher.data.membership, { fleet_id: "fleet-a", role: "dispatcher" });
+});
 
 test("shared authenticated fleet guard verifies the bearer token with Supabase Auth", async () => {
   const source = await readFile(new URL("../../lib/authenticated-fleet-membership.mjs", import.meta.url), "utf8");
