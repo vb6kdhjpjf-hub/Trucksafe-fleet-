@@ -108,8 +108,8 @@ test("server routing endpoints verify bearer identity and reject ambiguous fleet
   for (const route of routes) {
     const source = await readFile(new URL("../../" + route, import.meta.url), "utf8");
     assert.match(source, /authorization\.startsWith\(["']Bearer ["']\)/, route + " must require a bearer token");
-    assert.match(source, /import \\{ resolveFleetApiAccess \\} from ["']\\.\\.\\/\\.\\.\\/\\.\\.\\/lib\\/fleet-api-access\\.mjs["']/, route + " must import the shared API access guard");
-    assert.match(source, /resolveFleetApiAccess\\(db, token/, route + " must validate bearer identity and fleet membership through the shared guard");
+    assert.match(source, /import \{ resolveFleetApiAccess \} from ["']\.\.\/\.\.\/\.\.\/lib\/fleet-api-access\.mjs["']/, route + " must import the shared API access guard");
+    assert.match(source, /resolveFleetApiAccess\(db, token/, route + " must validate bearer identity and fleet membership through the shared guard");
   }
 });
 
