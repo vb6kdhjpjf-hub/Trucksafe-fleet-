@@ -250,6 +250,30 @@ test("fleet API access gate enforces management roles and returns only verified 
   assert.deepEqual(dispatcher.data.membership, { fleet_id: "fleet-a", role: "dispatcher" });
 });
 
+test("fleet API access gate rejects malformed membership roles and identifiers", async () => {
+  for (const membership of [
+    { fleet_id: "fleet-a", role: "superuser" },
+    { fleet_id: "fleet-a", role: null },
+    { fleet_id: "", role: "driver" }
+  ]) {
+    const result = await resolveFleetApiAccess({
+      auth: { getUser: async () => ({ data: { user: { id: "verified-user" } }, error: null }) },
+      from() {
+        const query = {
+          select() { return query; },
+          eq() { return query; },
+          limit() { return query; },
+          then(resolve, reject) {
+            return Promise.resolve({ data: [membership], error: null }).then(resolve, reject);
+          }
+        };
+        return query;
+      }
+    }, "valid-token");
+    assert.deepEqual(result, { data: null, status: 403, reason: "fleet_membership_invalid" });
+  }
+});
+
 test("shared authenticated fleet guard verifies the bearer token with Supabase Auth", async () => {
   const source = await readFile(new URL("../../lib/authenticated-fleet-membership.mjs", import.meta.url), "utf8");
   assert.match(source, /client\.auth\.getUser\(token\)/);
