@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { Truck, ShieldCheck, LogOut, Plus, Users, Navigation, AlertTriangle, ClipboardList, BarChart3, Wrench, Route } from "lucide-react";
+import { isDriverEligibleForVehicleAssignment } from "../lib/driver-eligibility.mjs";
 
 export default function Home() {
   const [session,setSession]=useState(null);
@@ -604,7 +605,7 @@ export default function Home() {
         <label>מספר רישוי<input required value={registration} onChange={e=>setRegistration(e.target.value)} placeholder="12-345-67"/></label>
         <label>סוג רכב<select value={vehicleType} onChange={e=>setVehicleType(e.target.value)}><option>משאית</option><option>גורר</option><option>נגרר</option><option>מסחרית</option><option>רכב אחר</option></select></label>
         <label>יצרן / דגם<input value={vehicleMake} onChange={e=>setVehicleMake(e.target.value)} placeholder="לדוגמה: Volvo FH"/></label>
-        <label>נהג משויך<select value={assignedDriverId} onChange={e=>setAssignedDriverId(e.target.value)}><option value="">ללא נהג משויך</option>{drivers.filter(d=>d.status==="active").map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label>
+        <label>נהג משויך<select value={assignedDriverId} onChange={e=>setAssignedDriverId(e.target.value)}><option value="">ללא נהג משויך</option>{drivers.filter(d=>isDriverEligibleForVehicleAssignment(d)).map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select><small>מוצגים רק נהגים פעילים עם תאריך תוקף רישיון תקין שלא פג. יש לוודא בנפרד שדרגת הרישיון מתאימה לרכב.</small></label>
         <div style={{gridColumn:"1 / -1",borderTop:"1px solid #e5eaf1",paddingTop:12,marginTop:4}}>
           <b>נתוני משאית לניווט (אופציונלי)</b>
           <p style={{fontSize:12,color:"#718096",margin:"5px 0 10px"}}>יש להזין לפי רישיון הרכב ומדידה בפועל. נתונים חלקיים לא יישמרו כפרופיל ניתוב.</p>
