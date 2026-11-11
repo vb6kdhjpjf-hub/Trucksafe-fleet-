@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 import { ArrowRight, History, MapPin, RefreshCw } from "lucide-react";
 
 export default function TripHistoryPage() {
@@ -41,12 +42,15 @@ export default function TripHistoryPage() {
     supabase.auth.getSession().then(async ({ data, error: sessionError }) => {
       if (!alive) return;
       if (sessionError || !data.session) { router.replace("/"); return; }
-      const { data: membership, error: membershipError } = await supabase.from("fleet_members")
-        .select("fleet_id").eq("user_id", data.session.user.id).limit(1).maybeSingle();
+      const { data: workspace, error: workspaceError } = await resolveFleetWorkspace(supabase, data.session.user.id);
       if (!alive) return;
-      if (membershipError || !membership) { setError(membershipError ? "שגיאה בטעינת שיוך הצי: " + membershipError.message : "לא נמצא צי המשויך לחשבון."); setLoading(false); return; }
-      setFleetId(membership.fleet_id);
-      await loadHistory(membership.fleet_id);
+      if (workspaceError) {
+        if (workspaceError.code === "AUTH_REQUIRED" || workspaceError.code === "NO_FLEET") router.replace("/");
+        else setError("לא הצלחנו לאמת את הצי: " + workspaceError.message);
+        setLoading(false); return;
+      }
+      setFleetId(workspace.fleet.id);
+      await loadHistory(workspace.fleet.id);
       if (alive) setLoading(false);
     }).catch(error => {
       if (alive) { setError("שגיאה בטעינת ההיסטוריה: " + error.message); setLoading(false); }
