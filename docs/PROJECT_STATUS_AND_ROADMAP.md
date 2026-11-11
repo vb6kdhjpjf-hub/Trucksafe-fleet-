@@ -96,3 +96,30 @@ These results establish that the tested code passed those checks. They do not es
 - PTV remains experimental until commercial rights, service behavior and Israel coverage are verified.
 - Do not apply branch migrations to Production or alter Production data as part of this work.
 - Keep PR #15 Draft and unmerged; do not deploy without explicit authorization.
+
+
+## Cross-fleet relational integrity — detailed constraint map
+
+The isolated test schema was inspected by exact foreign-key name and referential action. These existing single-column constraints enforce referenced-row existence but do not enforce fleet equality:
+
+| Table | Existing foreign key | Existing delete behavior |
+|---|---|---|
+| tasks | tasks_assigned_driver_id_fkey → drivers(id) | SET NULL |
+| tasks | tasks_assigned_vehicle_id_fkey → vehicles(id) | SET NULL |
+| trips | trips_task_id_fkey → tasks(id) | SET NULL |
+| trips | trips_driver_id_fkey → drivers(id) | NO ACTION |
+| trips | trips_vehicle_id_fkey → vehicles(id) | NO ACTION |
+| incidents | incidents_trip_id_fkey → trips(id) | SET NULL |
+| incidents | incidents_driver_id_fkey → drivers(id) | SET NULL |
+| incidents | incidents_vehicle_id_fkey → vehicles(id) | SET NULL |
+| inspections | inspections_trip_id_fkey → trips(id) | SET NULL |
+| inspections | inspections_driver_id_fkey → drivers(id) | NO ACTION |
+| inspections | inspections_vehicle_id_fkey → vehicles(id) | NO ACTION |
+| maintenance_records | maintenance_records_incident_id_fkey → incidents(id) | SET NULL |
+| maintenance_records | maintenance_records_vehicle_id_fkey → vehicles(id) | CASCADE |
+| trip_locations | trip_locations_trip_id_fkey → trips(id) | CASCADE |
+| trip_locations | trip_locations_driver_id_fkey → drivers(id) | CASCADE |
+
+The planned replacement uses composite fleet-scoped keys for all fleet-owned references, and a (trip_id, driver_id) relationship to the trip's actual driver for trip_locations. Optional-reference deletes must clear only the reference column, never fleet_id; vehicle deletion from maintenance records remains CASCADE. These mappings are a design record, not an applied migration.
+
+The next database test must prove same-fleet inserts succeed, every cross-fleet relationship fails, trip locations cannot name a different driver, and every original delete action is preserved. Only after that should a Supabase-CLI-generated migration be applied to the isolated test project and the full CI/Advisor suite rerun.
