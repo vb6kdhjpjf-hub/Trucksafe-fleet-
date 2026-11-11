@@ -43,4 +43,4 @@ jobs:
           name: trucksafe-schema-only
           path: schema.sql
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
