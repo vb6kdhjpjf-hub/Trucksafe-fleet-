@@ -38,3 +38,15 @@ test("database integration explicitly rejects the exact Production project ref",
   assert.match(validation, /if "jqebxlhhffwiebijiug" in identity/);
   assert.doesNotMatch(validation, /jqebxlhhffwiebijiugx/);
 });
+
+
+test("live Test Auth credentials are isolated from pull_request execution", () => {
+  const authJob = validation.match(/  auth-integration:[\\s\\S]*?(?=\\n  [a-z][a-z-]*:\\n|$)/)?.[0] ?? "";
+  assert.match(authJob, /github\\.event_name == 'push'/);
+  assert.match(authJob, /refs\\/heads\\/test\\/isolated-e2e-ci/);
+  assert.match(authJob, /github\\.event_name == 'workflow_dispatch'/);
+  assert.match(authJob, /inputs\\.confirm_test_auth == true/);
+  assert.doesNotMatch(authJob, /github\\.event_name == 'pull_request'/);
+  assert.match(authJob, /https:\\/\\/yxxrgblpqzhnnyojbwcr\\.supabase\\.co/);
+  assert.doesNotMatch(authJob, /jqebxlhhffwiebijiug/);
+});
