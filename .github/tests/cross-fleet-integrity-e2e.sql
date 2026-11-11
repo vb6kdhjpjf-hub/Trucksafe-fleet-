@@ -379,6 +379,45 @@ BEGIN
   IF changed_rows <> 0 THEN
     RAISE EXCEPTION 'Driver RLS failure: driver updated a vehicle';
   END IF;
+
+  UPDATE public.tasks
+  SET title = title || ' unauthorized'
+  WHERE id = 'ee000000-0000-4000-8000-000000000001';
+  GET DIAGNOSTICS changed_rows = ROW_COUNT;
+  IF changed_rows <> 0 THEN
+    RAISE EXCEPTION 'Driver RLS failure: driver updated a task';
+  END IF;
+
+  UPDATE public.trips
+  SET status = status
+  WHERE id = 'ff000000-0000-4000-8000-000000000001';
+  GET DIAGNOSTICS changed_rows = ROW_COUNT;
+  IF changed_rows <> 0 THEN
+    RAISE EXCEPTION 'Driver RLS failure: driver updated a trip';
+  END IF;
+
+  UPDATE public.inspections
+  SET passed = passed
+  WHERE id = '22000000-0000-4000-8000-000000000001';
+  GET DIAGNOSTICS changed_rows = ROW_COUNT;
+  IF changed_rows <> 0 THEN
+    RAISE EXCEPTION 'Driver RLS failure: driver updated an inspection';
+  END IF;
+
+  UPDATE public.incidents
+  SET description = description || ' unauthorized'
+  WHERE id = '11000000-0000-4000-8000-000000000001';
+  GET DIAGNOSTICS changed_rows = ROW_COUNT;
+  IF changed_rows <> 0 THEN
+    RAISE EXCEPTION 'Driver RLS failure: driver updated an incident';
+  END IF;
+
+  DELETE FROM public.vehicles
+  WHERE id = 'dd000000-0000-4000-8000-000000000001';
+  GET DIAGNOSTICS changed_rows = ROW_COUNT;
+  IF changed_rows <> 0 THEN
+    RAISE EXCEPTION 'Driver RLS failure: driver deleted a vehicle';
+  END IF;
 END
 $driver_rls$;
 
