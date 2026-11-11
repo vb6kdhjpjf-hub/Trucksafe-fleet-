@@ -626,7 +626,7 @@ export default function Home() {
   <div style={{gridColumn:"1 / -1",fontWeight:700}}>עריכת פרטי רכב · {v.registration_number}</div>
   <label>סוג רכב<select value={vehicleType} onChange={e=>setVehicleType(e.target.value)}><option>משאית</option><option>גורר</option><option>נגרר</option><option>מסחרית</option><option>רכב אחר</option></select></label>
   <label>יצרן / דגם<input value={vehicleMake} onChange={e=>setVehicleMake(e.target.value)} placeholder="לדוגמה: Volvo FH"/></label>
-  <label>נהג משויך<select value={assignedDriverId} onChange={e=>setAssignedDriverId(e.target.value)}><option value="">ללא נהג משויך</option>{drivers.filter(d=>d.status==="active").map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label>
+  <label>נהג משויך<select value={assignedDriverId} onChange={e=>setAssignedDriverId(e.target.value)}><option value="">ללא נהג משויך</option>{drivers.filter(d=>isDriverEligibleForVehicleAssignment(d)).map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select><small>מוצגים רק נהגים פעילים עם תאריך תוקף רישיון תקין שלא פג. יש לוודא בנפרד שדרגת הרישיון מתאימה לרכב.</small></label>
   <div style={{gridColumn:"1 / -1",borderTop:"1px solid #e5eaf1",paddingTop:12,marginTop:4}}>
     <b>נתוני משאית לניווט</b>
     <p style={{fontSize:12,color:"#718096",margin:"5px 0 10px"}}>יש להזין רק נתונים שמופיעים ברישיון או שנמדדו בפועל. שינוי נתוני ניתוב יחייב בדיקה מחדש של הרישיון.</p>
