@@ -33,6 +33,7 @@ const files = [
   ".github/tests/road-vehicle-security-e2e.sql",
   ".github/tests/route-quota-e2e.sql",
   ".github/tests/cross-fleet-integrity-e2e.sql",
+  ".github/tests/cross-fleet-preflight-detects-anomalies.sql",
 ];
 
 const client = new Client({
@@ -60,6 +61,24 @@ try {
         throw new Error(`Cross-fleet preflight found ${preflight.rows.length} unexpected violation(s)`);
       }
       console.log("PASS: populated synthetic fixture has zero cross-fleet preflight findings");
+    }
+    if (file === ".github/tests/cross-fleet-preflight-detects-anomalies.sql") {
+      const resultList = Array.isArray(results) ? results : [results];
+      const preflight = resultList.find((result) =>
+        result.fields?.some((field) => field.name === "relationship")
+      );
+      if (!preflight) {
+        throw new Error("Anomaly preflight diagnostic did not return its expected result set");
+      }
+      if (
+        preflight.rows.length !== 1 ||
+        preflight.rows[0].relationship !== "tasks.assigned_driver_id"
+      ) {
+        throw new Error(
+          `Expected exactly one tasks.assigned_driver_id anomaly; received ${preflight.rows.length} finding(s)`
+        );
+      }
+      console.log("PASS: preflight detects the synthetic cross-fleet task-driver anomaly");
     }
     console.log(`PASS: ${file}`);
   }
