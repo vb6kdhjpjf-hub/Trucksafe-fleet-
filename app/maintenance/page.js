@@ -47,6 +47,8 @@ export default function MaintenancePage() {
   async function save(e){
     e.preventDefault(); if(!fleet || !canManageMaintenance){setMessage("אין לך הרשאה לניהול תחזוקה.");return;}
     if(!form.vehicle_id || !form.maintenance_type){setMessage("יש לבחור רכב וסוג טיפול.");return;}
+    if(!vehicles.some(vehicle=>vehicle.id===form.vehicle_id)){setMessage("הרכב שנבחר אינו שייך לצי הפעיל. רענן את הרשימה ובחר רכב תקין.");return;}
+    if(form.incident_id){const linkedIncident=incidents.find(item=>item.id===form.incident_id);if(!linkedIncident||linkedIncident.vehicle_id!==form.vehicle_id){setMessage("התקלה המקושרת חייבת להיות קיימת ומשויכת לאותו רכב שנבחר לטיפול.");return;}}
     if(form.cost!==""&&(!Number.isFinite(Number(form.cost))||Number(form.cost)<0)){setMessage("יש להזין עלות תקינה שאינה שלילית.");return;}
     if(form.odometer_km!==""&&(!Number.isFinite(Number(form.odometer_km))||Number(form.odometer_km)<0)){setMessage("יש להזין קילומטראז׳ תקין שאינו שלילי.");return;}
     if(form.scheduled_at&&form.completed_at&&form.completed_at<form.scheduled_at){setMessage("תאריך הביצוע אינו יכול להיות לפני מועד הטיפול המתוכנן.");return;}

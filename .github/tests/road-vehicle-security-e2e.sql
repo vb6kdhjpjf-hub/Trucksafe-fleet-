@@ -336,6 +336,15 @@ begin
   insert into public.maintenance_records(id,fleet_id,vehicle_id,incident_id,maintenance_type,description,status)
   values(maintenance_id,fleet_id,vehicle_id,incident_id,'inspection','CI RLS maintenance','scheduled');
 
+  -- A maintenance record may only link an incident for the same vehicle.
+  begin
+    update public.maintenance_records set vehicle_id=untrusted_vehicle_id where id=maintenance_id;
+    raise exception 'Maintenance record accepted an incident belonging to another vehicle';
+  exception when foreign_key_violation then
+    insert into pg_temp.road_vehicle_security_results
+    values('maintenance incident must match vehicle','PASS','Composite foreign key rejected a same-fleet but different-vehicle incident link');
+  end;
+
 
   -- Seed one private registration object so the authenticated storage policies
   -- can be exercised without leaving a real file or any persistent test data.
