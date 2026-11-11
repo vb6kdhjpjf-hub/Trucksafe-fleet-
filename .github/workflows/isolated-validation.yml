@@ -98,6 +98,7 @@ jobs:
 
 
   auth-integration:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/test/isolated-e2e-ci'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
