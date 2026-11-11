@@ -24,5 +24,5 @@ VALUES (
   'cd000000-0000-4000-8000-000000000002'
 );
 
-\\ir ../../supabase/diagnostics/cross_fleet_integrity_preflight.sql
+\ir ../../supabase/diagnostics/cross_fleet_integrity_preflight.sql
 ROLLBACK;
