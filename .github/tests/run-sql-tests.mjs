@@ -119,7 +119,6 @@ try {
       }
     }
     console.log(`PASS: ${file}`);
-    console.log(`PASS: ${file}`);
   }
 } catch (error) {
   console.error("Database integration test failed:", error.message);
