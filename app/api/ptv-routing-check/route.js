@@ -38,7 +38,7 @@ export async function POST(request) {
       .from("fleet_members")
       .select("fleet_id,role")
       .eq("user_id", authData.user.id)
-      .limit(1)
+      .limit(2)
       .maybeSingle();
     if (membershipError || !membership) {
       return response({ ok: false, reason: "fleet_membership_required" }, 403);
