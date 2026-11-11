@@ -7,7 +7,8 @@ ALTER TABLE public.incidents
   UNIQUE (fleet_id, vehicle_id, id);
 
 ALTER TABLE public.maintenance_records
-  DROP CONSTRAINT maintenance_records_incident_same_fleet_fkey,
+  DROP CONSTRAINT IF EXISTS maintenance_records_incident_same_fleet_fkey,
+  DROP CONSTRAINT IF EXISTS maintenance_records_incident_id_fkey,
   ADD CONSTRAINT maintenance_records_incident_same_vehicle_fkey
     FOREIGN KEY (fleet_id, vehicle_id, incident_id)
     REFERENCES public.incidents (fleet_id, vehicle_id, id)
