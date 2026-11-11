@@ -61,9 +61,8 @@ BEGIN
   INSERT INTO public.fleets (id, name, owner_user_id)
   VALUES (f_a, 'FK Test Fleet A', u_a), (f_b, 'FK Test Fleet B', u_b);
 
-  -- Membership rows are required to exercise the actual fleet RLS predicates.
-  INSERT INTO public.fleet_members (fleet_id, user_id, role)
-  VALUES (f_a, u_a, 'owner'), (f_b, u_b, 'owner');
+  -- The fleet creation trigger creates each owner's membership row.
+  -- Reuse those rows for RLS tests rather than inserting duplicate memberships.
 
   INSERT INTO public.drivers (id, fleet_id, full_name)
   VALUES
