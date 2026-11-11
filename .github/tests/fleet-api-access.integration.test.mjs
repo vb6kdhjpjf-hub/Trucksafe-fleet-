@@ -44,13 +44,14 @@ async function startAuthFixture(t, { user = { id: TEST_USER_ID }, memberships = 
 
   const address = server.address();
   const client = createClient(`http://127.0.0.1:${address.port}`, "local-fixture-anon-key", {
+    global: { headers: { Authorization: `Bearer ${TEST_TOKEN}` } },
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
   });
 
   return { client, requests };
 }
 
-test("real Supabase JS client resolves a single fleet membership through a local Auth/PostgREST contract fixture", async t => {
+test("Supabase JS client resolves a single fleet membership through a local Auth/PostgREST contract fixture", async t => {
   const { client, requests } = await startAuthFixture(t);
   const result = await resolveFleetApiAccess(client, TEST_TOKEN);
 
