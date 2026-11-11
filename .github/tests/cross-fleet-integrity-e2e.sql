@@ -80,6 +80,10 @@ BEGIN
     (task_extra, f_a, 'Optional links task', d_extra, v_extra),
     (task_trip_extra, f_a, 'Task deletion behavior', d_a, v_a);
 
+  -- The production trip trigger requires a signed-in actor context.
+  PERFORM set_config('request.jwt.claim.sub', u_a::text, true);
+  PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
+
   INSERT INTO public.trips (id, fleet_id, task_id, driver_id, vehicle_id)
   VALUES
     (trip_a, f_a, task_a, d_a, v_a),
