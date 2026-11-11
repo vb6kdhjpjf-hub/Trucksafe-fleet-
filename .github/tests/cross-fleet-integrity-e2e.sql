@@ -61,6 +61,10 @@ BEGIN
   INSERT INTO public.fleets (id, name, owner_user_id)
   VALUES (f_a, 'FK Test Fleet A', u_a), (f_b, 'FK Test Fleet B', u_b);
 
+  -- Membership rows are required to exercise the actual fleet RLS predicates.
+  INSERT INTO public.fleet_members (fleet_id, user_id, role)
+  VALUES (f_a, u_a, 'owner'), (f_b, u_b, 'owner');
+
   INSERT INTO public.drivers (id, fleet_id, full_name)
   VALUES
     (d_a, f_a, 'Synthetic Driver A'),
@@ -225,6 +229,82 @@ BEGIN
     'vehicle delete is blocked while operational references exist');
 END
 $test$;
+
+-- Exercise the real PostgreSQL RLS policies as the authenticated role.
+-- JWT claim GUCs are synthetic; this is not a signed-token/Supabase Auth E2E.
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', 'aa000000-0000-4000-8000-000000000001', true);
+SELECT set_config('request.jwt.claim.role', 'authenticated', true);
+
+DO $rls$
+DECLARE
+  visible_rows integer;
+  changed_rows integer;
+BEGIN
+  SELECT count(*) INTO visible_rows
+  FROM public.vehicles
+  WHERE id IN (
+    'dd000000-0000-4000-8000-000000000001',
+    'dd000000-0000-4000-8000-000000000002'
+  );
+  IF visible_rows <> 1 THEN
+    RAISE EXCEPTION 'RLS failure: Fleet A owner should see only Fleet A vehicle; saw % rows', visible_rows;
+  END IF;
+
+  SELECT count(*) INTO visible_rows
+  FROM public.tasks
+  WHERE id IN (
+    'ee000000-0000-4000-8000-000000000001',
+    'ee000000-0000-4000-8000-000000000002'
+  );
+  IF visible_rows <> 1 THEN
+    RAISE EXCEPTION 'RLS failure: Fleet A owner should see only Fleet A task; saw % rows', visible_rows;
+  END IF;
+
+  SELECT count(*) INTO visible_rows
+  FROM public.trips
+  WHERE id IN (
+    'ff000000-0000-4000-8000-000000000001',
+    'ff000000-0000-4000-8000-000000000002'
+  );
+  IF visible_rows <> 1 THEN
+    RAISE EXCEPTION 'RLS failure: Fleet A owner should see only Fleet A trip; saw % rows', visible_rows;
+  END IF;
+
+  SELECT count(*) INTO visible_rows
+  FROM public.fleet_members
+  WHERE fleet_id = 'bb000000-0000-4000-8000-000000000002';
+  IF visible_rows <> 0 THEN
+    RAISE EXCEPTION 'RLS failure: Fleet A owner can see Fleet B memberships';
+  END IF;
+
+  UPDATE public.vehicles
+  SET registration_number = 'FKTEST-A-RLS-UPDATED'
+  WHERE id = 'dd000000-0000-4000-8000-000000000001';
+  GET DIAGNOSTICS changed_rows = ROW_COUNT;
+  IF changed_rows <> 1 THEN
+    RAISE EXCEPTION 'RLS failure: Fleet A owner could not update own vehicle';
+  END IF;
+
+  UPDATE public.vehicles
+  SET registration_number = 'FKTEST-B-RLS-UNAUTHORIZED'
+  WHERE id = 'dd000000-0000-4000-8000-000000000002';
+  GET DIAGNOSTICS changed_rows = ROW_COUNT;
+  IF changed_rows <> 0 THEN
+    RAISE EXCEPTION 'RLS failure: Fleet A owner updated Fleet B vehicle';
+  END IF;
+
+  BEGIN
+    INSERT INTO public.vehicles (fleet_id, registration_number)
+    VALUES ('bb000000-0000-4000-8000-000000000002', 'FKTEST-CROSS-FLEET-INSERT');
+    RAISE EXCEPTION 'RLS failure: Fleet A owner inserted a vehicle into Fleet B';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+END
+$rls$;
+
+RESET ROLE;
 
 SELECT scenario, outcome FROM pg_temp.trucksafe_fk_results ORDER BY scenario;
 
