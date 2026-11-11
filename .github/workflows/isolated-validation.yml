@@ -138,6 +138,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Generate lockfile without running install scripts
+        if: steps.auth-secrets.outputs.available == 'true'
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
       - name: Install locked dependencies
         id: install
         if: steps.auth-secrets.outputs.available == 'true'
