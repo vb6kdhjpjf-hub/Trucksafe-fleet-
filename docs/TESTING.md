@@ -32,6 +32,20 @@ Do not create test identities by directly inserting into or deleting from `auth.
 
 Until that fixture and cleanup guarantees are in place, report the current coverage accurately as synthetic-claim PostgreSQL RLS integration plus local SDK protocol tests. The expanded driver write-denial checks were added in commit `c124f9c` and passed both CI jobs (`validate` and `database-integration`) against the dedicated Test database.
 
+## Opt-in live Supabase Auth integration
+
+The optional `auth-integration` job runs only on pushes to `test/isolated-e2e-ci`; it does not receive Auth secrets on pull-request events. It runs only when all three GitHub Actions secrets are configured:
+
+- `SUPABASE_TEST_URL` — must resolve exactly to `https://yxxrgblpqzhnnyojbwcr.supabase.co`.
+- `SUPABASE_TEST_ANON_KEY` — public Test-project key used only by the server-side test runner.
+- `SUPABASE_TEST_SERVICE_ROLE_KEY` — privileged Test-project key used only by the server-side Admin API client.
+
+The runner refuses any other URL, creates one confirmed synthetic Test Auth user through `auth.admin.createUser()`, signs in through the public Auth endpoint, validates the resulting signed access token with Auth, then performs a real `fleet_members` PostgREST lookup and verifies that a user with no membership is denied by the API. It does not create fleet memberships or modify application tables.
+
+The cleanup selector requires both a server-controlled `app_metadata.trucksafe_ci_fixture` marker and the dedicated `trucksafe-ci-` email prefix. It sweeps stale marked identities before a run, removes the created fixture in a `finally` path, and runs a second cleanup step with `if: always()`. If a runner is terminated before cleanup, the next Test Auth run sweeps any remaining marked fixture before creating another. Cleanup is performed only through the Supabase Auth Admin API; there are no direct writes to `auth.users`.
+
+The live test intentionally covers a real signed-in identity with **zero** fleet memberships. It does not yet prove positive membership access, role-specific RLS, or cross-fleet authorization using live Auth users. Those remain separate gates and must not be inferred from this smoke test or from synthetic SQL claim simulations. If the three secrets are absent, the job emits a notice and skips the live test rather than claiming it passed.
+
 ## Release and safety gates
 
 - Keep PR #15 open and in Draft until explicitly authorized otherwise.
