@@ -47,7 +47,20 @@ try {
   for (const file of files) {
     console.log(`Running rollback-only SQL test: ${file}`);
     const sql = await expandIncludes(file);
-    await client.query(sql);
+    const results = await client.query(sql);
+    if (file === ".github/tests/cross-fleet-integrity-e2e.sql") {
+      const resultList = Array.isArray(results) ? results : [results];
+      const preflight = resultList.find((result) =>
+        result.fields?.some((field) => field.name === "relationship")
+      );
+      if (!preflight) {
+        throw new Error("Cross-fleet preflight diagnostic did not return its expected result set");
+      }
+      if (preflight.rows.length !== 0) {
+        throw new Error(`Cross-fleet preflight found ${preflight.rows.length} unexpected violation(s)`);
+      }
+      console.log("PASS: populated synthetic fixture has zero cross-fleet preflight findings");
+    }
     console.log(`PASS: ${file}`);
   }
 } catch (error) {
