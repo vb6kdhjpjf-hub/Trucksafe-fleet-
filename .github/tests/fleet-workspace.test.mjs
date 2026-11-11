@@ -114,6 +114,33 @@ test("server routing endpoints verify bearer identity and reject ambiguous fleet
 });
 
 
+test("truck route reads vehicle and restriction records only inside the verified fleet", async () => {
+  const source = await readFile(new URL("../../app/api/truck-route/route.js", import.meta.url), "utf8");
+
+  assert.match(source, /\.from\(["']vehicles["']\)[\s\S]*?\.eq\(["']id["'],\s*vehicleId\)[\s\S]*?\.eq\(["']fleet_id["'],\s*membership\.fleet_id\)/,
+    "vehicle lookup must be constrained by both vehicle ID and verified fleet ID");
+  assert.match(source, /\.from\(["']road_restrictions["']\)[\s\S]*?\.eq\(["']fleet_id["'],\s*membership\.fleet_id\)/,
+    "restriction catalogue lookup must be constrained by verified fleet ID");
+  assert.match(source, /global:\s*\{\s*headers:\s*\{\s*Authorization:\s*`Bearer \$\{token\}`\s*\}\s*\}/,
+    "database requests must carry the verified user's bearer token for RLS");
+  assert.doesNotMatch(source, /SUPABASE_SERVICE_ROLE_KEY|SUPABASE_SECRET_KEY/,
+    "truck route must not use a service-role or secret key");
+  assert.ok(source.indexOf("resolveFleetApiAccess(db, token)") < source.indexOf("geocode(originText, apiKey)"),
+    "authorization must complete before paid geocoding is attempted");
+});
+
+test("PTV diagnostic endpoints enforce manager roles before contacting the provider", async () => {
+  for (const route of ["app/api/ptv-profile-check/route.js", "app/api/ptv-routing-check/route.js"]) {
+    const source = await readFile(new URL("../../" + route, import.meta.url), "utf8");
+    const gateIndex = source.indexOf('resolveFleetApiAccess(db, token, { allowedRoles: ["owner", "fleet_manager"] })');
+    const providerIndex = source.indexOf("await fetch(");
+    assert.ok(gateIndex >= 0, route + " must use an explicit manager role allowlist");
+    assert.ok(providerIndex > gateIndex, route + " must authorize before making provider requests");
+    assert.doesNotMatch(source, /SUPABASE_SERVICE_ROLE_KEY|SUPABASE_SECRET_KEY/,
+      route + " must not use a service-role or secret key");
+  }
+});
+
 test("single-fleet membership resolver fails closed for missing, ambiguous, or failed lookups", async () => {
   const makeClient = ({ rows = [], error = null } = {}) => {
     const state = { filters: [], limit: null };
