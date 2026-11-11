@@ -275,3 +275,12 @@ A Test-only live fixture has now been implemented to create marked owner, fleet_
 Cleanup deletes only uniquely marked fleets owned by marked fixture users, verifies fleet removal, then deletes only marked Auth users through Auth Admin API and asserts zero marked users remain. Cleanup-only mode can retry after interruption. The fixture hard-rejects any host except the exact dedicated Test project.
 
 This code is awaiting CI execution. Do not claim live positive-membership E2E passed until the Auth integration job is green and its logs confirm fixture cleanup. No Production writes, no deployment, and no merge; PR #15 remains open and Draft.
+
+
+## Live API route authorization and negative-path milestone — 2026-11-11
+
+The latest live Test Auth run now creates four disposable signed Auth identities: owner, fleet_manager, driver, and an unassigned user with no fleet membership. It calls the actual exported POST handlers for `ptv-profile-check`, `ptv-routing-check`, and `truck-route` in-process with each signed JWT, plus a deliberately invalid bearer token.
+
+Verified outcomes: owner/manager pass PTV authorization and stop at the missing-key 503; driver is denied manager-only PTV endpoints with 403; unassigned identity is denied with 403; invalid bearer is denied with 401. All three fleet roles reach the truck-route membership gate and then stop at the restriction-coverage safety gate with 503. Provider keys are removed and restriction coverage approval is false, so no PTV/HERE provider calls occur. Route responses are checked for no-store caching.
+
+Run 43067605949 passed all three jobs. Live Auth logs confirm four fixture users were removed and the cleanup-only sweep found zero remaining marked users. Read-only Test database inspection confirms zero fleets, fixture memberships, and fixture drivers. The in-process route test is not deployed-server/browser E2E and does not test downstream vehicle/quota/provider logic. No Production changes, merge, or deployment; PR #15 remains open and Draft.

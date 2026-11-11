@@ -263,7 +263,7 @@ async function main() {
       .select("id,name")
       .single();
     if (fleetError || !createdFleet?.id || createdFleet.name !== fleetName) {
-      throw new Error(`Unable to create the uniquely marked Test fixture fleet through the signed owner session (code: ${fleetError?.code ?? "unknown"}; message: ${String(fleetError?.message ?? "no response").slice(0, 240)}).`);
+      throw new Error(`Unable to create the uniquely marked Test fixture fleet through the dedicated Test service-role client (code: ${fleetError?.code ?? "unknown"}; message: ${String(fleetError?.message ?? "no response").slice(0, 240)}).`);
     }
 
     const { data: ownerMembership, error: ownerMembershipError } = await ownerSession.client
