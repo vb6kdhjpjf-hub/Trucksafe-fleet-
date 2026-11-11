@@ -360,8 +360,16 @@ BEGIN
     '22000000-0000-4000-8000-000000000002',
     '22000000-0000-4000-8000-000000000003'
   );
-  IF visible_rows <> 1 THEN
-    RAISE EXCEPTION 'Driver RLS failure: driver should see only own inspection; saw % rows', visible_rows;
+  -- Fleet A driver owns two Fleet A inspections in this fixture; Fleet B's
+  -- inspection must remain invisible.
+  IF visible_rows <> 2 THEN
+    RAISE EXCEPTION 'Driver RLS failure: driver should see exactly own two inspections; saw % rows', visible_rows;
+  END IF;
+  SELECT count(*) INTO visible_rows
+  FROM public.inspections
+  WHERE id = '22000000-0000-4000-8000-000000000002';
+  IF visible_rows <> 0 THEN
+    RAISE EXCEPTION 'Driver RLS failure: driver can see Fleet B inspection';
   END IF;
 
   UPDATE public.vehicles
