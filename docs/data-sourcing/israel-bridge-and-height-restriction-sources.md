@@ -29,6 +29,12 @@ Safety rule: **none of the sources listed here is currently approved as a verifi
 - The previously located dataset identifies grade-separation locations/names and maintenance responsibility, but does not provide measured vertical clearance.
 - Permitted use: candidate discovery only. It cannot establish a height restriction or a safe/unsafe truck passage.
 
+### Ministry of Transport — delegated road-signing authority datasets
+- Official road-authority segment dataset: https://data.gov.il/he/datasets/ministry_of_transport/roadauthority. Its description says it maps road segments where the traffic-signing authority was delegated to a body other than the municipality. The publisher is the Ministry of Transport; the page lists `pinusi@mot.gov.il` as its contact mailbox and shows a dataset update date of 22 July 2026.
+- Official local traffic-authority directory: https://data.gov.il/he/datasets/ministry_of_transport/traffic_authority. It lists authority names and stable codes (for example, Netivei Israel, Cross-Israel, Ayalon Highways, Israel Railways and others); the currently indexed CSV page shows an update date of 28 February 2023.
+- Interpretation: these are useful **responsibility-discovery / routing-of-enquiry** sources. They can help identify which body may own or control signage for a road segment. They do not contain a current inventory of truck height, weight, width, time-window or closure restrictions, and do not prove the current operational restriction state. The older authority directory also needs freshness confirmation before relying on it for current contacts.
+- Acquisition follow-up: use the authority-segment dataset and directory to build a candidate road-owner contact matrix, then request the actual restriction register, source documents, change feed and commercial-use permission from each responsible authority. Do not treat delegated signage authority as proof of asset ownership or measurement responsibility.
+
 ### Local authority GIS layers
 - Example: Tel Aviv municipal bridge layer: https://gisn.tel-aviv.gov.il/ArcGIS/rest/services/IView2/MapServer/550
 - It identifies bridge features and type within the municipal GIS.
