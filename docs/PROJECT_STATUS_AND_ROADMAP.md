@@ -101,6 +101,10 @@ These results establish that the tested code passed those checks. They do not es
 - Keep PR #15 Draft and unmerged; do not deploy without explicit authorization.
 
 
+## Fleet authorization and privileged-routine audit
+
+The rollback-only security integration suite now audits every public table for enabled RLS, every SECURITY DEFINER routine in the public/private schemas for a pinned empty search_path and denial of anonymous EXECUTE, and every exposed public view/materialized view for invoker security or absence of client SELECT grants. The dedicated Test project was also inspected read-only: all current public tables have RLS enabled, no public views are currently exposed, and no anonymous role can execute a SECURITY DEFINER routine. Existing owner/dispatcher/driver/two-fleet and private vehicle-registration storage behavior tests remain in place.
+
 ## Application smoke and route-quota security checks
 
 The isolated validation workflow now starts the built Next.js app with database and routing-provider credentials explicitly blanked and routing coverage approval disabled. It exercises the dashboard shell, routing readiness, authentication gates on the truck-route and PTV diagnostic APIs, HTTP method restrictions, JSON content-type enforcement, no-store response headers, and 20 concurrent unauthenticated/readiness requests. This is an application-process smoke test, not a full authenticated end-to-end test against a live fleet.
