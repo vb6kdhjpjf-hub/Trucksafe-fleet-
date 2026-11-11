@@ -15,7 +15,7 @@ The database test runner executes the SQL files in `.github/tests/` inside trans
 
 - Fleet owners cannot read or update another fleet's protected records.
 - Drivers can read only their assigned vehicle, assigned task, own trip, and own inspections.
-- Drivers cannot update vehicle records.
+- Drivers cannot update vehicle, task, trip, inspection, or incident records, and cannot delete vehicles.
 - Cross-fleet references are rejected by database constraints.
 
 **Important:** setting PostgreSQL request-claim variables is a synthetic claim simulation. It is not a signed JWT, does not validate a real Supabase Auth session, and is not live Supabase Auth end-to-end coverage. The local Supabase JS SDK fixture in `.github/tests/fleet-api-access.integration.test.mjs` is also a local protocol fixture, not a connection to a live Auth service.
@@ -30,7 +30,7 @@ Do not create test identities by directly inserting into or deleting from `auth.
 - Cleans up users through the Auth Admin API in a guaranteed teardown path, including failed tests.
 - Never exposes service-role credentials to browser code, client bundles, logs, or chat.
 
-Until that fixture and cleanup guarantees are in place, report the current coverage accurately as synthetic-claim PostgreSQL RLS integration plus local SDK protocol tests.
+Until that fixture and cleanup guarantees are in place, report the current coverage accurately as synthetic-claim PostgreSQL RLS integration plus local SDK protocol tests. The expanded driver write-denial checks were added in commit `c124f9c` and passed both CI jobs (`validate` and `database-integration`) against the dedicated Test database.
 
 ## Release and safety gates
 
@@ -39,3 +39,9 @@ Until that fixture and cleanup guarantees are in place, report the current cover
 - Do not modify Production schema or data.
 - Do not enable production HERE/PTV navigation or claim nationwide restriction coverage without verified authoritative source coverage, freshness, licensing, and independent safety review.
 - A passing CI run is evidence for the tested code paths only; it is not a certification that truck routes are safe or that all fleet permissions are correct.
+
+## Security advisor review (Test project)
+
+The latest Test-project security advisor still reports two authenticated-callable `SECURITY DEFINER` RPCs: `public.start_trip_with_inspection` and `public.finish_trip`. A read-only review found that these are deliberate atomic trip operations: they derive the actor from `auth.uid()`, check fleet membership and applicable role/driver constraints, use a pinned empty `search_path`, and are not executable by `anon`. Do not change them to `SECURITY INVOKER` or revoke authenticated execution merely to silence the generic lint; first add live signed-in positive and negative-path coverage and review the complete call sites.
+
+The Test performance advisor also reports two unindexed nullable reviewer foreign keys (`road_restrictions.verified_by` and `vehicles.registration_verified_by`). Additive index migration and rollback-only test candidates exist in the branch but have not been applied persistently. The advisor reports 17 currently unused indexes; do not remove them without workload evidence.
