@@ -136,3 +136,14 @@ The report covers authority, geographic coverage, truck constraints, measurement
 The helper always returns `approved_for_routing: false`. A human safety review, source-owner confirmation, pilot validation, licensing review, and explicit release approval remain separate mandatory gates. The helper is not connected to the route API, database, ingestion process, or production feature flags.
 
 Tests use synthetic references only and are included in `npm run test:ptv`.
+
+
+## 9. Axle-load enforcement boundary
+
+The saved vehicle profile contains an axle count and a declared `weight_per_axle_kg` value, and the HERE request forwards those values to the provider. This is not a measured or live per-axle load distribution. The current internal restriction evaluator compares gross/current vehicle weight with gross-weight limits; it does not calculate load on each axle or axle group, and it does not approve axle-specific limits.
+
+Accordingly:
+- An axle-specific restriction type (for example, `axle_weight`) is currently unsupported and must remain unresolved / blocked by the evaluator's fail-closed behavior.
+- Do not derive per-axle load by dividing gross weight by axle count; real load distribution depends on vehicle geometry, axle spacing, cargo placement, trailer configuration and coupling loads.
+- Before supporting axle-specific routing, add verified registration/configuration fields for axle groups and spacing, a trustworthy way to establish the actual loaded axle/group weights, unit and limit validation, and provider semantics tests. The route decision must independently compare every applicable axle/group limit.
+- Until then, do not describe a route as axle-safe or claim axle-specific compliance.

@@ -248,6 +248,24 @@ test("fails closed when an active catalogue record is unverified or has an inval
   assert.equal(invalidLimit.unresolved[0].reason, "missing_or_invalid_restriction_limit");
 });
 
+test("fails closed for axle-specific limits until actual axle-load enforcement exists", () => {
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [verifiedRestriction({
+      restriction_type: "axle_weight",
+      max_axle_weight_t: 5
+    })],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now
+  });
+  assert.equal(result.validated, false);
+  assert.equal(result.conflicts.length, 0);
+  assert.equal(result.unresolved.length, 1);
+  assert.equal(result.unresolved[0].reason, "restriction_type_requires_manual_review");
+});
+
 test("ignores an expired restriction after validating its review record", () => {
   const result = evaluateFleetRestrictions({
     sections,
