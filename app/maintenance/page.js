@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 import { Truck, ArrowRight, Plus, Wrench, RefreshCw, CalendarDays } from "lucide-react";
 
 const blank = { vehicle_id: "", incident_id: "", maintenance_type: "טיפול תקופתי", description: "", scheduled_at: "", completed_at: "", cost: "", odometer_km: "", status: "scheduled" };
@@ -20,11 +21,14 @@ export default function MaintenancePage() {
     supabase.auth.getSession().then(async ({data,error})=>{
       if(!alive)return;
       if(error || !data.session){router.replace("/");return;}
-      const {data:member,error:me}=await supabase.from("fleet_members").select("fleet_id,role").eq("user_id",data.session.user.id).limit(1).maybeSingle();
-      if(me || !member){setMessage(me?.message || "לא נמצא שיוך לצי.");setLoading(false);return;}
-      const {data:current,error:fe}=await supabase.from("fleets").select("id,name").eq("id",member.fleet_id).single();
-      if(fe){setMessage(fe.message);setLoading(false);return;}
-      setFleet({ ...current, role: member.role }); await load(current.id); if(alive)setLoading(false);
+      const {data:workspace,error:workspaceError}=await resolveFleetWorkspace(supabase,data.session.user.id);
+      if(workspaceError){
+        if(workspaceError.code==="AUTH_REQUIRED"||workspaceError.code==="NO_FLEET")router.replace("/");
+        else setMessage("לא הצלחנו לאמת את הצי: "+workspaceError.message);
+        setLoading(false);return;
+      }
+      const current=workspace.fleet;
+      setFleet(current); await load(current.id); if(alive)setLoading(false);
     });
     const {data:{subscription}}=supabase.auth.onAuthStateChange((_e,s)=>{if(!s)router.replace("/");});
     return ()=>{alive=false;subscription.unsubscribe();};
