@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { resolveFleetApiAccess } from "../../lib/fleet-api-access.mjs";
@@ -225,6 +226,97 @@ async function assertActualRouteAuthorization({ url, anonKey, token, role }) {
   }
 }
 
+
+async function startLocalHttpServer(url, anonKey) {
+  const port = 3191;
+  const baseUrl = "http://127.0.0.1:" + port;
+  const serverEnv = {
+    ...process.env,
+    PORT: String(port),
+    NEXT_PUBLIC_SUPABASE_URL: url,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: anonKey,
+    HERE_API_KEY: "",
+    PTV_API_KEY: "",
+    TRUCK_ROUTING_PROVIDER: "disabled",
+    TRUCK_RESTRICTION_COVERAGE_APPROVED: "false"
+  };
+  delete serverEnv.SUPABASE_TEST_SERVICE_ROLE_KEY;
+  const server = spawn(
+    process.execPath,
+    ["node_modules/next/dist/bin/next", "start", "-H", "127.0.0.1", "-p", String(port)],
+    { cwd: process.cwd(), env: serverEnv, stdio: ["ignore", "pipe", "pipe"] }
+  );
+  let output = "";
+  server.stdout.on("data", chunk => { output += chunk.toString(); });
+  server.stderr.on("data", chunk => { output += chunk.toString(); });
+  try {
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      if (server.exitCode !== null) {
+        throw new Error("Local Next.js HTTP server exited before readiness: " + output.slice(-4000));
+      }
+      try {
+        const response = await fetch(baseUrl + "/");
+        if (response.status === 200) return {
+          baseUrl,
+          stop: async () => {
+            if (server.exitCode !== null) return;
+            server.kill("SIGTERM");
+            await Promise.race([
+              new Promise(resolve => server.once("exit", resolve)),
+              new Promise(resolve => setTimeout(resolve, 3000))
+            ]);
+            if (server.exitCode === null) server.kill("SIGKILL");
+          }
+        };
+      } catch {}
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    throw new Error("Local Next.js HTTP server did not become ready: " + output.slice(-4000));
+  } catch (error) {
+    server.kill("SIGTERM");
+    throw error;
+  }
+}
+
+async function assertActualHttpAuthorization({ baseUrl, token, role }) {
+  const request = async (path) => {
+    const response = await fetch(baseUrl + path, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer " + token,
+        "content-type": "application/json"
+      },
+      body: "{}"
+    });
+    assert.equal(response.headers.get("cache-control"), "no-store, max-age=0",
+      "HTTP route response must not be cached: " + path);
+    return { status: response.status, body: await response.json() };
+  };
+  for (const path of ["/api/ptv-profile-check", "/api/ptv-routing-check"]) {
+    const result = await request(path);
+    if (role === "owner" || role === "fleet_manager") {
+      assert.equal(result.status, 503);
+      assert.equal(result.body.reason, "ptv_key_not_configured");
+    } else if (role === "driver") {
+      assert.equal(result.status, 403);
+      assert.equal(result.body.reason, "fleet_manager_required");
+    } else if (role === "unassigned") {
+      assert.equal(result.status, 403);
+      assert.equal(result.body.reason, "fleet_membership_required");
+    } else {
+      assert.equal(result.status, 401);
+    }
+  }
+  const truck = await request("/api/truck-route");
+  if (role === "owner" || role === "fleet_manager" || role === "driver") {
+    assert.equal(truck.status, 503);
+    assert.match(truck.body.error, /כיסוי ארצי ועדכני/);
+  } else {
+    assert.equal(truck.status, role === "unassigned" ? 403 : 401);
+  }
+  process.stdout.write("HTTP server authorization passed for identity: " + role + ".\n");
+}
+
 async function main() {
   const { url, anonKey, serviceRoleKey } = readConfig();
   const admin = createAdminClient(url, serviceRoleKey);
@@ -242,8 +334,10 @@ async function main() {
   const fixtures = [];
   const signedIn = [];
   let testError;
+  let httpServer;
 
   try {
+    httpServer = await startLocalHttpServer(url, anonKey);
     for (const role of roles) {
       const email = `${FIXTURE_EMAIL_PREFIX}${role}-${runId}@example.com`;
       const password = randomBytes(36).toString("base64url");
@@ -303,6 +397,7 @@ async function main() {
         token: session.token,
         role: fixture.role
       });
+      await assertActualHttpAuthorization({ baseUrl: httpServer.baseUrl, token: session.token, role: fixture.role });
     }
     await assertActualRouteAuthorization({
       url,
@@ -310,6 +405,7 @@ async function main() {
       token: "invalid-signed-token",
       role: "invalid"
     });
+    await assertActualHttpAuthorization({ baseUrl: httpServer.baseUrl, token: "invalid-signed-token", role: "invalid" });
 
     process.stdout.write(
       "Live Test Auth passed: four signed Test identities (owner, fleet_manager, driver, unassigned), " +
@@ -329,6 +425,8 @@ async function main() {
         "CRITICAL: disposable Test fixture cleanup failed; marked users and any undeleted fleet were retained for retry.",
         { cause: cleanupError }
       );
+    } finally {
+      if (httpServer) await httpServer.stop();
     }
   }
 

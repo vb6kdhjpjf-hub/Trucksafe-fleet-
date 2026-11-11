@@ -145,7 +145,18 @@ jobs:
         id: install
         if: steps.auth-secrets.outputs.available == 'true'
         run: npm ci --no-audit --no-fund
-      - name: Verify signed Auth session and fail-closed membership access
+      - name: Build production app for isolated local HTTP integration
+        if: steps.auth-secrets.outputs.available == 'true'
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_TEST_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_TEST_ANON_KEY }}
+          SUPABASE_TEST_SERVICE_ROLE_KEY: ""
+          HERE_API_KEY: ""
+          PTV_API_KEY: ""
+          TRUCK_ROUTING_PROVIDER: disabled
+          TRUCK_RESTRICTION_COVERAGE_APPROVED: "false"
+        run: npm run build
+      - name: Verify signed Auth session and fail-closed membership over actual local HTTP server
         if: steps.auth-secrets.outputs.available == 'true'
         shell: bash
         run: |
