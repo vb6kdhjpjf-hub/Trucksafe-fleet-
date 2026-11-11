@@ -106,7 +106,7 @@ test("local PostgREST fixture fails closed when membership lookup returns a serv
   assert.equal(result.reason, "fleet_membership_required");
 });
 
-test("local Auth fixture rejects a mismatched user identity", async t => {
+test("membership lookup uses the identity returned by Supabase Auth", async t => {
   const { client, requests } = await startAuthFixture(t, { user: { id: "different-user" } });
   const result = await resolveFleetApiAccess(client, TEST_TOKEN);
 
