@@ -167,3 +167,20 @@ Completed the shared workspace-resolver rollout across all nine protected fleet 
 The three server routing/diagnostic POST endpoints now all verify the supplied bearer token with Supabase Auth and inspect up to two fleet memberships. The PTV diagnostic endpoints were tightened from a one-row membership lookup to a two-row check so multi-fleet accounts cannot be silently treated as having an unambiguous fleet context. Static API contract tests assert bearer validation, Auth verification, membership checks, and ambiguity detection for all three endpoints.
 
 This remains defense-in-depth at the client/API boundary; database RLS remains the actual row-level authorization boundary. No live Auth users or fleet records were created. The current validation suite does not yet perform a real authenticated two-user/two-fleet API exercise; that remains blocked on a disposable Auth-user fixture with guaranteed cleanup. All work remains isolated to the Draft branch.
+
+
+## Latest validation and API fleet-membership hardening — 2026-11-11
+
+The Draft branch now centralizes the routing API fleet-membership lookup in `lib/fleet-membership.mjs`. The helper reads up to two membership rows and returns explicit fail-closed outcomes for missing membership, multiple memberships, or lookup errors. The truck-route, PTV profile diagnostic, and PTV routing diagnostic endpoints all use it after verifying the bearer token with Supabase Auth. The PTV diagnostic endpoints still enforce owner/fleet-manager role checks after the single-fleet result is established.
+
+A deterministic unit test exercises zero, one, and multiple memberships, verifies the two-row limit, and checks lookup-error handling. The latest GitHub Actions run for commit `3dd966edd8b25b2e48b7dfe8f6b011cc8c28e45c` completed successfully: both `validate` and `database-integration` jobs passed. This includes the existing rollback-only database suite and application/security validation. Run: https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43047885030
+
+A read-only Supabase Test Auth check returned zero Auth users after the run. No Auth users or persistent fleet fixtures were created. No Test schema/data or Production schema/data was modified by this work.
+
+### Review of current Supabase advisor findings
+
+The Test project's security advisor reports two authenticated-executable SECURITY DEFINER RPCs: `public.start_trip_with_inspection` and `public.finish_trip`. Read-only inspection confirmed both pin an empty `search_path`, deny `anon` EXECUTE, and grant EXECUTE to `authenticated` and `service_role`. Their bodies derive identity from `auth.uid()`, verify fleet membership, and apply role/driver checks before transactional trip operations. These are deliberately privileged atomic application RPCs; changing them to SECURITY INVOKER or revoking authenticated EXECUTE without a replacement design could break the workflow or change RLS behavior. Do not change their privileges based solely on the generic advisor warning. Add live authenticated role/negative-path coverage before considering a privilege redesign.
+
+The performance advisor also reports missing indexes for nullable reviewer references `road_restrictions.verified_by` and `vehicles.registration_verified_by`. An additive candidate migration already exists at `supabase/migrations/20261111160000_add_verified_by_fk_indexes.sql`. The indexes have not been applied persistently. Keep them as a reviewed candidate until the isolated migration verification and rollout plan are explicitly completed; do not apply to Production.
+
+Next milestone: implement and verify a disposable Auth fixture with guaranteed cleanup, then run authenticated API-level cross-fleet denial tests. The available connector does not expose the required Supabase Auth Admin create/delete workflow, so do not bypass it with direct SQL against `auth.users` or expose a service-role key. Until a secure fixture mechanism is available, continue with deterministic mock-based tests and read-only audits. PR #15 remains open and Draft; no merge, deployment, or Production changes are authorized.
