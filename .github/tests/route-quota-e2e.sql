@@ -42,6 +42,24 @@ begin
   if visible_count <> 1 then
     raise exception 'Quota integration test: expected 1 row for user B, got %', visible_count;
   end if;
+
+  -- Row-level security must hide user B's rows from user A.
+  perform set_config('request.jwt.claim.sub', user_a::text, true);
+  select count(*)::integer into visible_count
+  from private.truck_route_requests
+  where user_id = user_b;
+  if visible_count <> 0 then
+    raise exception 'Quota integration test: user A can see user B quota rows';
+  end if;
+
+  -- Authenticated callers may not mutate or delete quota history directly.
+  if has_table_privilege(current_user, 'private.truck_route_requests', 'UPDATE')
+     or has_table_privilege(current_user, 'private.truck_route_requests', 'DELETE') then
+    raise exception 'Quota integration test: authenticated role has unsafe table privileges';
+  end if;
+  if has_function_privilege('anon', 'public.consume_truck_route_quota()', 'EXECUTE') then
+    raise exception 'Quota integration test: anonymous role can execute quota function';
+  end if;
 end
 $test$;
 
