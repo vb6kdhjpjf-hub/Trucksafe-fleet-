@@ -202,3 +202,13 @@ Added regression checks that the truck-route API constrains both vehicle lookup 
 Validation for commit `e043ea9f32a87975c00634ce8662c40ae3def9a0` completed successfully: GitHub Actions run [43050136924](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43050136924), with both `validate` and `database-integration` jobs passing. PR #15 remains open and Draft; no merge, deployment, or Production database change was made.
 
 Next security-test milestone: replace the existing rollback-only SQL test fixture pattern that directly inserts synthetic rows into `auth.users` with a disposable Supabase Auth Admin API fixture that has guaranteed cleanup. Until that safe fixture exists, do not create Auth users or claim live authenticated API E2E coverage.
+
+## API membership validation and Test RLS review — 2026-11-11
+
+The shared API access gate now also validates the shape of the sole membership row before allowing a request: `fleet_id` must be a non-empty string and `role` must be one of the five roles enforced by the Test database constraint (`owner`, `fleet_manager`, `dispatcher`, `safety_manager`, `driver`). Unknown roles and malformed identifiers are denied with HTTP 403. Deterministic tests cover unknown/null roles and an empty fleet identifier.
+
+Validation for commit `6ec8a0a3453acd31995387ce88950f666505f529` completed successfully in GitHub Actions run [43050746489](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43050746489): both `validate` and `database-integration` passed. The validation log reports 161 application/safety tests, 18 fleet workspace/API authorization tests, 3 workflow safety tests, a successful Next.js build, and successful concurrent smoke checks (including unauthenticated API denial). The database integration job completed successfully.
+
+A read-only review of the isolated Test project's RLS metadata confirmed RLS is enabled on `fleet_members`, `vehicles`, and `road_restrictions`. The membership SELECT policy exposes the caller's own membership row (or rows for fleet managers); vehicle and restriction policies use the private fleet membership/role helpers. This is policy-definition inspection only, not proof of live cross-fleet denial under authenticated JWTs. No Test or Production schema/data was modified, and Test Auth still has zero users.
+
+The remaining live-auth milestone is still blocked on a disposable Supabase Auth fixture with guaranteed cleanup. Do not create Auth users through direct SQL or expose a service-role secret. Until a safe Admin API fixture is available, treat the authorization suite as deterministic mock coverage plus read-only RLS review, not authenticated E2E. PR #15 remains open and Draft; no merge or deployment.
