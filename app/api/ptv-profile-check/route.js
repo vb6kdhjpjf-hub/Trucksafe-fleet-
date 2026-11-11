@@ -36,6 +36,11 @@ export async function POST(request) {
     if (gate.status === 403) return response({ ok: false, reason: gate.reason }, 403);
     const { membership } = gate.data;
 
+    const apiKey = process.env.PTV_API_KEY;
+    if (typeof apiKey !== "string" || !apiKey.trim()) {
+      return response({ ok: false, reason: "ptv_key_not_configured" }, 503);
+    }
+
     // Diagnostic requests also call paid provider APIs; share the authenticated
     // per-user quota and fail closed if its database-backed guard is unavailable.
     const quota = await checkTruckRouteQuota(db);
@@ -44,11 +49,6 @@ export async function POST(request) {
         ok: false,
         reason: quota.reason === "quota_exceeded" ? "provider_request_quota_exceeded" : "provider_request_quota_unavailable"
       }, quota.status);
-    }
-
-    const apiKey = process.env.PTV_API_KEY;
-    if (typeof apiKey !== "string" || !apiKey.trim()) {
-      return response({ ok: false, reason: "ptv_key_not_configured" }, 503);
     }
 
     const requestConfig = buildPTVPredefinedProfilesRequest(apiKey);
