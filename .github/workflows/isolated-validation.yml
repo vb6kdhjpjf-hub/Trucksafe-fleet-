@@ -79,20 +79,18 @@ jobs:
           if "jqebxlhhffwiebijiugx" in identity:
               raise SystemExit("Refusing to run: production project detected.")
           PY
-      - name: Install PostgreSQL client
+      - name: Set up Node.js for database test runner
         if: steps.test-db.outputs.available == 'true'
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
-      - name: Verify reviewer foreign-key index migration (rollback-only)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install PostgreSQL driver
+        if: steps.test-db.outputs.available == 'true'
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund pg
+      - name: Run rollback-only database integration tests
         if: steps.test-db.outputs.available == 'true'
         shell: bash
         run: |
           set +x
-          psql "$SUPABASE_TEST_DB_URL" -X -v ON_ERROR_STOP=1 -f .github/tests/fk-index-migration-e2e.sql
-      - name: Run rollback-only lifecycle and safety integration tests
-        if: steps.test-db.outputs.available == 'true'
-        shell: bash
-        run: |
-          set +x
-          psql "$SUPABASE_TEST_DB_URL" -X -v ON_ERROR_STOP=1 -f .github/tests/lifecycle-e2e.sql
-          psql "$SUPABASE_TEST_DB_URL" -X -v ON_ERROR_STOP=1 -f .github/tests/road-vehicle-security-e2e.sql
-          psql "$SUPABASE_TEST_DB_URL" -X -v ON_ERROR_STOP=1 -f .github/tests/route-quota-e2e.sql
+          node .github/tests/run-sql-tests.mjs
+
