@@ -229,3 +229,14 @@ Extended the rollback-only quota SQL integration test to verify the quota RPC re
 The first version of the new assertion incorrectly expected a table-level INSERT grant and failed in CI. This was a test assertion defect, not a database permission regression. After correcting it to test the actual column-level grant model, commit `69b6ba0ec203df9b9a42e2481c23cca1fe5d021b` passed both GitHub Actions jobs in runs [43051727902](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43051727902) and [43051736952](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43051736952): `validate` and `database-integration` succeeded in both runs.
 
 The quota integration test remains rollback-only and uses synthetic identities; no authenticated Test users were created. No Production schema/data was accessed or modified. Live authenticated API E2E remains blocked on a disposable Auth Admin fixture with guaranteed cleanup. PR #15 remains open and Draft; no merge or deployment.
+
+
+## Isolated Supabase SDK auth-gate integration fixture — 2026-11-11
+
+Added `.github/tests/fleet-api-access.integration.test.mjs` and included it in `test:ci`. The fixture starts a loopback-only local HTTP server that implements the minimal Supabase Auth `/auth/v1/user` and PostgREST `/rest/v1/fleet_members` response contracts, then exercises the actual installed Supabase JS client and shared `resolveFleetApiAccess` gate. Coverage includes a valid single-fleet membership, invalid token denial before membership lookup, no membership, ambiguous multi-fleet membership, membership API failure, use of the Auth-returned identity for membership filtering, and manager-only role enforcement.
+
+This is a local protocol/SDK integration test, **not** a live Supabase Auth E2E test and does not prove production JWT, deployed RLS, or real cross-fleet isolation. It creates no Supabase Auth users and sends no requests to either Supabase project. All fixture servers are bound to loopback and are closed after each test.
+
+The first CI attempt exposed a mismatch in the fixture: the test client did not mirror the API routes' global bearer-header propagation to PostgREST. The fixture was corrected to use the same bearer header pattern as the application. Commit `b8cdd9ee473caa1fc6a340a5b911dd5300a38f1b` then passed both `validate` and `database-integration` in run [43052609907](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43052609907), including the application/safety tests, dependency audit, Next.js build, concurrent smoke tests, and rollback-only Test database checks.
+
+Remaining gap: a live authenticated Supabase Test project E2E still requires a dedicated disposable Auth Admin fixture and guaranteed cleanup capability. Do not use SQL against `auth.users`, create users manually, or deploy a helper function as a workaround. No Production schema/data changes, no merge, and no deployment. PR #15 remains open and Draft.
