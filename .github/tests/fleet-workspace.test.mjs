@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
+import { resolveSingleFleetMembership } from "../../lib/fleet-membership.mjs";
 
 function client({ user = { id: "user-a" }, authError = null, memberships = [], membershipError = null, fleet = { id: "fleet-a", name: "Fleet A" }, fleetError = null } = {}) {
   const calls = [];
@@ -100,7 +101,44 @@ test("server routing endpoints verify bearer identity and reject ambiguous fleet
     const source = await readFile(new URL("../../" + route, import.meta.url), "utf8");
     assert.match(source, /authorization\.startsWith\(["']Bearer ["']\)/, route + " must require a bearer token");
     assert.match(source, /auth\.getUser\(token\)/, route + " must validate the token with Supabase Auth");
-    assert.match(source, /\.from\(["']fleet_members["']\)/, route + " must check fleet membership");
-    assert.match(source, /\.limit\(2\)/, route + " must detect multiple memberships rather than silently choosing one");
+    assert.match(source, /import \{ resolveSingleFleetMembership \} from ["']\.\.\/\.\.\/\.\.\/lib\/fleet-membership\.mjs["']/, route + " must import the shared membership resolver");
+    assert.match(source, /resolveSingleFleetMembership\(db, authData\.user\.id\)/, route + " must reject missing or ambiguous fleet membership");
   }
+});
+
+
+test("single-fleet membership resolver fails closed for missing, ambiguous, or failed lookups", async () => {
+  const makeClient = ({ rows = [], error = null } = {}) => {
+    const state = { filters: [], limit: null };
+    const query = {
+      select(columns) { state.columns = columns; return query; },
+      eq(column, value) { state.filters.push([column, value]); return query; },
+      limit(value) { state.limit = value; return query; },
+      then(resolve, reject) {
+        return Promise.resolve({ data: rows, error }).then(resolve, reject);
+      }
+    };
+    return { from(table) { assert.equal(table, "fleet_members"); return query; }, state };
+  };
+
+  const missing = makeClient();
+  const noFleet = await resolveSingleFleetMembership(missing, "user-a");
+  assert.equal(noFleet.error.code, "NO_FLEET");
+
+  const ambiguous = makeClient({ rows: [
+    { fleet_id: "fleet-a", role: "owner" },
+    { fleet_id: "fleet-b", role: "driver" }
+  ] });
+  const multiple = await resolveSingleFleetMembership(ambiguous, "user-a");
+  assert.equal(multiple.error.code, "MULTIPLE_FLEETS");
+  assert.equal(ambiguous.state.limit, 2);
+  assert.deepEqual(ambiguous.state.filters, [["user_id", "user-a"]]);
+
+  const failed = makeClient({ error: new Error("lookup failed") });
+  const lookupFailure = await resolveSingleFleetMembership(failed, "user-a");
+  assert.equal(lookupFailure.error.code, "MEMBERSHIP_LOOKUP_FAILED");
+
+  const single = makeClient({ rows: [{ fleet_id: "fleet-a", role: "dispatcher" }] });
+  const valid = await resolveSingleFleetMembership(single, "user-a");
+  assert.deepEqual(valid, { data: { fleet_id: "fleet-a", role: "dispatcher" }, error: null });
 });
