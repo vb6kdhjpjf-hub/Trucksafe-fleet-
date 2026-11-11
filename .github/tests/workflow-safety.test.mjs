@@ -54,3 +54,21 @@ test("live Test Auth credentials are isolated from pull_request execution", () =
   assert.ok(!liveAuth.includes("jqebxlhhffwiebijiug"));
   assert.ok(!authJob.includes("jqebxlhhffwiebijiug"));
 });
+
+ 
+test("live Auth cleanup always runs after the fixture attempt and uses only Auth Admin cleanup", () => {
+  const authJob = validation.slice(validation.indexOf("  auth-integration:"));
+  assert.match(authJob, /if: always\(\) && steps\.auth-secrets\.outputs\.available == 'true' && steps\.install\.outcome == 'success'/);
+  assert.match(authJob, /node \.github\/tests\/live-supabase-auth\.integration\.mjs --cleanup-only/);
+  assert.match(liveAuth, /admin\.auth\.admin\.createUser/);
+  assert.match(liveAuth, /admin\.auth\.admin\.deleteUser/);
+  assert.doesNotMatch(liveAuth, /INSERT\s+INTO\s+auth\.users/i);
+});
+
+test("live Auth fixture is explicitly zero-membership and does not write fleet tables", () => {
+  assert.match(liveAuth, /\.from\("fleet_members"\)/);
+  assert.match(liveAuth, /rows\.length !== 0/);
+  assert.match(liveAuth, /fleet_membership_required/);
+  assert.doesNotMatch(liveAuth, /\.from\("fleets"\)\s*\.insert/i);
+  assert.doesNotMatch(liveAuth, /\.from\("fleet_members"\)\s*\.insert/i);
+});

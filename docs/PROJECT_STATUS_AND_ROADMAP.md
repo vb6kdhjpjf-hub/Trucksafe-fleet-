@@ -250,3 +250,17 @@ The fixture reuses the two synthetic identity rows already present in this rollb
 The first CI attempt detected duplicate membership rows because the fleet-creation trigger already creates each owner's membership. The fixture was corrected to reuse those rows. Commit `48eb0a05cd29674feb9497c69ccdeb3ac839c7c8` then passed both jobs in GitHub Actions run [43053603892](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43053603892): the database integration suite passed, and the validation job passed application/safety/workflow tests, production dependency audit, Next.js build, and concurrent smoke tests.
 
 No Production schema or data was accessed or changed. PR #15 remains open and Draft; no merge or deployment. The next security milestone remains a disposable Supabase Auth Admin fixture with guaranteed cleanup before claiming live authenticated API E2E coverage.
+
+
+## Live Auth fixture safety gate and cleanup hardening — 2026-11-11
+
+Six follow-on validation stages were completed on the isolated test branch:
+
+- Tightened the disposable-user cleanup selector to require the server-controlled app-metadata marker, the dedicated `trucksafe-ci-` prefix, and the exact `@example.com` fixture domain.
+- Added negative tests for a wrong domain, missing/malformed email, altered marker, and prefix lookalikes.
+- Added workflow-safety assertions that the post-run cleanup step is configured with `always()`, runs only when the dedicated Test Auth secrets and dependencies are available, and invokes the cleanup-only Auth Admin path.
+- Added static checks that the current live fixture only reads `fleet_members`, expects zero memberships, and does not create fleet or membership rows.
+- Expanded the Test Auth runbook with a six-part schema, trigger, API, isolation, cleanup, and preflight gate required before any positive-membership live fixture is attempted.
+- Recorded the exact coverage boundary and prohibited shortcuts so mocked role checks and synthetic-claim SQL are not misreported as signed-token E2E.
+
+No live Test database writes or fleet membership creation were performed in this change. No Production schema/data access, deployment, or merge. PR #15 remains open and Draft.

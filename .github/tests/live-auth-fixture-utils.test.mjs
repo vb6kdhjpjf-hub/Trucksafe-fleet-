@@ -29,3 +29,32 @@ test("cleanup selector refuses unrelated users", () => {
     app_metadata: { trucksafe_ci_fixture: "other" }
   }), false);
 });
+
+test("cleanup selector refuses marked prefixed addresses outside the fixture domain", () => {
+  assert.equal(isTruckSafeFixtureUser({
+    email: "trucksafe-ci-run@not-example.com",
+    app_metadata: { trucksafe_ci_fixture: FIXTURE_MARKER }
+  }), false);
+});
+
+test("cleanup selector refuses a missing or malformed email", () => {
+  assert.equal(isTruckSafeFixtureUser({
+    email: null,
+    app_metadata: { trucksafe_ci_fixture: FIXTURE_MARKER }
+  }), false);
+  assert.equal(isTruckSafeFixtureUser({
+    email: "trucksafe-ci-run",
+    app_metadata: { trucksafe_ci_fixture: FIXTURE_MARKER }
+  }), false);
+});
+
+test("cleanup selector requires the exact marker and exact fixture address shape", () => {
+  assert.equal(isTruckSafeFixtureUser({
+    email: "trucksafe-ci-run@example.com",
+    app_metadata: { trucksafe_ci_fixture: FIXTURE_MARKER + "-other" }
+  }), false);
+  assert.equal(isTruckSafeFixtureUser({
+    email: "xtrucksafe-ci-run@example.com",
+    app_metadata: { trucksafe_ci_fixture: FIXTURE_MARKER }
+  }), false);
+});
