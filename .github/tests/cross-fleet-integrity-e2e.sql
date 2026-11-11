@@ -2,7 +2,7 @@
 -- Runs only against the dedicated TruckSafe Fleet Test database.
 BEGIN;
 
-\\ir ../../supabase/migrations/20261111162000_enforce_fleet_scoped_foreign_keys.sql
+\ir ../../supabase/migrations/20261111162000_enforce_fleet_scoped_foreign_keys.sql
 
 CREATE TEMP TABLE trucksafe_fk_results (
   scenario text PRIMARY KEY,
