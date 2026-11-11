@@ -107,7 +107,6 @@ test("server routing endpoints verify bearer identity and reject ambiguous fleet
   for (const route of routes) {
     const source = await readFile(new URL("../../" + route, import.meta.url), "utf8");
     assert.match(source, /authorization\.startsWith\(["']Bearer ["']\)/, route + " must require a bearer token");
-    assert.match(source, /auth\.getUser\(token\)/, route + " must validate the token with Supabase Auth");
     assert.match(source, /import \{ resolveAuthenticatedFleetMembership \} from ["']\.\.\/\.\.\/\.\.\/lib\/authenticated-fleet-membership\.mjs["']/, route + " must import the shared authenticated access guard");
     assert.match(source, /resolveAuthenticatedFleetMembership\(db, token\)/, route + " must validate the bearer identity and exactly one fleet membership");
   }
@@ -155,6 +154,12 @@ test("single-fleet membership resolver fails closed for missing, ambiguous, or f
   assert.deepEqual(valid, { data: { fleet_id: "fleet-a", role: "dispatcher" }, error: null });
 });
 
+
+test("shared authenticated fleet guard verifies the bearer token with Supabase Auth", async () => {
+  const source = await readFile(new URL("../../lib/authenticated-fleet-membership.mjs", import.meta.url), "utf8");
+  assert.match(source, /client\.auth\.getUser\(token\)/);
+  assert.match(source, /resolveSingleFleetMembership\(client, user\.id\)/);
+});
 
 test("authenticated fleet guard rejects missing and invalid bearer sessions", async () => {
   const missing = await resolveAuthenticatedFleetMembership(null, "");
