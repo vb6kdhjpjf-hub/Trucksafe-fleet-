@@ -4,6 +4,7 @@ import { isTruckRouteConfigured } from "../../../lib/truck-route-readiness.mjs";
 import { getSavedTruckRoutingProfile } from "../../../lib/truck-routing-profile.mjs";
 import { checkTruckRouteQuota } from "../../../lib/truck-route-quota.mjs";
 import { readJsonBodyLimited } from "../../../lib/request-body-limits.mjs";
+import { resolveSingleFleetMembership } from "../../../lib/fleet-membership.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -66,13 +67,8 @@ export async function POST(request) {
     const { data: authData, error: authError } = await db.auth.getUser(token);
     if (authError || !authData?.user) return response({ error: "החיבור אינו תקף. יש להתחבר מחדש." }, 401);
 
-    const { data: membership, error: membershipError } = await db
-      .from("fleet_members")
-      .select("fleet_id")
-      .eq("user_id", authData.user.id)
-      .limit(2)
-      .maybeSingle();
-    if (membershipError || !membership) return response({ error: "אין לחשבון הרשאה לתכנון מסלולים בצי." }, 403);
+    const { data: membership, error: membershipError } = await resolveSingleFleetMembership(db, authData.user.id);
+    if (membershipError || !membership) return response({ error: "אין לחשבון הרשאה לצי יחיד ומאומת לתכנון מסלולים." }, 403);
 
     if (process.env.TRUCK_RESTRICTION_COVERAGE_APPROVED !== "true") {
       return response({ error: "ניווט משאיות חסום עד לאימות כיסוי ארצי ועדכני של מגבלות הדרך. אין להסתמך על המאגר החלקי כמסלול בטוח." }, 503);
