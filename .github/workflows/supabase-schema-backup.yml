@@ -38,7 +38,7 @@ jobs:
           supabase db dump --db-url="$SUPABASE_DB_URL" --file=schema.sql
 
       - name: Upload schema artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: trucksafe-schema-only
           path: schema.sql
