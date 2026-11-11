@@ -270,7 +270,7 @@ No live Test database writes or fleet membership creation were performed in this
 
 Read-only inspection of the dedicated Test database confirmed: `fleets`, `fleet_members`, and `drivers` were empty; all three had RLS enabled; fleet insertion is restricted by the existing owner policy; a database trigger creates the owner membership; and the role policy lets owners/managers see all membership rows while drivers see only their own. The existing schema and policies were not changed.
 
-A Test-only live fixture has now been implemented to create marked owner, fleet_manager, and driver Auth identities; sign each in through Supabase Auth; create a uniquely named fleet using the signed owner session; add the other two memberships through the Test service-role API; and verify live PostgREST membership reads, ordinary API access, manager-only denial for driver, and membership visibility under RLS.
+A Test-only live fixture has now been implemented to create marked owner, fleet_manager, and driver Auth identities; sign each in through Supabase Auth; create a uniquely named fleet and add the other two memberships through the Test service-role API (with the existing owner-membership trigger); and verify live PostgREST membership reads, ordinary API access, manager-only denial for driver, and membership visibility under RLS.
 
 Cleanup deletes only uniquely marked fleets owned by marked fixture users, verifies fleet removal, then deletes only marked Auth users through Auth Admin API and asserts zero marked users remain. Cleanup-only mode can retry after interruption. The fixture hard-rejects any host except the exact dedicated Test project.
 

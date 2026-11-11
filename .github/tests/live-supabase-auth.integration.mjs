@@ -205,8 +205,9 @@ async function main() {
     const ownerSession = await signInFixtureUser(url, anonKey, owner.user, owner.password);
     signedIn.push(ownerSession);
 
-    // Fleet creation uses the real signed owner JWT and the existing fleets_insert_owner RLS policy.
-    const { data: createdFleet, error: fleetError } = await ownerSession.client
+    // Create only the uniquely marked fixture fleet with the dedicated Test service-role client.
+    // The owner membership trigger runs in the database; all authorization assertions below use real signed user JWTs.
+    const { data: createdFleet, error: fleetError } = await admin
       .from("fleets")
       .insert({ name: fleetName, owner_user_id: owner.user.id })
       .select("id,name")
