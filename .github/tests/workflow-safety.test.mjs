@@ -4,6 +4,7 @@ import test from "node:test";
 
 const backup = await readFile(".github/workflows/supabase-schema-backup.yml", "utf8");
 const restore = await readFile(".github/workflows/restore-test-schema.yml", "utf8");
+const validation = await readFile(".github/workflows/isolated-validation.yml", "utf8");
 
 test("schema backup exports schema only and retains its artifact for seven days", () => {
   assert.match(backup, /supabase db dump --db-url="\$SUPABASE_DB_URL" --file=schema\.sql/);
@@ -29,4 +30,11 @@ test("schema restore is locked to the isolated Test project and refuses non-empt
   assert.match(restore, /Refusing to overwrite a test database that already contains public tables/);
   assert.match(restore, /--single-transaction/);
   assert.doesNotMatch(restore, /SUPABASE_DB_URL|jqebxlhhffwiebijiug/);
+});
+
+
+test("database integration explicitly rejects the exact Production project ref", () => {
+  assert.match(validation, /if "yxxrgblpqzhnnyojbwcr" not in identity/);
+  assert.match(validation, /if "jqebxlhhffwiebijiug" in identity/);
+  assert.doesNotMatch(validation, /jqebxlhhffwiebijiugx/);
 });
