@@ -48,7 +48,7 @@ test("live Test Auth credentials are isolated from pull_request execution", () =
   assert.ok(authJob.includes("github.event_name == 'workflow_dispatch'"));
   assert.ok(authJob.includes("inputs.confirm_test_auth == true"));
   assert.ok(!authJob.includes("github.event_name == 'pull_request'"));
-  assert.ok(liveAuth.includes("yxxrgblpqzhnnyojbwcr.supabase.co"));
+  assert.ok(liveAuth.includes("parsed.hostname !== `${TEST_PROJECT_REF}.supabase.co`"));
   assert.ok(liveAuth.includes("parsed.hostname !== `${TEST_PROJECT_REF}.supabase.co`"));
   assert.ok(liveAuth.includes("const TEST_PROJECT_REF = \"yxxrgblpqzhnnyojbwcr\";"));
   assert.ok(!liveAuth.includes("jqebxlhhffwiebijiug"));
