@@ -101,6 +101,10 @@ These results establish that the tested code passed those checks. They do not es
 - Keep PR #15 Draft and unmerged; do not deploy without explicit authorization.
 
 
+## Backup and restore workflow hardening
+
+A workflow review found that the schema restore job referenced a stale artifact name and hard-coded an old Actions run ID that did not match the current schema-backup workflow. The restore workflow now requires the operator to provide a backup run ID, verifies through GitHub CLI that it belongs to a completed successful `Supabase schema-only backup` run, downloads the matching `trucksafe-schema-only` artifact from that exact run, and retains the explicit `RESTORE` confirmation gate. The backup artifact retention was extended from one to seven days. Restore remains restricted to the dedicated Test project's Session pooler, refuses a non-empty public schema, validates that the snapshot contains no top-level data blocks, and executes within a single transaction. No backup or restore workflow was executed during this review, and no database was changed. CI now includes static regression tests for this workflow contract.
+
 ## Fleet authorization and privileged-routine audit
 
 The rollback-only security integration suite now audits every public table for enabled RLS, every SECURITY DEFINER routine in the public/private schemas for a pinned empty search_path and denial of anonymous EXECUTE, and every exposed public view/materialized view for invoker security or absence of client SELECT grants. The dedicated Test project was also inspected read-only: all current public tables have RLS enabled, no public views are currently exposed, and no anonymous role can execute a SECURITY DEFINER routine. Existing owner/dispatcher/driver/two-fleet and private vehicle-registration storage behavior tests remain in place.
