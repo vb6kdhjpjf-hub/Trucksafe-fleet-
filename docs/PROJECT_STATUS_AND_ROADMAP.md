@@ -1,6 +1,6 @@
 # TruckSafe Fleet V1 — Project Status and Roadmap
 
-Last reviewed: 2026-11-10
+Last reviewed: 2026-11-11
 Branch: `test/isolated-e2e-ci`
 Pull request: [#15](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/pull/15) — open, Draft, not merged
 Production release: **not approved**
@@ -32,7 +32,7 @@ TruckSafe has a substantial fleet-management application and an isolated validat
 
 ## Verified engineering baseline
 
-The latest verified isolated validation run is [GitHub Actions run 42875566875](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/42875566875), on commit `10b2977a340ee710c4478bf2dcce602cb66e4cd2`.
+The latest verified isolated validation run is [GitHub Actions run 43029789400](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43029789400), on commit `881ae83c33ac8e48ce5ce433a405162c71025a54`.
 
 Recorded results:
 - Application and safety unit-test step passed (161 tests), including streamed request-body limit and routing-profile validation tests.
@@ -41,6 +41,7 @@ Recorded results:
 - Next.js production build passed.
 - Production dependency audit reported 0 vulnerabilities.
 - Synthetic database fixtures are rollback-only.
+- The two nullable reviewer foreign-key columns now have an additive index migration. CI applies it only inside a transaction on the dedicated Test project, verifies both indexes, and rolls it back; no persistent Test or Production schema change was made.
 
 Supabase Security Advisor review on the isolated test project reported two warnings for the authenticated RPC functions `start_trip_with_inspection` and `finish_trip`, which are intentionally SECURITY DEFINER so they can perform controlled trip lifecycle writes. Their bodies enforce authenticated membership, fleet/task/driver/vehicle matching and driver-or-manager authorization; CI now exercises the assigned-driver path and rejects a cross-fleet start. These warnings remain visible and should be re-reviewed if the RPC authorization logic changes.
 
@@ -100,10 +101,11 @@ These results establish that the tested code passed those checks. They do not es
 
 ## Cross-fleet relational integrity — detailed constraint map
 
-The isolated test schema was inspected by exact foreign-key name and referential action. These existing single-column constraints enforce referenced-row existence but do not enforce fleet equality:
+The isolated test schema was inspected by exact foreign-key name and referential action. Most of the following relationships enforce referenced-row existence but do not enforce fleet equality. One existing exception is `vehicles(fleet_id, assigned_driver_id) → drivers(fleet_id, id)`, which already enforces same-fleet vehicle/driver assignment. The `drivers(fleet_id, id)` unique key already exists; the other parent composite keys still need to be added by the reviewed migration:
 
 | Table | Existing foreign key | Existing delete behavior |
 |---|---|---|
+| vehicles | vehicles_assigned_driver_same_fleet_fkey → drivers(fleet_id, id) | RESTRICT |
 | tasks | tasks_assigned_driver_id_fkey → drivers(id) | SET NULL |
 | tasks | tasks_assigned_vehicle_id_fkey → vehicles(id) | SET NULL |
 | trips | trips_task_id_fkey → tasks(id) | SET NULL |
@@ -122,4 +124,4 @@ The isolated test schema was inspected by exact foreign-key name and referential
 
 The planned replacement uses composite fleet-scoped keys for all fleet-owned references, and a (trip_id, driver_id) relationship to the trip's actual driver for trip_locations. Optional-reference deletes must clear only the reference column, never fleet_id; vehicle deletion from maintenance records remains CASCADE. These mappings are a design record, not an applied migration.
 
-The next database test must prove same-fleet inserts succeed, every cross-fleet relationship fails, trip locations cannot name a different driver, and every original delete action is preserved. Only after that should a Supabase-CLI-generated migration be applied to the isolated test project and the full CI/Advisor suite rerun.
+The next database test must prove same-fleet inserts succeed, every cross-fleet relationship fails, trip locations cannot name a different driver, and every original delete action is preserved. The first cross-fleet migration draft is not yet part of this branch; no persistent schema change has been made. Before generating/applying it, reconcile the full relationship map against the live Test schema, including the existing vehicle-to-driver composite FK, then run positive, negative and delete-action tests on the isolated Test project.
