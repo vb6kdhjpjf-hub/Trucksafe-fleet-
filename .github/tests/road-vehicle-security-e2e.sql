@@ -123,9 +123,50 @@ begin
 
   select count(*) into bad_tables
   from pg_class c join pg_namespace n on n.oid=c.relnamespace
-  where n.nspname='public' and c.relkind='r' and not c.relrowsecurity;
+  where n.nspname='public' and c.relkind in ('r','p') and not c.relrowsecurity;
   if bad_tables <> 0 then
     raise exception 'Security check failed: % public tables have RLS disabled', bad_tables;
+  end if;
+
+  -- SECURITY DEFINER routines must pin an empty search_path and must not be
+  -- executable by anonymous callers. Trigger routines are included as well.
+  if exists (
+    select 1
+    from pg_proc p
+    join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname in ('public','private')
+      and p.prosecdef
+      and coalesce(array_position(p.proconfig, 'search_path=""'), 0) = 0
+  ) then
+    raise exception 'Security check failed: SECURITY DEFINER routine has no pinned empty search_path';
+  end if;
+
+  if exists (
+    select 1
+    from pg_proc p
+    join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname in ('public','private')
+      and p.prosecdef
+      and has_function_privilege('anon', p.oid, 'EXECUTE')
+  ) then
+    raise exception 'Security check failed: anonymous role can execute a SECURITY DEFINER routine';
+  end if;
+
+  -- Any future exposed view must either execute with invoker privileges or
+  -- remain inaccessible to anon/authenticated roles.
+  if exists (
+    select 1
+    from pg_class c
+    join pg_namespace n on n.oid=c.relnamespace
+    where n.nspname='public'
+      and c.relkind in ('v','m')
+      and (
+        (not coalesce(c.reloptions, '{}') @> array['security_invoker=true'])
+        and (has_table_privilege('anon', c.oid, 'SELECT')
+          or has_table_privilege('authenticated', c.oid, 'SELECT'))
+      )
+  ) then
+    raise exception 'Security check failed: exposed view may bypass row-level security';
   end if;
 end
 $schema_check$;
