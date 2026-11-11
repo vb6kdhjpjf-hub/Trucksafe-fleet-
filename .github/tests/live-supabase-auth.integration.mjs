@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { resolveFleetApiAccess } from "../../lib/fleet-api-access.mjs";
+import { POST as ptvProfilePost } from "../../app/api/ptv-profile-check/route.js";
+import { POST as ptvRoutingPost } from "../../app/api/ptv-routing-check/route.js";
+import { POST as truckRoutePost } from "../../app/api/truck-route/route.js";
 import {
   FIXTURE_EMAIL_PREFIX,
   FIXTURE_FLEET_PREFIX,
@@ -175,6 +178,44 @@ async function assertMembershipAccess({ client, token, userId, fleetId, role }) 
     `${role} should see ${expectedVisible} fleet membership row(s) under RLS`);
 }
 
+
+async function assertActualRouteAuthorization({ url, anonKey, token, role }) {
+  process.env.NEXT_PUBLIC_SUPABASE_URL = url;
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = anonKey;
+  delete process.env.PTV_API_KEY;
+  delete process.env.HERE_API_KEY;
+  delete process.env.TRUCK_ROUTING_PROVIDER;
+  process.env.TRUCK_RESTRICTION_COVERAGE_APPROVED = "false";
+
+  const call = async (handler) => {
+    const response = await handler(new Request("https://trucksafe.test/api/integration-check", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({})
+    }));
+    assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
+    return { status: response.status, body: await response.json() };
+  };
+
+  for (const handler of [ptvProfilePost, ptvRoutingPost]) {
+    const result = await call(handler);
+    if (role === "owner" || role === "fleet_manager") {
+      assert.equal(result.status, 503, `${role} should pass manager authorization and stop at the disabled PTV key gate`);
+      assert.equal(result.body.reason, "ptv_key_not_configured");
+    } else {
+      assert.equal(result.status, 403, "driver must be denied by the actual PTV route handler");
+      assert.equal(result.body.reason, "fleet_manager_required");
+    }
+  }
+
+  const truckResult = await call(truckRoutePost);
+  assert.equal(truckResult.status, 503, `${role} should pass ordinary membership authorization and stop at the disabled coverage gate`);
+  assert.match(truckResult.body.error, /כיסוי ארצי ועדכני/);
+}
+
 async function main() {
   const { url, anonKey, serviceRoleKey } = readConfig();
   const admin = createAdminClient(url, serviceRoleKey);
@@ -245,11 +286,17 @@ async function main() {
         fleetId: createdFleet.id,
         role: fixture.role
       });
+      await assertActualRouteAuthorization({
+        url,
+        anonKey,
+        token: session.token,
+        role: fixture.role
+      });
     }
 
     process.stdout.write(
       "Live Test Auth passed: three real signed JWTs (owner, fleet_manager, driver), " +
-      "PostgREST membership reads, manager-only allow/deny checks, and RLS membership visibility all matched expectations.\n"
+      "PostgREST membership reads, manager-only allow/deny checks, RLS visibility, and actual PTV/truck-route handler authorization with signed JWTs all matched expectations.\n"
     );
   } catch (error) {
     testError = error;
