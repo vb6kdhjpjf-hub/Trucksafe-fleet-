@@ -287,8 +287,14 @@ export default function Home() {
     setBusy(false);
   }
 
+  function hasEligibleSelectedDriver(){
+    return !assignedDriverId || drivers.some(driver=>driver.id===assignedDriverId && isDriverEligibleForVehicleAssignment(driver));
+  }
+
   async function addVehicle(e){
-    e.preventDefault();setBusy(true);setMessage("");
+    e.preventDefault();
+    if(!hasEligibleSelectedDriver()){setMessage("הנהג שנבחר אינו פעיל או שרישיון הנהיגה שלו פג/לא הוגדר. יש לבחור נהג מתאים או להשאיר ללא שיוך.");return;}
+    setBusy(true);setMessage("");
     const optionalNumber=value=>value.trim()===""?null:Number(value);
     const routing={
       height_cm:optionalNumber(heightCm),
@@ -351,6 +357,7 @@ export default function Home() {
   async function saveVehicleEdits(e) {
     e.preventDefault();
     if (!editingVehicleId || !fleet?.id || !["owner","fleet_manager"].includes(fleet.role)) return;
+    if(!hasEligibleSelectedDriver()){setMessage("הנהג המשויך אינו פעיל או שרישיון הנהיגה שלו פג/לא הוגדר. יש לבחור נהג מתאים או להסיר את השיוך.");return;}
     setBusy(true);setMessage("");
     const optionalNumber=value=>value.trim()===""?null:Number(value);
     const routing={
