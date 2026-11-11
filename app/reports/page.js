@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 import { ArrowRight, BarChart3, Download, RefreshCw, Route, Truck, Users } from "lucide-react";
 
 const kmBetween = (a, b) => {
@@ -65,11 +66,14 @@ export default function ReportsPage() {
     if (!isSupabaseConfigured) { setError("החיבור למסד הנתונים אינו מוגדר."); setLoading(false); return; }
     supabase.auth.getSession().then(async ({ data }) => {
       if (!data.session) { router.replace("/"); return; }
-      const { data: member, error: memberError } = await supabase.from("fleet_members")
-        .select("fleet_id").eq("user_id", data.session.user.id).limit(1).maybeSingle();
-      if (memberError || !member) { setError("לא נמצא צי המשויך לחשבון."); setLoading(false); return; }
-      setFleetId(member.fleet_id);
-      await loadReport(member.fleet_id);
+      const { data: workspace, error: workspaceError } = await resolveFleetWorkspace(supabase, data.session.user.id);
+      if (workspaceError) {
+        if (workspaceError.code === "AUTH_REQUIRED" || workspaceError.code === "NO_FLEET") router.replace("/");
+        else setError("לא הצלחנו לאמת את הצי: " + workspaceError.message);
+        setLoading(false); return;
+      }
+      setFleetId(workspace.fleet.id);
+      await loadReport(workspace.fleet.id);
       setLoading(false);
     });
   }, [router]);
