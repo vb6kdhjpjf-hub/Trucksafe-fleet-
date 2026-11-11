@@ -129,6 +129,33 @@ test("truck route reads vehicle and restriction records only inside the verified
     "authorization must complete before paid geocoding is attempted");
 });
 
+test("API authorization denial branches run before fleet records, quotas, and provider calls", async () => {
+  const truck = await readFile(new URL("../../app/api/truck-route/route.js", import.meta.url), "utf8");
+  const gate = truck.indexOf("const gate = await resolveFleetApiAccess(db, token)");
+  const deny401 = truck.indexOf("if (gate.status === 401)", gate);
+  const deny403 = truck.indexOf("if (gate.status === 403)", gate);
+  const vehicleRead = truck.indexOf('.from("vehicles")');
+  const quotaCheck = truck.indexOf("checkTruckRouteQuota(db)");
+  const restrictionRead = truck.indexOf('.from("road_restrictions")');
+  const geocodeCall = truck.indexOf("geocode(originText, apiKey)");
+  assert.ok(gate >= 0 && deny401 > gate && deny403 > deny401);
+  assert.ok(vehicleRead > deny403, "vehicle reads must follow both authorization denial branches");
+  assert.ok(quotaCheck > deny403, "quota lookup must follow authorization denial branches");
+  assert.ok(restrictionRead > deny403, "restriction reads must follow authorization denial branches");
+  assert.ok(geocodeCall > deny403, "paid geocoding must follow authorization denial branches");
+
+  for (const route of ["app/api/ptv-profile-check/route.js", "app/api/ptv-routing-check/route.js"]) {
+    const source = await readFile(new URL("../../" + route, import.meta.url), "utf8");
+    const routeGate = source.indexOf("const gate = await resolveFleetApiAccess");
+    const deny401 = source.indexOf("if (gate.status === 401)", routeGate);
+    const deny403 = source.indexOf("if (gate.status === 403)", routeGate);
+    const providerCall = source.indexOf("await fetch(", routeGate);
+    assert.ok(routeGate >= 0 && deny401 > routeGate && deny403 > deny401,
+      route + " must explicitly return on authentication and authorization denial");
+    assert.ok(providerCall > deny403, route + " must not contact PTV before authorization succeeds");
+  }
+});
+
 test("PTV diagnostic endpoints enforce manager roles before contacting the provider", async () => {
   for (const route of ["app/api/ptv-profile-check/route.js", "app/api/ptv-routing-check/route.js"]) {
     const source = await readFile(new URL("../../" + route, import.meta.url), "utf8");
