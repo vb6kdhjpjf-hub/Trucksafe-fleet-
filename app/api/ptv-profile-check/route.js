@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { buildPTVPredefinedProfilesRequest, getPTVTruckProfileCandidates } from "../../../lib/ptv-vehicle-profiles.mjs";
-import { resolveSingleFleetMembership } from "../../../lib/fleet-membership.mjs";
+import { resolveAuthenticatedFleetMembership } from "../../../lib/authenticated-fleet-membership.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,15 +30,14 @@ export async function POST(request) {
       global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
     });
-    const { data: authData, error: authError } = await db.auth.getUser(token);
-    if (authError || !authData?.user) {
+    const { data: access, error: accessError } = await resolveAuthenticatedFleetMembership(db, token);
+    if (accessError?.code === "INVALID_SESSION" || accessError?.code === "AUTH_REQUIRED") {
       return response({ ok: false, reason: "invalid_session" }, 401);
     }
-
-    const { data: membership, error: membershipError } = await resolveSingleFleetMembership(db, authData.user.id);
-    if (membershipError || !membership) {
+    if (accessError || !access) {
       return response({ ok: false, reason: "fleet_membership_required" }, 403);
     }
+    const { membership } = access;
     if (!["owner", "fleet_manager"].includes(membership.role)) {
       return response({ ok: false, reason: "fleet_manager_required" }, 403);
     }
