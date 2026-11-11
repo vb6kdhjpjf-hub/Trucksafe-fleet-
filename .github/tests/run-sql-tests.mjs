@@ -32,6 +32,7 @@ const files = [
   ".github/tests/lifecycle-e2e.sql",
   ".github/tests/road-vehicle-security-e2e.sql",
   ".github/tests/route-quota-e2e.sql",
+  ".github/tests/cross-fleet-integrity-e2e.sql",
 ];
 
 const client = new Client({
