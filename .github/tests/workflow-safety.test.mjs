@@ -65,7 +65,7 @@ test("live Auth cleanup always runs after the fixture attempt and uses only Auth
   assert.doesNotMatch(liveAuth, /INSERT\s+INTO\s+auth\.users/i);
 });
 
-test("live Auth fixture is explicitly zero-membership and does not write fleet tables", () => {
+test("live Auth fixture creates and cleans uniquely marked Test-only fleets and role memberships", () => {
   assert.match(liveAuth, /\.from\("fleet_members"\)/);
   assert.match(liveAuth, /rows\.length !== 0/);
   assert.match(liveAuth, /fleet_membership_required/);

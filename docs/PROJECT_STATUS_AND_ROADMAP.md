@@ -264,3 +264,14 @@ Six follow-on validation stages were completed on the isolated test branch:
 - Recorded the exact coverage boundary and prohibited shortcuts so mocked role checks and synthetic-claim SQL are not misreported as signed-token E2E.
 
 No live Test database writes or fleet membership creation were performed in this change. No Production schema/data access, deployment, or merge. PR #15 remains open and Draft.
+
+
+## Live signed-token role E2E — 2026-11-11
+
+Read-only inspection of the dedicated Test database confirmed: `fleets`, `fleet_members`, and `drivers` were empty; all three had RLS enabled; fleet insertion is restricted by the existing owner policy; a database trigger creates the owner membership; and the role policy lets owners/managers see all membership rows while drivers see only their own. The existing schema and policies were not changed.
+
+A Test-only live fixture has now been implemented to create marked owner, fleet_manager, and driver Auth identities; sign each in through Supabase Auth; create a uniquely named fleet using the signed owner session; add the other two memberships through the Test service-role API; and verify live PostgREST membership reads, ordinary API access, manager-only denial for driver, and membership visibility under RLS.
+
+Cleanup deletes only uniquely marked fleets owned by marked fixture users, verifies fleet removal, then deletes only marked Auth users through Auth Admin API and asserts zero marked users remain. Cleanup-only mode can retry after interruption. The fixture hard-rejects any host except the exact dedicated Test project.
+
+This code is awaiting CI execution. Do not claim live positive-membership E2E passed until the Auth integration job is green and its logs confirm fixture cleanup. No Production writes, no deployment, and no merge; PR #15 remains open and Draft.

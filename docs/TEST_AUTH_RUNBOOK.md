@@ -10,28 +10,28 @@ This runbook applies only to the dedicated Supabase Test project (`yxxrgblpqzhnn
 
 Never use Production project keys. Never paste secret values into chat, source files, client-side code, or logs.
 
-## Running the check
+## Live signed-session role integration
 
-A push to `test/isolated-e2e-ci` starts the isolated validation workflow. The `auth-integration` job checks for all three secrets and skips the live test if any are missing. When available, it creates a disposable Auth fixture only through the Supabase Auth Admin API, signs in through the public Auth API, verifies the signed-in identity and fail-closed access with no fleet membership, then cleans up the marked fixture through the Auth Admin API.
+A push to `test/isolated-e2e-ci` runs the live Auth check only when all three dedicated Test secrets are available. The fixture:
 
-The test does not create fleet memberships, write application tables, touch Production, merge the pull request, or deploy the application. A skipped job is not a passing live Auth test. The current live test does not prove positive membership access, role-specific RLS, or cross-fleet authorization.
+1. Enumerates and removes only prior Auth users carrying the exact server-controlled app-metadata marker, dedicated email prefix, and `@example.com` suffix.
+2. Creates three disposable identities (owner, fleet manager, driver) only through the Supabase Auth Admin API.
+3. Signs each identity in through the public Auth API and validates its real signed JWT with `auth.getUser`.
+4. Creates one fleet using the owner's signed session and the existing `fleets_insert_owner` RLS policy. The database's existing owner-membership trigger must create the owner row.
+5. Adds only the two marked manager/driver memberships through the dedicated Test project's service-role PostgREST client.
+6. Verifies real PostgREST membership reads, ordinary fleet API access, manager-only allow/deny decisions, and role-dependent RLS visibility (owner/manager see all three membership rows; driver sees only its own).
+7. Deletes uniquely marked fixture fleets first (cascading app rows and memberships), verifies each fleet is gone, then deletes only marked Auth users through Auth Admin API and asserts no marked users remain.
 
-### Important trigger distinction
+The script has a hard HTTPS hostname guard for the exact Test project. It does not query or write Production. It never inserts into or deletes from `auth.users` directly. It does not change RLS, deploy an Edge Function, merge the PR, or deploy the app.
 
-The `auth-integration` job is intentionally restricted to a direct `push` on `test/isolated-e2e-ci`. When this workflow runs for a `pull_request` event, the job is expected to show as skipped (gray, 0 seconds). To execute the live Auth check, a new commit must be pushed to the dedicated test branch; do not use “Re-run jobs” on a pull-request-triggered run.
+A cleanup failure is treated as critical and stops the job; marked users are retained if their owned fleet cannot be safely removed, so a subsequent cleanup-only run can retry. A skipped live Auth job is not a passing live test.
 
- 
-## Gate before adding positive-membership live E2E
+## Current coverage boundaries
 
-Do not add a live owner/manager/driver membership fixture until all of the following have been inspected and documented against the current Test schema:
+This proves signed-token authentication and live PostgREST/RLS behavior for one isolated Test fleet with owner, fleet_manager, and driver memberships. It also proves the shared API authorization helper's manager-only role gate. It is not a browser end-to-end test of the deployed application, does not prove production configuration, and does not validate PTV/HERE routing. The routing provider remains disabled pending separate safety approval and authoritative restriction coverage.
 
-1. The exact columns, required fields, foreign keys, unique constraints, RLS policies, grants, and triggers for `fleets`, `fleet_members`, and any dependent rows.
-2. Whether fleet creation automatically creates an owner membership, and whether a supported application/admin API exists for adding a driver membership.
-3. A Test-only fixture namespace/marker strategy that cannot match ordinary user or fleet records.
-4. Cleanup order for membership rows, dependent fleet rows, and Auth users, with retry-safe behavior and a post-cleanup zero-row assertion.
-5. A hard project-host guard for every privileged client and a fail-closed check that Production project ref `jqebxlhhffwiebijiug` is absent.
-6. A dry-run/preflight that proves the target fixture IDs are unique and no pre-existing rows will be changed or deleted.
+The SQL RLS integration suite remains rollback-only and uses synthetic JWT claim settings; it is distinct from the signed-token live Auth suite.
 
-Only after this gate passes should a dedicated Test-only fixture create an owner and driver, obtain signed sessions through Auth, and verify both allowed and denied API/RLS paths. Prefer supported Supabase Auth Admin APIs for identities; never insert or delete rows in `auth.users` directly. Do not deploy helper functions or weaken RLS to make a test pass.
+## Important workflow trigger distinction
 
-Until that work is complete, describe current live Auth coverage accurately: a signed Test user with no fleet membership is denied. Role matrix tests use a local Auth/PostgREST contract fixture, and database RLS tests use synthetic JWT claim settings inside rollback-only transactions; neither is a live signed-token positive-membership E2E.
+The `auth-integration` job is intentionally restricted to a direct `push` on `test/isolated-e2e-ci`, or a manual dispatch on that branch with explicit confirmation. Pull-request events do not receive the live Test Auth secrets.
