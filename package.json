@@ -13,7 +13,7 @@
     "test:ptv": "node --test .github/tests/request-body-limits.test.mjs .github/tests/ptv-*.test.mjs .github/tests/truck-routing-profile.test.mjs .github/tests/truck-route-quota.test.mjs .github/tests/road-restriction-geometry.test.mjs .github/tests/truck-route-readiness.test.mjs .github/tests/road-restriction-sources.test.mjs .github/tests/driver-eligibility.test.mjs .github/tests/pre-trip-checklist.test.mjs .github/tests/restriction-source-envelope.test.mjs .github/tests/stage-restriction-source.test.mjs .github/tests/restriction-source-assessment.test.mjs .github/tests/assess-staged-restriction-source.test.mjs .github/tests/record-restriction-source-review.test.mjs .github/tests/verify-restriction-source-review.test.mjs .github/tests/build-restriction-source-manifest.test.mjs",
     "test:smoke": "node scripts/smoke-app.mjs",
     "test:workflow-safety": "node --test .github/tests/workflow-safety.test.mjs",
-    "test:ci": "npm run test:ptv && node --test .github/tests/fleet-workspace.test.mjs && npm run test:workflow-safety"
+    "test:ci": "npm run test:ptv && node --test .github/tests/fleet-workspace.test.mjs .github/tests/fleet-api-access.integration.test.mjs && npm run test:workflow-safety"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
