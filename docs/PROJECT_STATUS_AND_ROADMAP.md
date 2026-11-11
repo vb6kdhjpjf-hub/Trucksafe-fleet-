@@ -285,3 +285,24 @@ The latest live Test Auth run now creates four disposable signed Auth identities
 Verified outcomes: owner/manager pass PTV authorization and stop at the missing-key 503; driver is denied manager-only PTV endpoints with 403; unassigned identity is denied with 403; invalid bearer is denied with 401. All three fleet roles reach the truck-route membership gate and then stop at the restriction-coverage safety gate with 503. Provider keys are removed and restriction coverage approval is false, so no PTV/HERE provider calls occur. Route responses are checked for no-store caching.
 
 Run 43067605949 passed all three jobs. Live Auth logs confirm four fixture users were removed and the cleanup-only sweep found zero remaining marked users. Read-only Test database inspection confirms zero fleets, fixture memberships, and fixture drivers. The in-process route test is not deployed-server/browser E2E and does not test downstream vehicle/quota/provider logic. No Production changes, merge, or deployment; PR #15 remains open and Draft.
+
+
+## Latest routing safety follow-up — 11 November 2026
+
+The latest verified run is [GitHub Actions run 43076349149](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43076349149), on commit `bdb5eda0377db53045fe827a35dc00d9403c03d6`. All three jobs completed successfully:
+- Validate: 167 tests passed, 0 failed; application smoke checks passed, including the explicit assertion that truck routing remains disabled without safety approval.
+- Database integration: foreign-key, lifecycle, road-vehicle security, route quota, cross-fleet integrity/preflight and query-plan checks passed.
+- Auth integration: five signed disposable Test identities (owner, fleet manager, driver, ambiguous multi-fleet, unassigned) passed PostgREST/RLS and actual route-handler authorization checks; invalid-token denial passed.
+
+Additional changes in this follow-up:
+- HERE route candidates whose decoded geometry leaves the currently supported Israel coordinate bounds are rejected. These coarse bounds are a defensive check, not a trusted national boundary or road-access proof.
+- The routing UI now labels trip weight as a manually supplied current total and warns that it should come from a recent weighbridge reading or reliable cargo/vehicle records. The system does not measure actual axle-load distribution.
+- The PTV profile and routing diagnostic endpoints now share the authenticated per-user provider-request quota. They check that a PTV key exists before consuming quota; quota errors or exhaustion stop the paid provider call.
+- The route API now loads the fleet restriction catalogue in exact-count pages of 500 records, with a 5,000-record safety ceiling. Missing pages, query failures, changing row counts, and catalogues above the ceiling fail closed instead of silently treating a truncated result as complete. This verifies pagination completeness by row count; it is not a transactional snapshot or proof of source coverage.
+- Regression tests for pagination, over-limit catalogues, changing counts and failed pages are included in CI.
+
+After the Auth run, five marked disposable Test Auth users and their fleets were removed. A read-only check found 0 rows in Test `fleets`, `fleet_members`, and `drivers`. No Production database was queried or changed as part of this follow-up.
+
+The branch head and PR #15 head both equal the commit above. PR #15 remains open and Draft, not merged. No deployment, Production migration, provider activation, or external data-source outreach occurred.
+
+Remaining routing release blockers are unchanged: authoritative restriction records and geographic coverage, freshness/withdrawal guarantees, commercial rights, independent validation, and verified vehicle/axle-load semantics. The 5,000-row cap and paginated read must not be interpreted as nationwide coverage. Keep `TRUCK_RESTRICTION_COVERAGE_APPROVED` disabled.
