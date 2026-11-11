@@ -13,17 +13,15 @@ Never use Production project keys. Never paste secret values into chat, source f
 ## Live signed-session role integration
 
 A push to `test/isolated-e2e-ci` runs the live Auth check only when all three dedicated Test secrets are available. The fixture:
-
 1. Enumerates and removes only prior Auth users carrying the exact server-controlled app-metadata marker, dedicated email prefix, and `@example.com` suffix.
-2. Creates four disposable identities (owner, fleet manager, driver, and an unassigned user) only through the Supabase Auth Admin API.
+2. Creates five disposable identities (owner, fleet manager, driver, a multi-fleet ambiguous identity, and an unassigned user) only through the Supabase Auth Admin API.
 3. Signs each identity in through the public Auth API and validates its real signed JWT with `auth.getUser`.
-4. Creates one uniquely named fleet through the dedicated Test service-role client with the owner Auth user as its owner. The database's existing owner-membership trigger must create the owner row; all subsequent membership reads and authorization assertions use the users' real signed JWTs.
-5. Adds only the two marked manager/driver memberships through the dedicated Test project's service-role PostgREST client.
-6. Verifies real PostgREST membership reads, ordinary fleet API access, manager-only allow/deny decisions, and role-dependent RLS visibility (owner/manager see all three fleet membership rows; driver sees only its own).
-7. Deletes uniquely marked fixture fleets first (cascading app rows and memberships), verifies each fleet is gone, then deletes only marked Auth users through Auth Admin API and asserts no marked users remain.
-8. Builds the production Next.js app against the dedicated Test public URL/anon key with provider keys empty and coverage approval false, then starts `next start` bound only to `127.0.0.1`. The app server process is explicitly stripped of the Test service-role secret.
-9. Invokes the actual exported POST handlers in-process and sends the same signed identities over real HTTP requests to `ptv-profile-check`, `ptv-routing-check`, and `truck-route`. Owner/manager pass the PTV role gate and stop at the missing-key 503; driver receives 403; the unassigned user receives 403; a deliberately invalid bearer receives 401. Fleet members reach the truck-route coverage gate and receive 503 because coverage approval is explicitly false. All three HTTP route responses are checked for `Cache-Control: no-store`.
-
+4. Creates two uniquely named fleets through the dedicated Test service-role client: one owned by the owner identity and one owned by the ambiguous identity. The database's existing owner-membership trigger must create both owner rows.
+5. Adds only the marked manager/driver memberships plus a driver membership for the ambiguous identity in the first fleet. The ambiguous identity therefore has exactly two distinct fleet memberships.
+6. Verifies real PostgREST membership reads, ordinary fleet API access, manager-only allow/deny decisions, role-dependent RLS visibility (owner/manager see all four membership rows in the first fleet; each driver sees only its own row), and fail-closed denial when the ambiguous identity can see two self-membership rows.
+7. Builds the production Next.js app against the dedicated Test public URL/anon key with provider keys empty and coverage approval false. The app server process is explicitly stripped of the Test service-role secret and bound only to `127.0.0.1`.
+8. Invokes the actual exported POST handlers in-process and sends the same signed identities over real HTTP requests to `ptv-profile-check`, `ptv-routing-check`, and `truck-route`. Owner/manager pass the PTV role gate and stop at the missing-key 503; driver receives 403; the unassigned and ambiguous users receive 403; a deliberately invalid bearer receives 401. Fleet members with exactly one membership reach the truck-route coverage gate and receive 503 because coverage approval is explicitly false. All HTTP route responses are checked for `Cache-Control: no-store`.
+9. Deletes uniquely marked fixture fleets first (cascading app rows and memberships), verifies each fleet is gone, then deletes only marked Auth users through Auth Admin API and asserts no marked users remain.
 
 The script has a hard HTTPS hostname guard for the exact Test project. It does not query or write Production. It never inserts into or deletes from `auth.users` directly. It does not change RLS, deploy an Edge Function, merge the PR, or deploy the app.
 

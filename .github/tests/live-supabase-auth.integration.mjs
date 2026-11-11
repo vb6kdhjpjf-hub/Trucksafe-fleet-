@@ -174,7 +174,7 @@ async function assertMembershipAccess({ client, token, userId, fleetId, role }) 
   if (visibilityError || !Array.isArray(visibleMembers)) {
     throw new Error(`Live RLS membership visibility query failed for role ${role}.`);
   }
-  const expectedVisible = role === "owner" || role === "fleet_manager" ? 3 : 1;
+  const expectedVisible = role === "owner" || role === "fleet_manager" ? 4 : 1;
   assert.equal(visibleMembers.length, expectedVisible,
     `${role} should see ${expectedVisible} fleet membership row(s) under RLS`);
 }
