@@ -34,7 +34,7 @@ jobs:
       SCHEMA_ARTIFACT_NAME: trucksafe-schema-only-temporary
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Validate isolated test credentials
         shell: bash
