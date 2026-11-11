@@ -36,6 +36,12 @@ Safety rule: **none of the sources listed here is currently approved as a verifi
 - Acquisition follow-up: use the authority-segment dataset and directory to build a candidate road-owner contact matrix, then request the actual restriction register, source documents, change feed and commercial-use permission from each responsible authority. Do not treat delegated signage authority as proof of asset ownership or measurement responsibility.
 
 
+### Ministry of Transport – Hazav transport-planning GIS portal
+- Portal: https://geo.mot.gov.il/
+- The Ministry describes Hazav as a spatial portal aggregating transport-planning information from infrastructure companies, government bodies, local authorities and other publishers. The portal states that layer update frequency varies and that displayed information must not be treated as binding legal or authoritative information. Contact for portal corrections: geo@mot.gov.il.
+- Interpretation: use it to discover candidate layers and their individual publishers/metadata. Do not treat the portal itself as an authoritative truck-restriction feed. Every layer needs its own owner, source document, update date, spatial coverage, data dictionary and commercial-use licence review. A missing feature is not evidence that a road is unrestricted.
+- Registry key: `mot-geospatial-transport-planning-portal`; `candidateOnly: true`; `routingEligible: false`.
+
 ### ArcGIS Feature Service – roadblocks and detours for out-of-service bridges
 - Service: https://services3.arcgis.com/PcGFyTym9yKZBRgz/ArcGIS/rest/services/gsharim_blocks/FeatureServer
 - Service description: "detours and roadblocks for out_of_service bridges"; it exposes layers for bridge roadblocks, detours, and bridges. The service metadata reports a maximum record count of 1,000 and an Israel Transverse Mercator coordinate reference system.

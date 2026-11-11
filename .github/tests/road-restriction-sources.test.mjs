@@ -79,3 +79,16 @@ test("regional out-of-service bridge roadblocks layer is candidate-only and has 
   assert.match(source.limitations, /ללא גובה מעבר מדוד/);
   assert.equal(isSourceCandidateOnly(source), true);
 });
+
+
+test("Ministry geospatial planning portal is discovery-only and explicitly non-authoritative for truck restrictions", () => {
+  const source = getRoadRestrictionSource("mot-geospatial-transport-planning-portal");
+  assert.ok(source);
+  assert.equal(source.publisher, "משרד התחבורה והבטיחות בדרכים");
+  assert.equal(source.contact, "geo@mot.gov.il");
+  assert.equal(source.candidateOnly, true);
+  assert.equal(source.routingEligible, false);
+  assert.equal(source.dataTypes.includes("geospatial_layer_discovery"), true);
+  assert.match(source.limitations, /אינו נוסח מחייב או מידע מחייב/);
+  assert.equal(isSourceCandidateOnly(source), true);
+});
