@@ -119,8 +119,8 @@ test("truck route reads vehicle and restriction records only inside the verified
 
   assert.match(source, /\.from\(["']vehicles["']\)[\s\S]*?\.eq\(["']id["'],\s*vehicleId\)[\s\S]*?\.eq\(["']fleet_id["'],\s*membership\.fleet_id\)/,
     "vehicle lookup must be constrained by both vehicle ID and verified fleet ID");
-  assert.match(source, /\.from\(["']road_restrictions["']\)[\s\S]*?\.eq\(["']fleet_id["'],\s*membership\.fleet_id\)/,
-    "restriction catalogue lookup must be constrained by verified fleet ID");
+  assert.match(source, /loadFleetRoadRestrictions\(db,\s*membership\.fleet_id\)/,
+    "restriction catalogue lookup must use the verified fleet ID and complete paginated loader");
   assert.match(source, /global:\s*\{\s*headers:\s*\{\s*Authorization:\s*`Bearer \$\{token\}`\s*\}\s*\}/,
     "database requests must carry the verified user's bearer token for RLS");
   assert.doesNotMatch(source, /SUPABASE_SERVICE_ROLE_KEY|SUPABASE_SECRET_KEY/,
@@ -136,12 +136,12 @@ test("API authorization denial branches run before fleet records, quotas, and pr
   const deny403 = truck.indexOf("if (gate.status === 403)", gate);
   const vehicleRead = truck.indexOf('.from("vehicles")');
   const quotaCheck = truck.indexOf("checkTruckRouteQuota(db)");
-  const restrictionRead = truck.indexOf('.from("road_restrictions")');
+  const restrictionRead = truck.indexOf("loadFleetRoadRestrictions(db, membership.fleet_id)");
   const geocodeCall = truck.indexOf("geocode(originText, apiKey)");
   assert.ok(gate >= 0 && deny401 > gate && deny403 > deny401);
   assert.ok(vehicleRead > deny403, "vehicle reads must follow both authorization denial branches");
   assert.ok(quotaCheck > deny403, "quota lookup must follow authorization denial branches");
-  assert.ok(restrictionRead > deny403, "restriction reads must follow authorization denial branches");
+  assert.ok(restrictionRead > deny403, "restriction catalogue reads must follow authorization denial branches");
   assert.ok(geocodeCall > deny403, "paid geocoding must follow authorization denial branches");
 
   for (const route of ["app/api/ptv-profile-check/route.js", "app/api/ptv-routing-check/route.js"]) {
