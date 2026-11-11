@@ -243,7 +243,7 @@ export default function TruckRoutingPage() {
 
   function selectVehicle(vehicleId) {
     setSelectedVehicleId(vehicleId);
-    setForm(current => ({ ...current, currentWeightKg: "" }));
+    setForm(current => ({ ...current, currentWeightKg: "", weightPerAxleKg: "" }));
     setResult(null);
   }
 
