@@ -129,6 +129,21 @@ test("does not reject a route for a distant, verified restriction", () => {
   assert.deepEqual(result.unresolved, []);
 });
 
+
+test("fails closed when provider route geometry leaves supported Israel operating bounds", () => {
+  const outsidePolyline = encodePTVCoordinatesAsFlexiblePolyline([[32.84, 35.99], [32.84, 36.01]]);
+  const result = evaluateFleetRestrictions({
+    sections: [{ polyline: outsidePolyline, summary: { length: 1800, duration: 180 } }],
+    restrictions: [verifiedRestriction({})],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now
+  });
+  assert.equal(result.validated, false);
+  assert.equal(result.unresolved[0].reason, "route_geometry_outside_supported_israel_bounds");
+});
+
 test("fails closed when the loaded restriction catalogue is empty", () => {
   const result = evaluateFleetRestrictions({
     sections,
