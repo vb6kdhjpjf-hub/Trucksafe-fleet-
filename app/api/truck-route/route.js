@@ -5,6 +5,7 @@ import { getSavedTruckRoutingProfile } from "../../../lib/truck-routing-profile.
 import { checkTruckRouteQuota } from "../../../lib/truck-route-quota.mjs";
 import { readJsonBodyLimited } from "../../../lib/request-body-limits.mjs";
 import { resolveFleetApiAccess } from "../../../lib/fleet-api-access.mjs";
+import { loadFleetRoadRestrictions } from "../../../lib/fleet-road-restrictions.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -186,14 +187,14 @@ export async function POST(request) {
 
     // Load the current fleet restriction catalogue through the caller's RLS-scoped client.
     // A failed query must never be interpreted as an empty catalogue.
-    const { data: restrictions, error: restrictionsError } = await db
-      .from("road_restrictions")
-      .select("id,road_name,restriction_type,max_height_m,max_weight_t,max_width_m,max_length_m,valid_from,valid_until,active_from,active_until,is_active,country_code,latitude,longitude,start_latitude,start_longitude,end_latitude,end_longitude,location_accuracy_m,radius_m,source_type,source_name,source_url,source_reference,source_updated_at,verification_status,verified_at,verified_by,source_last_checked_at,verification_note,expires_at")
-      .eq("fleet_id", membership.fleet_id)
-      .eq("country_code", "IL");
-    if (restrictionsError || !Array.isArray(restrictions)) {
-      return response({ error: "לא ניתן לאמת את מאגר מגבלות הדרך של הצי. המסלול לא אושר." }, 503);
+    const restrictionCatalog = await loadFleetRoadRestrictions(db, membership.fleet_id);
+    if (!restrictionCatalog.ok) {
+      return response({
+        error: "לא ניתן לטעון ולאמת את כל מאגר מגבלות הדרך של הצי. המסלול לא אושר.",
+        diagnosticCode: restrictionCatalog.reason
+      }, 503);
     }
+    const restrictions = restrictionCatalog.data;
 
     const selection = selectSafeTruckRoute({
       routes: routeCandidates,
