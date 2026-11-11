@@ -34,6 +34,34 @@ const verifiedRestriction = overrides => ({
 
 const vehicle = { heightCm: 420, widthCm: 250, lengthCm: 900 };
 
+const polylineAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+function encodeTestVarint(value) {
+  let remaining = value >>> 0;
+  let output = "";
+  while (remaining > 0x1f) {
+    output += polylineAlphabet[(remaining & 0x1f) | 0x20];
+    remaining >>>= 5;
+  }
+  return output + polylineAlphabet[remaining];
+}
+function encodeTestSigned(value) {
+  return encodeTestVarint(value < 0 ? ~(value << 1) : value << 1);
+}
+function encodeUncheckedTestPolyline(coordinates) {
+  const factor = 100000;
+  let previousLat = 0;
+  let previousLng = 0;
+  let output = encodeTestVarint(1) + encodeTestVarint(5);
+  for (const [latitude, longitude] of coordinates) {
+    const lat = Math.round(latitude * factor);
+    const lng = Math.round(longitude * factor);
+    output += encodeTestSigned(lat - previousLat) + encodeTestSigned(lng - previousLng);
+    previousLat = lat;
+    previousLng = lng;
+  }
+  return output;
+}
+
 test("decodes the PTV adapter polyline and preserves Israel coordinates", () => {
   const decoded = decodeFlexiblePolyline(polyline);
   assert.equal(decoded.length, 3);
@@ -131,7 +159,7 @@ test("does not reject a route for a distant, verified restriction", () => {
 
 
 test("fails closed when provider route geometry leaves supported Israel operating bounds", () => {
-  const outsidePolyline = encodePTVCoordinatesAsFlexiblePolyline([[32.84, 35.99], [32.84, 36.01]]);
+  const outsidePolyline = encodeUncheckedTestPolyline([[32.84, 35.99], [32.84, 36.01]]);
   const result = evaluateFleetRestrictions({
     sections: [{ polyline: outsidePolyline, summary: { length: 1800, duration: 180 } }],
     restrictions: [verifiedRestriction({})],
