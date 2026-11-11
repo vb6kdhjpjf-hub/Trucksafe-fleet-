@@ -34,6 +34,7 @@ const files = [
   ".github/tests/route-quota-e2e.sql",
   ".github/tests/cross-fleet-integrity-e2e.sql",
   ".github/tests/cross-fleet-preflight-detects-anomalies.sql",
+  ".github/tests/query-plan-performance-e2e.sql",
 ];
 
 const client = new Client({
@@ -80,6 +81,44 @@ try {
       }
       console.log("PASS: preflight detects the synthetic cross-fleet task-driver anomaly");
     }
+    if (file === ".github/tests/query-plan-performance-e2e.sql") {
+      const resultList = Array.isArray(results) ? results : [results];
+      const plans = resultList.filter((result) =>
+        result.fields?.some((field) => field.name === "QUERY PLAN")
+      );
+      if (plans.length !== 2) {
+        throw new Error("Expected 2 EXPLAIN plans; received " + plans.length);
+      }
+      const expectedIndexes = [
+        "idx_trucksafe_perf_tasks_fleet_status",
+        "idx_trucksafe_perf_locations_trip_recorded",
+      ];
+      for (let index = 0; index < plans.length; index += 1) {
+        const rawPlan = plans[index].rows[0]?.["QUERY PLAN"];
+        const document = Array.isArray(rawPlan) ? rawPlan[0] : rawPlan;
+        const indexNames = [];
+        const visit = (node) => {
+          if (!node || typeof node !== "object") return;
+          if (node["Index Name"]) indexNames.push(node["Index Name"]);
+          for (const child of node.Plans ?? []) visit(child);
+        };
+        visit(document?.Plan);
+        if (!indexNames.includes(expectedIndexes[index])) {
+          throw new Error("Expected query plan to use " + expectedIndexes[index] +
+            "; found: " + (indexNames.join(", ") || "no index"));
+        }
+        if (document?.Plan?.["Actual Rows"] !== 100) {
+          throw new Error("Expected 100 returned rows for " + expectedIndexes[index] +
+            "; received " + document?.Plan?.["Actual Rows"]);
+        }
+        if (!Number.isFinite(document?.["Execution Time"])) {
+          throw new Error("Missing execution time for " + expectedIndexes[index]);
+        }
+        console.log("PASS: " + expectedIndexes[index] + " used; 100 rows returned in " +
+          document["Execution Time"].toFixed(3) + " ms");
+      }
+    }
+    console.log(`PASS: ${file}`);
     console.log(`PASS: ${file}`);
   }
 } catch (error) {
