@@ -1,0 +1,32 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const backup = await readFile(".github/workflows/supabase-schema-backup.yml", "utf8");
+const restore = await readFile(".github/workflows/restore-test-schema.yml", "utf8");
+
+test("schema backup exports schema only and retains its artifact for seven days", () => {
+  assert.match(backup, /supabase db dump --db-url="\$SUPABASE_DB_URL" --file=schema\.sql/);
+  assert.match(backup, /name: trucksafe-schema-only/);
+  assert.match(backup, /retention-days: 7/);
+  assert.doesNotMatch(backup, /pg_dumpall|--data-only|COPY\s+.*FROM\s+stdin/i);
+});
+
+test("schema restore consumes the exact artifact from a user-selected successful backup run", () => {
+  assert.match(restore, /schema_backup_run_id:[\s\S]*?required: true[\s\S]*?type: string/);
+  assert.match(restore, /SCHEMA_BACKUP_RUN_ID: \$\{\{ inputs\.schema_backup_run_id \}\}/);
+  assert.match(restore, /name: trucksafe-schema-only/);
+  assert.match(restore, /run-id: \$\{\{ inputs\.schema_backup_run_id \}\}/);
+  assert.match(restore, /gh run view "\$SCHEMA_BACKUP_RUN_ID"[^\n]*--json status,conclusion,workflowName/);
+  assert.match(restore, /workflowName.*Supabase schema-only backup/);
+  assert.match(restore, /if: \$\{\{ inputs\.confirm_restore == 'RESTORE' \}\}/);
+});
+
+test("schema restore is locked to the isolated Test project and refuses non-empty targets", () => {
+  assert.match(restore, /postgres\.yxxrgblpqzhnnyojbwcr/);
+  assert.match(restore, /Refusing connection: expected this test project's Session pooler/);
+  assert.match(restore, /table_count/);
+  assert.match(restore, /Refusing to overwrite a test database that already contains public tables/);
+  assert.match(restore, /--single-transaction/);
+  assert.doesNotMatch(restore, /SUPABASE_DB_URL|jqebxlhhffwiebijiug/);
+});
