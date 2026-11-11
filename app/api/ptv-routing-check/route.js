@@ -7,6 +7,10 @@ export const dynamic = "force-dynamic";
 const response = (body, status = 200) =>
   Response.json(body, { status, headers: { "Cache-Control": "no-store, max-age=0" } });
 
+export async function GET() {
+  return response({ ok: false, reason: "method_not_allowed" }, 405);
+}
+
 export async function POST(request) {
   try {
     const authorization = request.headers.get("authorization") || "";
