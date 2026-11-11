@@ -89,3 +89,18 @@ test("all protected fleet pages use the shared verified workspace resolver", asy
       page + " must verify the fleet workspace before loading fleet data");
   }
 });
+
+test("server routing endpoints verify bearer identity and reject ambiguous fleet membership", async () => {
+  const routes = [
+    "app/api/truck-route/route.js",
+    "app/api/ptv-profile-check/route.js",
+    "app/api/ptv-routing-check/route.js"
+  ];
+  for (const route of routes) {
+    const source = await readFile(new URL("../../" + route, import.meta.url), "utf8");
+    assert.match(source, /authorization\.startsWith\(["']Bearer ["']\)/, route + " must require a bearer token");
+    assert.match(source, /auth\.getUser\(token\)/, route + " must validate the token with Supabase Auth");
+    assert.match(source, /\.from\(["']fleet_members["']\)/, route + " must check fleet membership");
+    assert.match(source, /\.limit\(2\)/, route + " must detect multiple memberships rather than silently choosing one");
+  }
+});
