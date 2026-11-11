@@ -37,6 +37,8 @@ jobs:
         run: npm run test:ptv
       - name: Build Next.js application
         run: npx next build
+      - name: Run isolated concurrent application smoke tests
+        run: npm run test:smoke
 
   database-integration:
     runs-on: ubuntu-latest
