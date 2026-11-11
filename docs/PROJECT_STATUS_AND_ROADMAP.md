@@ -26,13 +26,13 @@ TruckSafe has a substantial fleet-management application and an isolated validat
 | Cross-fleet relational integrity | Candidate composite-FK migration and behavioral tests added; isolated CI passed | The candidate migration is applied only inside a rollback-only transaction on the dedicated Test project. CI proves same-fleet inserts succeed, 15 cross-fleet relationship attempts fail, trip-location driver mismatch fails, and delete semantics (SET NULL, CASCADE and NO ACTION) behave as intended. No persistent schema change was made. The migration remains unapproved for Production and requires a final migration review before any persistent rollout. |
 | HERE truck-routing integration | Code path exists, but routing is disabled by safety gate | Requires approved credentials/plan, validated Israel coverage and independent restriction checks. A provider route alone is not a safety approval. |
 | PTV integration | Experimental preparation only | Preview catalogue diagnostic returned 22 profiles (16 truck candidates). No live route integration is approved. Commercial/production rights and Israel coverage must be confirmed in writing. |
-| Israeli restriction data acquisition | Research and request draft completed | Ministry specification and other candidate leads are documented. No verified nationwide feed or commercial-use agreement has been received. |
+| Israeli restriction data acquisition | Official candidate datasets reviewed; no authoritative operational restriction feed verified | The Ministry GIS viewer and the government road-authority dataset are useful discovery/context sources only. The GIS terms state that source layers update at varying frequencies and are not legally binding; the road-authority dataset identifies delegated signage authority segments, not current truck height/weight/time restrictions. No verified nationwide restriction feed, freshness SLA or commercial-use agreement has been received. |
 | Offline source provenance pipeline | Implemented and unit-tested | Staging, evidence-completeness assessment, append-only human review, verification and content-addressed manifest are available. This pipeline does not authenticate the truth of source documents or approve routing. |
 | Production release | Blocked / not approved | No merge, deployment, Production database migration or national-coverage approval is authorized. |
 
 ## Verified engineering baseline
 
-The latest verified isolated validation run is [GitHub Actions run 43038314010](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43038314010), on commit `7b427ffef8602a9c3e29a22f893a75dc58658b9c`.
+The latest verified isolated validation run is [GitHub Actions run 43069899681](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43069899681), on commit `1bf89f389886bf0a782095ec36bd7c52e417d868`. This run includes local production-mode HTTP authorization checks using five signed Test identities, including an ambiguous multi-fleet user.
 
 Recorded results:
 - Application and safety unit-test step passed (161 tests), including streamed request-body limit and routing-profile validation tests.
@@ -42,7 +42,7 @@ Recorded results:
 - Production dependency audit reported 0 vulnerabilities.
 - Synthetic database fixtures are rollback-only.
 - Cross-fleet integrity CI applied the candidate composite-FK migration in a transaction, validated same-fleet positives, 15 cross-fleet rejection cases, trip-location driver matching, and delete actions, then rolled back.
-- The dedicated Test project was independently checked after CI: all fixture tables, including `auth.users`, remained empty.
+- The dedicated Test project was independently checked after CI: all fixture tables, including fleets, memberships and drivers, remained empty; the five disposable Auth identities and their two marked fleets were cleaned successfully.
 - The two nullable reviewer foreign-key columns have an additive index migration. CI applies it only inside a transaction on the dedicated Test project, verifies both indexes, and rolls it back; no persistent Test or Production schema change was made.
 
 Supabase Security Advisor review on the isolated test project reported two warnings for the authenticated RPC functions `start_trip_with_inspection` and `finish_trip`, which are intentionally SECURITY DEFINER so they can perform controlled trip lifecycle writes. Their bodies enforce authenticated membership, fleet/task/driver/vehicle matching and driver-or-manager authorization; CI now exercises the assigned-driver path and rejects a cross-fleet start. These warnings remain visible and should be re-reviewed if the RPC authorization logic changes.
@@ -64,9 +64,10 @@ These results establish that the tested code passed those checks. They do not es
 ## Next milestones
 
 ### Milestone 1 — Evidence acquisition (current)
-- Verify the published Netivei Israel contact and source-owner responsibility.
-- Obtain a written response, data dictionary, representative sample, coverage map, update mechanism and commercial-use terms.
-- Keep the existing request as a draft until the project owner explicitly authorizes sending it.
+- Candidate-only sources reviewed: [Ministry of Transport GIS](https://geo.mot.gov.il/) aggregates layers from infrastructure companies, government bodies, local authorities and private entities; layer update frequency varies, and the portal explicitly says the information is not legally binding. [Government road-authority dataset](https://data.gov.il/he/datasets/ministry_of_transport/roadauthority) maps road segments where signage authority was delegated; it is not a truck-restriction inventory. [National transport infrastructure-plan dataset](https://data.gov.il/he/datasets/ministry_of_transport/ttl_transport) is planning information, not operational restrictions.
+- Verify the published Netivei Israel contact and source-owner responsibility for actual bridge, weight, dimension and time restrictions.
+- Obtain a written response, data dictionary, representative sample, coverage map, update/withdrawal mechanism and commercial-use terms.
+- Keep the existing request as a draft until the project owner explicitly authorizes sending it. Do not ingest candidate layers into route decisions.
 
 ### Milestone 2 — Isolated pilot importer
 - Build only after a real sample and licence are received.
