@@ -227,4 +227,7 @@ END
 $test$;
 
 SELECT scenario, outcome FROM pg_temp.trucksafe_fk_results ORDER BY scenario;
+
+-- The populated, valid synthetic dataset must produce no preflight findings.
+\\ir ../../supabase/diagnostics/cross_fleet_integrity_preflight.sql
 ROLLBACK;
