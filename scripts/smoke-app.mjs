@@ -58,8 +58,12 @@ try {
   const readiness = await check("truck route readiness", "/api/truck-route", undefined, 200);
   const readinessBody = await readiness.json();
   assert.equal(readinessBody.configured, false, "truck routing must remain disabled in smoke environment");
+  assert.match(readiness.headers.get("cache-control") || "", /no-store/, "readiness response must not be cached");
 
   const jsonHeaders = { "content-type": "application/json" };
+  const methodNotAllowed = await check("PTV GET method gate", "/api/ptv-routing-check", undefined, 405);
+  assert.match(methodNotAllowed.headers.get("cache-control") || "", /no-store/, "PTV response must not be cached");
+  await check("PTV profile GET method gate", "/api/ptv-profile-check", undefined, 405);
   await check("truck route authentication gate", "/api/truck-route", {
     method: "POST", headers: jsonHeaders, body: "{}",
   }, 401);
@@ -72,6 +76,10 @@ try {
   await check("truck route content-type gate", "/api/truck-route", {
     method: "POST", body: "{}",
   }, 415);
+  const authFailure = await check("truck route missing bearer token", "/api/truck-route", {
+    method: "POST", headers: jsonHeaders, body: "{}",
+  }, 401);
+  assert.match(authFailure.headers.get("cache-control") || "", /no-store/, "authentication failure must not be cached");
 
   // Concurrent smoke traffic exercises the live Next.js HTTP server without
   // credentials, database access, or external routing-provider calls.
@@ -98,6 +106,7 @@ try {
   console.log("PASS: dashboard HTTP shell returns 200");
   console.log("PASS: truck routing remains disabled without explicit safety approval");
   console.log("PASS: unauthenticated route and PTV APIs fail closed");
+  console.log("PASS: API methods are constrained and responses are not cached");
   console.log("PASS: 20 concurrent API smoke requests returned their expected status");
 } finally {
   server.kill("SIGTERM");
