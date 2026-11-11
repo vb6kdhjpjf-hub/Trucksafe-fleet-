@@ -205,15 +205,24 @@ async function assertActualRouteAuthorization({ url, anonKey, token, role }) {
     if (role === "owner" || role === "fleet_manager") {
       assert.equal(result.status, 503, `${role} should pass manager authorization and stop at the disabled PTV key gate`);
       assert.equal(result.body.reason, "ptv_key_not_configured");
-    } else {
+    } else if (role === "driver") {
       assert.equal(result.status, 403, "driver must be denied by the actual PTV route handler");
       assert.equal(result.body.reason, "fleet_manager_required");
+    } else if (role === "unassigned") {
+      assert.equal(result.status, 403, "user without fleet membership must be denied by the actual PTV route handler");
+      assert.equal(result.body.reason, "fleet_membership_required");
+    } else {
+      assert.equal(result.status, 401, "invalid bearer token must be denied by the actual PTV route handler");
     }
   }
 
   const truckResult = await call(truckRoutePost);
-  assert.equal(truckResult.status, 503, `${role} should pass ordinary membership authorization and stop at the disabled coverage gate`);
-  assert.match(truckResult.body.error, /כיסוי ארצי ועדכני/);
+  if (role === "owner" || role === "fleet_manager" || role === "driver") {
+    assert.equal(truckResult.status, 503, `${role} should pass ordinary membership authorization and stop at the disabled coverage gate`);
+    assert.match(truckResult.body.error, /כיסוי ארצי ועדכני/);
+  } else {
+    assert.equal(truckResult.status, role === "unassigned" ? 403 : 401);
+  }
 }
 
 async function main() {
@@ -229,7 +238,7 @@ async function main() {
   const staleRemoved = await cleanupMarkedFixtureUsers(admin);
   const runId = randomUUID();
   const fleetName = `${FIXTURE_FLEET_PREFIX}${runId}`;
-  const roles = ["owner", "fleet_manager", "driver"];
+  const roles = ["owner", "fleet_manager", "driver", "unassigned"];
   const fixtures = [];
   const signedIn = [];
   let testError;
@@ -268,7 +277,7 @@ async function main() {
     }
 
     const additionalMembers = fixtures
-      .filter(item => item.role !== "owner")
+      .filter(item => item.role === "fleet_manager" || item.role === "driver")
       .map(item => ({ fleet_id: createdFleet.id, user_id: item.user.id, role: item.role }));
     const { error: memberInsertError } = await admin.from("fleet_members").insert(additionalMembers);
     if (memberInsertError) {
@@ -280,12 +289,14 @@ async function main() {
         ? ownerSession
         : await signInFixtureUser(url, anonKey, fixture.user, fixture.password);
       if (fixture.role !== "owner") signedIn.push(session);
-      await assertMembershipAccess({
-        ...session,
-        userId: fixture.user.id,
-        fleetId: createdFleet.id,
-        role: fixture.role
-      });
+      if (fixture.role !== "unassigned") {
+        await assertMembershipAccess({
+          ...session,
+          userId: fixture.user.id,
+          fleetId: createdFleet.id,
+          role: fixture.role
+        });
+      }
       await assertActualRouteAuthorization({
         url,
         anonKey,
@@ -293,10 +304,16 @@ async function main() {
         role: fixture.role
       });
     }
+    await assertActualRouteAuthorization({
+      url,
+      anonKey,
+      token: "invalid-signed-token",
+      role: "invalid"
+    });
 
     process.stdout.write(
-      "Live Test Auth passed: three real signed JWTs (owner, fleet_manager, driver), " +
-      "PostgREST membership reads, manager-only allow/deny checks, RLS visibility, and actual PTV/truck-route handler authorization with signed JWTs all matched expectations.\n"
+      "Live Test Auth passed: four signed Test identities (owner, fleet_manager, driver, unassigned), " +
+      "PostgREST membership reads, RLS visibility, actual route-handler authorization, and invalid-token denial all matched expectations.\n"
     );
   } catch (error) {
     testError = error;
