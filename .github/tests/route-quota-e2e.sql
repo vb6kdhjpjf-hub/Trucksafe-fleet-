@@ -47,12 +47,15 @@ begin
     raise exception 'Quota security test: RPC execute grants are not restricted to authenticated';
   end if;
   if not has_table_privilege('authenticated', 'private.truck_route_requests', 'SELECT')
-     or not has_table_privilege('authenticated', 'private.truck_route_requests', 'INSERT')
+     or not has_column_privilege('authenticated', 'private.truck_route_requests', 'user_id', 'INSERT')
+     or not has_column_privilege('authenticated', 'private.truck_route_requests', 'requested_at', 'INSERT')
+     or has_column_privilege('authenticated', 'private.truck_route_requests', 'id', 'INSERT')
+     or has_table_privilege('authenticated', 'private.truck_route_requests', 'INSERT')
      or has_table_privilege('authenticated', 'private.truck_route_requests', 'UPDATE')
      or has_table_privilege('authenticated', 'private.truck_route_requests', 'DELETE')
      or has_table_privilege('anon', 'private.truck_route_requests', 'SELECT')
      or has_table_privilege('anon', 'private.truck_route_requests', 'INSERT') then
-    raise exception 'Quota security test: quota table grants are broader than intended';
+    raise exception 'Quota security test: quota table/column grants are broader than intended';
   end if;
 end
 $security$;
