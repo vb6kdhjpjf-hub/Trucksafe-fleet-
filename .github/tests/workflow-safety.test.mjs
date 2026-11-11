@@ -66,9 +66,16 @@ test("live Auth cleanup always runs after the fixture attempt and uses only Auth
 });
 
 test("live Auth fixture creates and cleans uniquely marked Test-only fleets and role memberships", () => {
-  assert.match(liveAuth, /\.from\("fleet_members"\)/);
-  assert.match(liveAuth, /rows\.length !== 0/);
-  assert.match(liveAuth, /fleet_membership_required/);
-  assert.doesNotMatch(liveAuth, /\.from\("fleets"\)\s*\.insert/i);
-  assert.doesNotMatch(liveAuth, /\.from\("fleet_members"\)\s*\.insert/i);
+  assert.match(liveAuth, /FIXTURE_FLEET_PREFIX/);
+  assert.match(liveAuth, /fleet_manager/);
+  assert.match(liveAuth, /admin\\.from\\("fleet_members"\\)\\.insert/);
+  assert.match(liveAuth, /removeOwnedFixtureFleets/);
+  assert.match(liveAuth, /expectedVisible = role === "owner" \\|\\| role === "fleet_manager" \\? 3 : 1/);
+  assert.match(liveAuth, /fleet_membership_required|fleet_manager_required/);
+  assert.match(liveAuth, /parsed.hostname !== `\\$\\{TEST_PROJECT_REF\\}.supabase.co`/);
+  assert.match(liveAuth, /admin\\.auth\\.admin\\.createUser/);
+  assert.match(liveAuth, /admin\\.auth\\.admin\\.deleteUser/);
+  assert.doesNotMatch(liveAuth, /INSERT\\s+INTO\\s+auth\\.users/i);
+  assert.match(liveAuth, /\\.from\\("fleets"\\)\\s*\\n\\s*\\.insert/);
+  assert.match(liveAuth, /\\.from\\("fleet_members"\\)\\.insert/);
 });
