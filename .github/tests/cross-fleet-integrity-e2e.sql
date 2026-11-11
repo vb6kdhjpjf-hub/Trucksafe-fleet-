@@ -64,11 +64,11 @@ BEGIN
   -- The fleet creation trigger creates each owner's membership row.
   -- Reuse those rows for RLS tests rather than inserting duplicate memberships.
 
-  INSERT INTO public.drivers (id, fleet_id, full_name)
+  INSERT INTO public.drivers (id, fleet_id, user_id, full_name)
   VALUES
-    (d_a, f_a, 'Synthetic Driver A'),
-    (d_b, f_b, 'Synthetic Driver B'),
-    (d_extra, f_a, 'Synthetic Optional Driver');
+    (d_a, f_a, u_a, 'Synthetic Driver A'),
+    (d_b, f_b, u_b, 'Synthetic Driver B'),
+    (d_extra, f_a, NULL, 'Synthetic Optional Driver');
 
   INSERT INTO public.vehicles (id, fleet_id, registration_number, assigned_driver_id)
   VALUES
@@ -302,6 +302,77 @@ BEGIN
   END;
 END
 $rls$;
+
+RESET ROLE;
+
+-- Reuse Fleet A's synthetic identity as a driver for a second RLS pass.
+-- This changes only the rollback-only fixture membership, not any Auth account.
+UPDATE public.fleet_members
+SET role = 'driver'
+WHERE fleet_id = 'bb000000-0000-4000-8000-000000000001'
+  AND user_id = 'aa000000-0000-4000-8000-000000000001';
+
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', 'aa000000-0000-4000-8000-000000000001', true);
+SELECT set_config('request.jwt.claim.role', 'authenticated', true);
+
+DO $driver_rls$
+DECLARE
+  visible_rows integer;
+  changed_rows integer;
+BEGIN
+  SELECT count(*) INTO visible_rows
+  FROM public.vehicles
+  WHERE id IN (
+    'dd000000-0000-4000-8000-000000000001',
+    'dd000000-0000-4000-8000-000000000002',
+    'dd000000-0000-4000-8000-000000000003'
+  );
+  IF visible_rows <> 1 THEN
+    RAISE EXCEPTION 'Driver RLS failure: driver should see only assigned vehicle; saw % rows', visible_rows;
+  END IF;
+
+  SELECT count(*) INTO visible_rows
+  FROM public.tasks
+  WHERE id IN (
+    'ee000000-0000-4000-8000-000000000001',
+    'ee000000-0000-4000-8000-000000000002',
+    'ee000000-0000-4000-8000-000000000003'
+  );
+  IF visible_rows <> 1 THEN
+    RAISE EXCEPTION 'Driver RLS failure: driver should see only own assigned task; saw % rows', visible_rows;
+  END IF;
+
+  SELECT count(*) INTO visible_rows
+  FROM public.trips
+  WHERE id IN (
+    'ff000000-0000-4000-8000-000000000001',
+    'ff000000-0000-4000-8000-000000000002'
+  );
+  IF visible_rows <> 1 THEN
+    RAISE EXCEPTION 'Driver RLS failure: driver should see only own trip; saw % rows', visible_rows;
+  END IF;
+
+  SELECT count(*) INTO visible_rows
+  FROM public.inspections
+  WHERE id IN (
+    '22000000-0000-4000-8000-000000000001',
+    '22000000-0000-4000-8000-000000000002',
+    '22000000-0000-4000-8000-000000000003'
+  );
+  IF visible_rows <> 1 THEN
+    RAISE EXCEPTION 'Driver RLS failure: driver should see only own inspection; saw % rows', visible_rows;
+  END IF;
+
+  UPDATE public.vehicles
+  SET registration_number = 'FKTEST-DRIVER-UNAUTHORIZED'
+  WHERE id = 'dd000000-0000-4000-8000-000000000001';
+  GET DIAGNOSTICS changed_rows = ROW_COUNT;
+  IF changed_rows <> 0 THEN
+    RAISE EXCEPTION 'Driver RLS failure: driver updated a vehicle';
+  END IF;
+END
+$driver_rls$;
 
 RESET ROLE;
 
