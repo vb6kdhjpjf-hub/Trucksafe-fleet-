@@ -3,6 +3,7 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 import { resolveSingleFleetMembership } from "../../lib/fleet-membership.mjs";
+import { resolveAuthenticatedFleetMembership } from "../../lib/authenticated-fleet-membership.mjs";
 
 function client({ user = { id: "user-a" }, authError = null, memberships = [], membershipError = null, fleet = { id: "fleet-a", name: "Fleet A" }, fleetError = null } = {}) {
   const calls = [];
@@ -107,8 +108,8 @@ test("server routing endpoints verify bearer identity and reject ambiguous fleet
     const source = await readFile(new URL("../../" + route, import.meta.url), "utf8");
     assert.match(source, /authorization\.startsWith\(["']Bearer ["']\)/, route + " must require a bearer token");
     assert.match(source, /auth\.getUser\(token\)/, route + " must validate the token with Supabase Auth");
-    assert.match(source, /import \{ resolveSingleFleetMembership \} from ["']\.\.\/\.\.\/\.\.\/lib\/fleet-membership\.mjs["']/, route + " must import the shared membership resolver");
-    assert.match(source, /resolveSingleFleetMembership\(db, authData\.user\.id\)/, route + " must reject missing or ambiguous fleet membership");
+    assert.match(source, /import \{ resolveAuthenticatedFleetMembership \} from ["']\.\.\/\.\.\/\.\.\/lib\/authenticated-fleet-membership\.mjs["']/, route + " must import the shared authenticated access guard");
+    assert.match(source, /resolveAuthenticatedFleetMembership\(db, token\)/, route + " must validate the bearer identity and exactly one fleet membership");
   }
 });
 
@@ -152,4 +153,71 @@ test("single-fleet membership resolver fails closed for missing, ambiguous, or f
   const single = makeClient({ rows: [{ fleet_id: "fleet-a", role: "dispatcher" }] });
   const valid = await resolveSingleFleetMembership(single, "user-a");
   assert.deepEqual(valid, { data: { fleet_id: "fleet-a", role: "dispatcher" }, error: null });
+});
+
+
+test("authenticated fleet guard rejects missing and invalid bearer sessions", async () => {
+  const missing = await resolveAuthenticatedFleetMembership(null, "");
+  assert.equal(missing.error.code, "AUTH_REQUIRED");
+
+  const invalid = await resolveAuthenticatedFleetMembership({
+    auth: { getUser: async (token) => ({ data: { user: null }, error: new Error("expired") }) }
+  }, "expired-token");
+  assert.equal(invalid.error.code, "INVALID_SESSION");
+});
+
+test("authenticated fleet guard fails closed for no membership, multiple memberships and lookup errors", async () => {
+  const makeClient = ({ user = { id: "user-a" }, rows = [], membershipError = null } = {}) => ({
+    auth: { getUser: async (token) => {
+      assert.equal(token, "valid-token");
+      return { data: { user }, error: null };
+    } },
+    from(table) {
+      assert.equal(table, "fleet_members");
+      const query = {
+        select() { return query; },
+        eq(column, value) { assert.equal(column, "user_id"); assert.equal(value, user.id); return query; },
+        limit(value) { assert.equal(value, 2); return query; },
+        then(resolve, reject) {
+          return Promise.resolve({ data: rows, error: membershipError }).then(resolve, reject);
+        }
+      };
+      return query;
+    }
+  });
+
+  const noFleet = await resolveAuthenticatedFleetMembership(makeClient(), "valid-token");
+  assert.equal(noFleet.error.code, "NO_FLEET");
+
+  const multiple = await resolveAuthenticatedFleetMembership(makeClient({
+    rows: [{ fleet_id: "fleet-a", role: "owner" }, { fleet_id: "fleet-b", role: "driver" }]
+  }), "valid-token");
+  assert.equal(multiple.error.code, "MULTIPLE_FLEETS");
+
+  const failed = await resolveAuthenticatedFleetMembership(makeClient({
+    membershipError: new Error("lookup failed")
+  }), "valid-token");
+  assert.equal(failed.error.code, "MEMBERSHIP_LOOKUP_FAILED");
+});
+
+test("authenticated fleet guard returns verified user and the sole fleet membership", async () => {
+  const result = await resolveAuthenticatedFleetMembership({
+    auth: { getUser: async () => ({ data: { user: { id: "user-a" } }, error: null }) },
+    from() {
+      const query = {
+        select() { return query; },
+        eq() { return query; },
+        limit() { return query; },
+        then(resolve, reject) {
+          return Promise.resolve({ data: [{ fleet_id: "fleet-a", role: "owner" }], error: null }).then(resolve, reject);
+        }
+      };
+      return query;
+    }
+  }, "valid-token");
+  assert.equal(result.error, null);
+  assert.deepEqual(result.data, {
+    user: { id: "user-a" },
+    membership: { fleet_id: "fleet-a", role: "owner" }
+  });
 });
