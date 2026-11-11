@@ -262,12 +262,6 @@ begin
   insert into pg_temp.road_vehicle_security_results
   values('direct vehicle insert cannot forge registration approval','PASS','Insert trigger forces unverified state and clears all supplied document/approval metadata');
 
-  -- Create linked incident and maintenance fixtures for role-scoped RLS checks.
-  insert into public.incidents(id,fleet_id,driver_id,vehicle_id,incident_type,description,status,created_by)
-  values(incident_id,fleet_id,driver_id,vehicle_id,'other','CI RLS incident','open',owner_id);
-  insert into public.maintenance_records(id,fleet_id,vehicle_id,incident_id,maintenance_type,description,status)
-  values(maintenance_id,fleet_id,vehicle_id,incident_id,'inspection','CI RLS maintenance','scheduled');
-
   -- An authorized fleet owner can verify a restriction with official evidence.
   insert into public.road_restrictions(
     fleet_id,road_name,restriction_type,latitude,longitude,country_code,
@@ -335,6 +329,13 @@ begin
   ) values(
     task_id,fleet_id,'CI authenticated driver RPC task',driver_id,vehicle_id,'assigned',owner_id
   );
+
+  -- Create linked incident and maintenance fixtures for role-scoped RLS checks.
+  insert into public.incidents(id,fleet_id,driver_id,vehicle_id,incident_type,description,status,created_by)
+  values(incident_id,fleet_id,driver_id,vehicle_id,'other','CI RLS incident','open',owner_id);
+  insert into public.maintenance_records(id,fleet_id,vehicle_id,incident_id,maintenance_type,description,status)
+  values(maintenance_id,fleet_id,vehicle_id,incident_id,'inspection','CI RLS maintenance','scheduled');
+
 
   -- Seed one private registration object so the authenticated storage policies
   -- can be exercised without leaving a real file or any persistent test data.
