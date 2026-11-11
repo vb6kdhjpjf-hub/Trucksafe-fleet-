@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 import { ArrowRight, AlertTriangle, Plus, RefreshCw, ShieldAlert } from "lucide-react";
 
 const blank = { road_name: "", restriction_type: "height", direction: "", max_height_m: "", max_weight_t: "", max_width_m: "", max_length_m: "", valid_from: "", valid_until: "", active_from: "", active_until: "", latitude: "", longitude: "", start_latitude: "", start_longitude: "", end_latitude: "", end_longitude: "", location_accuracy_m: "", measured_clearance_m: "", measurement_date: "", measurement_accuracy_cm: "", measurement_method: "", measurement_location_note: "", measurement_document_url: "", source_type: "user_report", source_name: "", source_url: "", source_reference: "", source_updated_at: "", expires_at: "", notes: "" };
@@ -34,11 +35,15 @@ export default function RoadRestrictionsPage() {
       if (!alive) return;
       if (error || !data.session) { router.replace("/"); return; }
       setSession(data.session);
-      const { data: member, error: memberError } = await supabase.from("fleet_members").select("fleet_id,role").eq("user_id", data.session.user.id).limit(1).maybeSingle();
+      const { data: workspace, error: workspaceError } = await resolveFleetWorkspace(supabase, data.session.user.id);
       if (!alive) return;
-      if (memberError || !member) { setMessage(memberError?.message || "לא נמצא צי לחשבון."); setLoading(false); return; }
-      setFleet({ id: member.fleet_id, role: member.role });
-      await load(member.fleet_id);
+      if (workspaceError) {
+        if (workspaceError.code === "AUTH_REQUIRED" || workspaceError.code === "NO_FLEET") router.replace("/");
+        else setMessage("לא הצלחנו לאמת את הצי: " + workspaceError.message);
+        setLoading(false); return;
+      }
+      setFleet(workspace.fleet);
+      await load(workspace.fleet.id);
       if (alive) setLoading(false);
     }).catch(e => { if (alive) { setMessage("שגיאה בטעינה: " + e.message); setLoading(false); } });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => { if (!session) router.replace("/"); });
