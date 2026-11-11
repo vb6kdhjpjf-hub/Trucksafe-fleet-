@@ -193,3 +193,12 @@ The three server-side routing and PTV diagnostic endpoints now use `lib/fleet-ap
 New deterministic tests cover invalid sessions, zero and multiple memberships, role denial for a driver, successful fleet-manager access, and single-membership access for a non-manager where that endpoint's policy permits it. The route contract test also verifies all three endpoints call the shared gate. These are mock-based authorization tests, not a live authenticated API E2E exercise.
 
 Commit `0c60db130a72a1baac0cde2e4fbab51600ee895f` passed both GitHub Actions push jobs: `validate` and `database-integration` (run [43049428595](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43049428595)). A read-only query against the isolated Test project confirmed `auth.users` still contains zero users. No Auth users or persistent fleet fixtures were created; no database schema or data was changed. PR #15 remains open and Draft, with no merge or deployment.
+
+
+## Fleet-scoped routing authorization tests — 2026-11-11
+
+Added regression checks that the truck-route API constrains both vehicle lookup and road-restriction catalogue lookup to the verified `membership.fleet_id`, forwards the caller's bearer token to Supabase so RLS remains active, does not reference service-role/secret keys, and completes authorization before paid HERE geocoding. Added checks that both PTV diagnostic endpoints apply the owner/fleet-manager allowlist before any provider request and do not use service-role/secret keys.
+
+Validation for commit `e043ea9f32a87975c00634ce8662c40ae3def9a0` completed successfully: GitHub Actions run [43050136924](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43050136924), with both `validate` and `database-integration` jobs passing. PR #15 remains open and Draft; no merge, deployment, or Production database change was made.
+
+Next security-test milestone: replace the existing rollback-only SQL test fixture pattern that directly inserts synthetic rows into `auth.users` with a disposable Supabase Auth Admin API fixture that has guaranteed cleanup. Until that safe fixture exists, do not create Auth users or claim live authenticated API E2E coverage.
