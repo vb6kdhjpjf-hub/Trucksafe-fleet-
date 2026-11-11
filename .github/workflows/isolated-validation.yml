@@ -8,6 +8,13 @@ on:
     branches:
       - main
       - feat/ptv-safe-integration-v1
+  workflow_dispatch:
+    inputs:
+      confirm_test_auth:
+        description: "Run live Auth integration against the dedicated Test project only"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -98,7 +105,11 @@ jobs:
 
 
   auth-integration:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/test/isolated-e2e-ci'
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/test/isolated-e2e-ci') ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/test/isolated-e2e-ci' &&
+       inputs.confirm_test_auth == true)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
