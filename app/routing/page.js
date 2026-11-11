@@ -178,7 +178,9 @@ export default function TruckRoutingPage() {
           ptv_data_api_unavailable: "שירות הנתונים של PTV אינו זמין כרגע.",
           ptv_profile_catalog_malformed: "PTV החזירה קטלוג פרופילים במבנה לא צפוי.",
           ptv_request_timeout: "הבדיקה מול PTV חרגה מזמן ההמתנה.",
-          ptv_request_failed: "לא ניתן להשלים את הבדיקה מול PTV."
+          ptv_request_failed: "לא ניתן להשלים את הבדיקה מול PTV.",
+          provider_request_quota_exceeded: "בוצעו יותר מדי בדיקות ספק בפרק זמן קצר. יש להמתין 10 דקות.",
+          provider_request_quota_unavailable: "מנגנון הגבלת הבקשות אינו זמין. הבדיקה נעצרה כדי למנוע שימוש לא מבוקר בשירות."
         };
         setPtvCheckResult({ ok: false, reason: messages[data.reason] || "בדיקת PTV נכשלה.", diagnosticCode: data.reason || "unknown", upstreamStatus: Number.isInteger(data.upstreamStatus) ? data.upstreamStatus : null, traceId: typeof data.traceId === "string" ? data.traceId : null, requestedAt: typeof data.requestedAt === "string" ? data.requestedAt : null });
         return;
@@ -213,7 +215,9 @@ export default function TruckRoutingPage() {
           ptv_routing_unavailable: "שירות Routing API אינו זמין כרגע.",
           ptv_routing_response_invalid: "PTV החזירה תשובת מסלול במבנה לא צפוי.",
           ptv_routing_timeout: "בדיקת Routing API חרגה מזמן ההמתנה.",
-          ptv_routing_request_failed: "לא ניתן להשלים בדיקת Routing API."
+          ptv_routing_request_failed: "לא ניתן להשלים בדיקת Routing API.",
+          provider_request_quota_exceeded: "בוצעו יותר מדי בדיקות ספק בפרק זמן קצר. יש להמתין 10 דקות.",
+          provider_request_quota_unavailable: "מנגנון הגבלת הבקשות אינו זמין. הבדיקה נעצרה כדי למנוע שימוש לא מבוקר בשירות."
         };
         setPtvRouteResult({
           ok: false,

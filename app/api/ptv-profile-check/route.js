@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { buildPTVPredefinedProfilesRequest, getPTVTruckProfileCandidates } from "../../../lib/ptv-vehicle-profiles.mjs";
 import { resolveFleetApiAccess } from "../../../lib/fleet-api-access.mjs";
+import { checkTruckRouteQuota } from "../../../lib/truck-route-quota.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +35,16 @@ export async function POST(request) {
     if (gate.status === 401) return response({ ok: false, reason: gate.reason }, 401);
     if (gate.status === 403) return response({ ok: false, reason: gate.reason }, 403);
     const { membership } = gate.data;
+
+    // Diagnostic requests also call paid provider APIs; share the authenticated
+    // per-user quota and fail closed if its database-backed guard is unavailable.
+    const quota = await checkTruckRouteQuota(db);
+    if (!quota.allowed) {
+      return response({
+        ok: false,
+        reason: quota.reason === "quota_exceeded" ? "provider_request_quota_exceeded" : "provider_request_quota_unavailable"
+      }, quota.status);
+    }
 
     const apiKey = process.env.PTV_API_KEY;
     if (typeof apiKey !== "string" || !apiKey.trim()) {
