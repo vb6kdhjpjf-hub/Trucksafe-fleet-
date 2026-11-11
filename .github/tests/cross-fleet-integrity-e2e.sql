@@ -13,6 +13,7 @@ CREATE FUNCTION pg_temp.assert_fk_rejects(statement text, scenario text)
 RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
   EXECUTE statement;
+  RAISE EXCEPTION 'Expected foreign-key rejection: %', scenario;
 EXCEPTION WHEN foreign_key_violation THEN
   INSERT INTO pg_temp.trucksafe_fk_results VALUES (scenario, 'PASS');
   RETURN;
@@ -41,6 +42,7 @@ DECLARE
   inc_a uuid := '11000000-0000-4000-8000-000000000001';
   inc_b uuid := '11000000-0000-4000-8000-000000000002';
   inc_extra uuid := '11000000-0000-4000-8000-000000000003';
+  inc_trip_extra uuid := '11000000-0000-4000-8000-000000000004';
   insp_a uuid := '22000000-0000-4000-8000-000000000001';
   insp_b uuid := '22000000-0000-4000-8000-000000000002';
   insp_extra uuid := '22000000-0000-4000-8000-000000000003';
@@ -89,7 +91,8 @@ BEGIN
   VALUES
     (inc_a, f_a, trip_a, d_a, v_a, 'collision', 'Synthetic fleet A incident'),
     (inc_b, f_b, trip_b, d_b, v_b, 'collision', 'Synthetic fleet B incident'),
-    (inc_extra, f_a, NULL, NULL, NULL, 'other', 'Incident delete behavior');
+    (inc_extra, f_a, NULL, NULL, NULL, 'other', 'Incident delete behavior'),
+    (inc_trip_extra, f_a, trip_extra, d_a, v_a, 'other', 'Trip delete behavior');
 
   INSERT INTO public.inspections
     (id, fleet_id, trip_id, vehicle_id, driver_id, checklist, passed)
@@ -109,7 +112,8 @@ BEGIN
   INSERT INTO public.trip_locations (trip_id, driver_id, latitude, longitude)
   VALUES
     (trip_a, d_a, 32.0001, 34.0001),
-    (trip_b, d_b, 32.0002, 34.0002);
+    (trip_b, d_b, 32.0002, 34.0002),
+    (trip_extra, d_a, 32.0003, 34.0003);
 
   -- Positive same-fleet references must remain accepted.
   INSERT INTO pg_temp.trucksafe_fk_results VALUES
@@ -203,7 +207,10 @@ BEGIN
   IF n <> 1 THEN RAISE EXCEPTION 'Trip delete did not null inspection trip_id'; END IF;
   SELECT count(*) INTO n FROM public.trip_locations WHERE trip_id = trip_extra;
   IF n <> 0 THEN RAISE EXCEPTION 'Trip delete did not cascade trip locations'; END IF;
-  INSERT INTO pg_temp.trucksafe_fk_results VALUES ('trip delete nulls inspection link and cascades locations', 'PASS');
+  SELECT count(*) INTO n FROM public.incidents
+    WHERE id = inc_trip_extra AND trip_id IS NULL AND fleet_id = f_a;
+  IF n <> 1 THEN RAISE EXCEPTION 'Trip delete did not null incident trip_id'; END IF;
+  INSERT INTO pg_temp.trucksafe_fk_results VALUES ('trip delete nulls incident and inspection links and cascades locations', 'PASS');
 
   -- Driver and vehicle references on active trip/inspection rows remain NO ACTION.
   PERFORM pg_temp.assert_fk_rejects(
