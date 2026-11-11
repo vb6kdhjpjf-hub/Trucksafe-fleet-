@@ -101,6 +101,12 @@ These results establish that the tested code passed those checks. They do not es
 - Keep PR #15 Draft and unmerged; do not deploy without explicit authorization.
 
 
+## Application smoke and route-quota security checks
+
+The isolated validation workflow now starts the built Next.js app with database and routing-provider credentials explicitly blanked and routing coverage approval disabled. It exercises the dashboard shell, routing readiness, authentication gates on the truck-route and PTV diagnostic APIs, HTTP method restrictions, JSON content-type enforcement, no-store response headers, and 20 concurrent unauthenticated/readiness requests. This is an application-process smoke test, not a full authenticated end-to-end test against a live fleet.
+
+The rollback-only route-quota database test also verifies that each synthetic user receives an independent ten-request window, that one user cannot read another user's quota rows through RLS, that authenticated users cannot update or delete quota history directly, and that the anonymous role cannot execute the quota function. No paid routing provider is contacted.
+
 ## Synthetic query-plan and performance regression checks
 
 A rollback-only CI test now creates two temporary benchmark relations with 100,000 synthetic rows each. It checks the PostgreSQL plans for two common fleet operations: filtering tasks by fleet and status, and loading the latest location history for a trip. The runner asserts that the expected composite indexes are actually used, that each limited query returns 100 rows, and that PostgreSQL reports an execution time.
