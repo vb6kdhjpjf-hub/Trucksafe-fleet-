@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 
 function client({ user = { id: "user-a" }, authError = null, memberships = [], membershipError = null, fleet = { id: "fleet-a", name: "Fleet A" }, fleetError = null } = {}) {
@@ -66,4 +67,25 @@ test("fails closed when fleet metadata cannot be loaded", async () => {
   const { api } = client({ memberships: [{ fleet_id: "fleet-a", role: "owner" }], fleetError: new Error("not found") });
   const result = await resolveFleetWorkspace(api, "user-a");
   assert.equal(result.error.code, "FLEET_LOOKUP_FAILED");
+});
+
+test("all protected fleet pages use the shared verified workspace resolver", async () => {
+  const pages = [
+    "app/drivers/page.js",
+    "app/tasks/page.js",
+    "app/incidents/page.js",
+    "app/maintenance/page.js",
+    "app/map/page.js",
+    "app/reports/page.js",
+    "app/daily-report/page.js",
+    "app/history/page.js",
+    "app/road-restrictions/page.js"
+  ];
+  for (const page of pages) {
+    const source = await readFile(new URL("../../" + page, import.meta.url), "utf8");
+    assert.match(source, /import \{ resolveFleetWorkspace \} from ["']\.\.\/\.\.\/lib\/fleet-workspace\.mjs["']/,
+      page + " must import the shared resolver");
+    assert.match(source, /resolveFleetWorkspace\(supabase,/,
+      page + " must verify the fleet workspace before loading fleet data");
+  }
 });
