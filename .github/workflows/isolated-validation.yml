@@ -85,7 +85,7 @@ jobs:
           identity = (parsed.hostname or "") + " " + unquote(parsed.username or "")
           if "yxxrgblpqzhnnyojbwcr" not in identity:
               raise SystemExit("Refusing to run: database URI does not identify the dedicated TruckSafe Fleet Test project.")
-          if "jqebxlhhffwiebijiugx" in identity:
+          if "jqebxlhhffwiebijiug" in identity:
               raise SystemExit("Refusing to run: production project detected.")
           PY
       - name: Set up Node.js for database test runner
