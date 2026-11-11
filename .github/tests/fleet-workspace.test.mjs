@@ -70,6 +70,12 @@ test("fails closed when fleet metadata cannot be loaded", async () => {
   assert.equal(result.error.code, "FLEET_LOOKUP_FAILED");
 });
 
+test("page workspace resolver delegates membership decisions to the shared fail-closed helper", async () => {
+  const source = await readFile(new URL("../../lib/fleet-workspace.mjs", import.meta.url), "utf8");
+  assert.match(source, /import \{ resolveSingleFleetMembership \} from ["']\.\/fleet-membership\.mjs["']/);
+  assert.match(source, /resolveSingleFleetMembership\(client, user\.id\)/);
+});
+
 test("all protected fleet pages use the shared verified workspace resolver", async () => {
   const pages = [
     "app/drivers/page.js",
@@ -120,6 +126,11 @@ test("single-fleet membership resolver fails closed for missing, ambiguous, or f
     };
     return { from(table) { assert.equal(table, "fleet_members"); return query; }, state };
   };
+
+  const invalidClient = await resolveSingleFleetMembership(null, "user-a");
+  assert.equal(invalidClient.error.code, "AUTH_REQUIRED");
+  const invalidUser = await resolveSingleFleetMembership(makeClient(), "");
+  assert.equal(invalidUser.error.code, "AUTH_REQUIRED");
 
   const missing = makeClient();
   const noFleet = await resolveSingleFleetMembership(missing, "user-a");
