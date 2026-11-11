@@ -96,3 +96,49 @@ jobs:
           set +x
           node .github/tests/run-sql-tests.mjs
 
+
+  auth-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      SUPABASE_TEST_URL: ${{ secrets.SUPABASE_TEST_URL }}
+      SUPABASE_TEST_ANON_KEY: ${{ secrets.SUPABASE_TEST_ANON_KEY }}
+      SUPABASE_TEST_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Check for dedicated Test Auth secrets
+        id: auth-secrets
+        shell: bash
+        run: |
+          set +x
+          if [ -z "$SUPABASE_TEST_URL" ] || [ -z "$SUPABASE_TEST_ANON_KEY" ] || [ -z "$SUPABASE_TEST_SERVICE_ROLE_KEY" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Live Auth integration skipped; dedicated Test Auth secrets are not all configured."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Set up Node.js
+        id: setup-node
+        if: steps.auth-secrets.outputs.available == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install locked dependencies
+        id: install
+        if: steps.auth-secrets.outputs.available == 'true'
+        run: npm ci --no-audit --no-fund
+      - name: Verify signed Auth session and fail-closed membership access
+        if: steps.auth-secrets.outputs.available == 'true'
+        shell: bash
+        run: |
+          set +x
+          node .github/tests/live-supabase-auth.integration.mjs
+      - name: Sweep disposable Auth fixtures after test (also runs on failure)
+        if: always() && steps.auth-secrets.outputs.available == 'true' && steps.install.outcome == 'success'
+        shell: bash
+        run: |
+          set +x
+          node .github/tests/live-supabase-auth.integration.mjs --cleanup-only
