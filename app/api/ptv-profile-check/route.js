@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { buildPTVPredefinedProfilesRequest, getPTVTruckProfileCandidates } from "../../../lib/ptv-vehicle-profiles.mjs";
-import { resolveAuthenticatedFleetMembership } from "../../../lib/authenticated-fleet-membership.mjs";
+import { resolveFleetApiAccess } from "../../../lib/fleet-api-access.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,17 +30,10 @@ export async function POST(request) {
       global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
     });
-    const { data: access, error: accessError } = await resolveAuthenticatedFleetMembership(db, token);
-    if (accessError?.code === "INVALID_SESSION" || accessError?.code === "AUTH_REQUIRED") {
-      return response({ ok: false, reason: "invalid_session" }, 401);
-    }
-    if (accessError || !access) {
-      return response({ ok: false, reason: "fleet_membership_required" }, 403);
-    }
-    const { membership } = access;
-    if (!["owner", "fleet_manager"].includes(membership.role)) {
-      return response({ ok: false, reason: "fleet_manager_required" }, 403);
-    }
+    const gate = await resolveFleetApiAccess(db, token, { allowedRoles: ["owner", "fleet_manager"] });
+    if (gate.status === 401) return response({ ok: false, reason: gate.reason }, 401);
+    if (gate.status === 403) return response({ ok: false, reason: gate.reason }, 403);
+    const { membership } = gate.data;
 
     const apiKey = process.env.PTV_API_KEY;
     if (typeof apiKey !== "string" || !apiKey.trim()) {
