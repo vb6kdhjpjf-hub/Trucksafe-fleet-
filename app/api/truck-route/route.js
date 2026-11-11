@@ -4,7 +4,7 @@ import { isTruckRouteConfigured } from "../../../lib/truck-route-readiness.mjs";
 import { getSavedTruckRoutingProfile } from "../../../lib/truck-routing-profile.mjs";
 import { checkTruckRouteQuota } from "../../../lib/truck-route-quota.mjs";
 import { readJsonBodyLimited } from "../../../lib/request-body-limits.mjs";
-import { resolveAuthenticatedFleetMembership } from "../../../lib/authenticated-fleet-membership.mjs";
+import { resolveFleetApiAccess } from "../../../lib/fleet-api-access.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,12 +64,10 @@ export async function POST(request) {
       global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
     });
-    const { data: access, error: accessError } = await resolveAuthenticatedFleetMembership(db, token);
-    if (accessError?.code === "INVALID_SESSION" || accessError?.code === "AUTH_REQUIRED") {
-      return response({ error: "החיבור אינו תקף. יש להתחבר מחדש." }, 401);
-    }
-    if (accessError || !access) return response({ error: "אין לחשבון הרשאה לצי יחיד ומאומת לתכנון מסלולים." }, 403);
-    const { membership } = access;
+    const gate = await resolveFleetApiAccess(db, token);
+    if (gate.status === 401) return response({ error: "החיבור אינו תקף. יש להתחבר מחדש." }, 401);
+    if (gate.status === 403) return response({ error: "אין לחשבון הרשאה לצי יחיד ומאומת לתכנון מסלולים." }, 403);
+    const { membership } = gate.data;
 
     if (process.env.TRUCK_RESTRICTION_COVERAGE_APPROVED !== "true") {
       return response({ error: "ניווט משאיות חסום עד לאימות כיסוי ארצי ועדכני של מגבלות הדרך. אין להסתמך על המאגר החלקי כמסלול בטוח." }, 503);
