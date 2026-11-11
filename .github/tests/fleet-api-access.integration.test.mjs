@@ -135,3 +135,54 @@ test("local fixture enforces the manager-only role allowlist", async t => {
   assert.equal(manager.status, 200);
   assert.equal(manager.data.membership.role, "fleet_manager");
 });
+
+
+test("every supported fleet role is accepted for ordinary fleet access", async t => {
+  for (const role of ["owner", "fleet_manager", "dispatcher", "safety_manager", "driver"]) {
+    const { client } = await startAuthFixture(t, {
+      memberships: [{ fleet_id: "fleet-a", role }]
+    });
+    const result = await resolveFleetApiAccess(client, TEST_TOKEN);
+    assert.equal(result.status, 200, role + " should have ordinary fleet access");
+    assert.equal(result.data.membership.role, role);
+    assert.equal(result.data.membership.fleet_id, "fleet-a");
+  }
+});
+
+test("only owners and fleet managers pass the manager-only access gate", async t => {
+  for (const role of ["owner", "fleet_manager"]) {
+    const { client } = await startAuthFixture(t, {
+      memberships: [{ fleet_id: "fleet-a", role }]
+    });
+    const result = await resolveFleetApiAccess(client, TEST_TOKEN, {
+      allowedRoles: ["owner", "fleet_manager"]
+    });
+    assert.equal(result.status, 200, role + " should pass the manager-only gate");
+  }
+
+  for (const role of ["dispatcher", "safety_manager", "driver"]) {
+    const { client } = await startAuthFixture(t, {
+      memberships: [{ fleet_id: "fleet-a", role }]
+    });
+    const result = await resolveFleetApiAccess(client, TEST_TOKEN, {
+      allowedRoles: ["owner", "fleet_manager"]
+    });
+    assert.equal(result.status, 403, role + " must be denied by the manager-only gate");
+    assert.equal(result.reason, "fleet_manager_required");
+  }
+});
+
+test("malformed fleet identifiers and unsupported roles fail closed", async t => {
+  for (const membership of [
+    { fleet_id: "", role: "owner" },
+    { fleet_id: null, role: "owner" },
+    { fleet_id: "fleet-a", role: "super_admin" },
+    { fleet_id: "fleet-a", role: "" }
+  ]) {
+    const { client } = await startAuthFixture(t, { memberships: [membership] });
+    const result = await resolveFleetApiAccess(client, TEST_TOKEN);
+    assert.equal(result.status, 403);
+    assert.equal(result.reason, "fleet_membership_invalid");
+    assert.equal(result.data, null);
+  }
+});
