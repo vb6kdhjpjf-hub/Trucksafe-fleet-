@@ -61,7 +61,7 @@ test("real Supabase JS client resolves a single fleet membership through a local
   assert.equal(requests[0].url, "/auth/v1/user");
   assert.equal(requests[0].authorization, `Bearer ${TEST_TOKEN}`);
   assert.ok(requests[1].url.startsWith("/rest/v1/fleet_members?"));
-  assert.match(requests[1].url, /user_id=eq\.${TEST_USER_ID}/);
+  assert.ok(requests[1].url.includes("user_id=eq." + TEST_USER_ID));
   assert.match(requests[1].url, /limit=2/);
   assert.equal(requests[1].authorization, `Bearer ${TEST_TOKEN}`);
 });
@@ -113,4 +113,24 @@ test("membership lookup uses the identity returned by Supabase Auth", async t =>
   assert.equal(result.status, 200);
   assert.equal(result.data.user.id, "different-user");
   assert.equal(requests[1].url, "/rest/v1/fleet_members?select=fleet_id%2Crole&user_id=eq.different-user&limit=2");
+});
+
+test("local fixture enforces the manager-only role allowlist", async t => {
+  const { client: driverClient } = await startAuthFixture(t, {
+    memberships: [{ fleet_id: "fleet-a", role: "driver" }]
+  });
+  const driver = await resolveFleetApiAccess(driverClient, TEST_TOKEN, {
+    allowedRoles: ["owner", "fleet_manager"]
+  });
+  assert.equal(driver.status, 403);
+  assert.equal(driver.reason, "fleet_manager_required");
+
+  const { client: managerClient } = await startAuthFixture(t, {
+    memberships: [{ fleet_id: "fleet-a", role: "fleet_manager" }]
+  });
+  const manager = await resolveFleetApiAccess(managerClient, TEST_TOKEN, {
+    allowedRoles: ["owner", "fleet_manager"]
+  });
+  assert.equal(manager.status, 200);
+  assert.equal(manager.data.membership.role, "fleet_manager");
 });
