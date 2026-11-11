@@ -52,13 +52,12 @@ async function removeOwnedFixtureFleets(admin, users) {
     const { data: fleets, error: listError } = await admin
       .from("fleets")
       .select("id,name,owner_user_id")
-      .eq("owner_user_id", user.id)
-      .like("name", `${FIXTURE_FLEET_PREFIX}%`);
-    if (listError) throw new Error("Unable to identify marked Test fixture fleets for cleanup.");
-    for (const fleet of fleets ?? []) {
-      if (fleet.owner_user_id !== user.id ||
-          typeof fleet.name !== "string" ||
-          !fleet.name.startsWith(FIXTURE_FLEET_PREFIX)) {
+      .eq("owner_user_id", user.id);
+    if (listError) throw new Error("Unable to identify Test fleets owned by a marked fixture user.");
+    for (const fleet of (fleets ?? []).filter(row =>
+      typeof row.name === "string" && row.name.startsWith(FIXTURE_FLEET_PREFIX)
+    )) {
+      if (fleet.owner_user_id !== user.id || !fleet.name.startsWith(FIXTURE_FLEET_PREFIX)) {
         throw new Error("Refusing cleanup: fixture fleet ownership or marker did not match exactly.");
       }
       const { data: deleted, error: deleteError } = await admin
@@ -78,6 +77,13 @@ async function removeOwnedFixtureFleets(admin, users) {
         .maybeSingle();
       if (verifyError || remaining) {
         throw new Error("Fixture fleet cleanup verification failed; Auth users were retained for retry.");
+      }
+      const { data: orphanMembers, error: memberVerifyError } = await admin
+        .from("fleet_members")
+        .select("user_id")
+        .eq("fleet_id", fleet.id);
+      if (memberVerifyError || orphanMembers?.length) {
+        throw new Error("Fixture membership cascade verification failed; Auth users were retained for retry.");
       }
     }
   }
