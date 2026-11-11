@@ -130,7 +130,11 @@ async function signInFixtureUser(url, anonKey, user, password) {
   if (verifyError || verified?.user?.id !== user.id) {
     throw new Error("Supabase Auth did not validate the signed Test access token as the created user.");
   }
-  return { client, token };
+  const apiClient = createClient(url, anonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false }
+  });
+  return { client: apiClient, authClient: client, token };
 }
 
 async function assertMembershipAccess({ client, token, userId, fleetId, role }) {
@@ -226,7 +230,7 @@ async function main() {
       .map(item => ({ fleet_id: createdFleet.id, user_id: item.user.id, role: item.role }));
     const { error: memberInsertError } = await admin.from("fleet_members").insert(additionalMembers);
     if (memberInsertError) {
-      throw new Error("Unable to create the two marked Test-only fleet membership fixtures.");
+      throw new Error(`Unable to create marked Test-only fleet memberships (code: ${memberInsertError?.code ?? "unknown"}; message: ${String(memberInsertError?.message ?? "no response").slice(0, 240)}).`);
     }
 
     for (const fixture of fixtures) {
@@ -250,7 +254,7 @@ async function main() {
     testError = error;
   } finally {
     for (const session of signedIn) {
-      await session.client.auth.signOut({ scope: "global" }).catch(() => {});
+      await session.authClient.auth.signOut({ scope: "global" }).catch(() => {});
     }
     try {
       const removed = await cleanupMarkedFixtureUsers(admin);
