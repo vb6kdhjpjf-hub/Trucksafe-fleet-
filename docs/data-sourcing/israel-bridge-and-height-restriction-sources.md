@@ -147,3 +147,8 @@ Accordingly:
 - Do not derive per-axle load by dividing gross weight by axle count; real load distribution depends on vehicle geometry, axle spacing, cargo placement, trailer configuration and coupling loads.
 - Before supporting axle-specific routing, add verified registration/configuration fields for axle groups and spacing, a trustworthy way to establish the actual loaded axle/group weights, unit and limit validation, and provider semantics tests. The route decision must independently compare every applicable axle/group limit.
 - Until then, do not describe a route as axle-safe or claim axle-specific compliance.
+
+
+## 10. Actual axle load versus registered axle limit
+
+HERE Routing API v8 defines `vehicle[weightPerAxle]` as the actual total load on an axle, including payload. A registration maximum or generic permitted axle limit is not an actual loaded axle measurement. TruckSafe therefore keeps any saved registration axle limit separate from the trip-specific measured load. The routing form must collect the actual load on the heaviest axle for the current trip, based on a recent weighbridge / axle-scale measurement, and send that trip value to HERE. It must not infer axle load by dividing total vehicle weight by axle count. The app does not have a sensor connection and cannot independently verify the measurement; the driver/operator remains responsible for entering a reliable current measurement. If the actual axle load is unavailable, routing must be rejected rather than sending the registered limit as if it were actual load.

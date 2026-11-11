@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { selectSafeTruckRoute } from "../../../lib/road-restriction-geometry.mjs";
 import { isTruckRouteConfigured } from "../../../lib/truck-route-readiness.mjs";
 import { getSavedTruckRoutingProfile } from "../../../lib/truck-routing-profile.mjs";
+import { validateTruckTripWeights } from "../../../lib/truck-trip-weight.mjs";
 import { checkTruckRouteQuota } from "../../../lib/truck-route-quota.mjs";
 import { readJsonBodyLimited } from "../../../lib/request-body-limits.mjs";
 import { resolveFleetApiAccess } from "../../../lib/fleet-api-access.mjs";
@@ -125,12 +126,20 @@ export async function POST(request) {
       return response({ error: "פרופיל הרכב השמור אינו מלא או מאומת, או שמדובר ברכב הדגמה. יש להשלים נתונים לפי רישיון הרכב." }, 409);
     }
 
-    const { heightCm, widthCm, lengthCm, grossWeightKg, weightPerAxleKg, axleCount, trailerCount, vehicleType } = vehicleProfile;
+    const { heightCm, widthCm, lengthCm, grossWeightKg, axleCount, trailerCount, vehicleType } = vehicleProfile;
     const currentWeightKg = Number(raw.currentWeightKg);
+    const weightPerAxleKg = Number(raw.weightPerAxleKg);
     const emptyWeightKg = Number(savedVehicle.empty_weight_kg);
-    if (!numberInRange(emptyWeightKg, 500, 100000) ||
-        !numberInRange(currentWeightKg, emptyWeightKg, grossWeightKg)) {
-      return response({ error: "יש להזין משקל בפועל תקין. הוא חייב להיות לפחות משקל הרכב הריק ולא לעלות על המשקל הכולל המותר לפי הרישיון." }, 400);
+    const tripWeights = validateTruckTripWeights({
+      currentWeightKg,
+      weightPerAxleKg,
+      emptyWeightKg,
+      grossWeightKg
+    });
+    if (!tripWeights) {
+      return response({
+        error: "יש להזין משקל כולל בפועל ומשקל מדוד על הסרן העמוס ביותר. נתון הסרן חייב להתבסס על שקילה בפועל, להיות לפחות 500 ק״ג ולא לעלות על המשקל הכולל בפועל."
+      }, 400);
     }
 
     // Enforce the per-user quota before any paid HERE geocoding or routing call.
@@ -173,7 +182,7 @@ export async function POST(request) {
       "vehicle[trailerCount]": String(trailerCount),
       apiKey
     };
-    if (weightPerAxleKg !== null) params["vehicle[weightPerAxle]"] = String(Math.round(weightPerAxleKg));
+    params["vehicle[weightPerAxle]"] = String(Math.round(tripWeights.weightPerAxleKg));
     url.search = new URLSearchParams(params).toString();
 
     const routeResponse = await fetch(url, { signal: AbortSignal.timeout(15000), cache: "no-store" });
