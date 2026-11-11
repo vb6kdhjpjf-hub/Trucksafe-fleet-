@@ -190,6 +190,8 @@ declare
   other_vehicle_id uuid := 'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf55';
   vehicle_id uuid := 'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51';
   untrusted_vehicle_id uuid := 'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf53';
+  incident_id uuid := '11000000-0000-4000-8000-000000000051';
+  maintenance_id uuid := '33000000-0000-4000-8000-000000000051';
   restriction_id uuid;
   message_text_value text;
   status_value text;
@@ -259,6 +261,12 @@ begin
   end if;
   insert into pg_temp.road_vehicle_security_results
   values('direct vehicle insert cannot forge registration approval','PASS','Insert trigger forces unverified state and clears all supplied document/approval metadata');
+
+  -- Create linked incident and maintenance fixtures for role-scoped RLS checks.
+  insert into public.incidents(id,fleet_id,driver_id,vehicle_id,incident_type,description,status,created_by)
+  values(incident_id,fleet_id,driver_id,vehicle_id,'other','CI RLS incident','open',owner_id);
+  insert into public.maintenance_records(id,fleet_id,vehicle_id,incident_id,maintenance_type,description,status)
+  values(maintenance_id,fleet_id,vehicle_id,incident_id,'inspection','CI RLS maintenance','scheduled');
 
   -- An authorized fleet owner can verify a restriction with official evidence.
   insert into public.road_restrictions(
@@ -417,6 +425,10 @@ begin
   if (select count(*) from public.vehicles where id='e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51') <> 1 then
     raise exception 'Fleet owner cannot read own vehicle';
   end if;
+  if (select count(*) from public.incidents where id='11000000-0000-4000-8000-000000000051') <> 1
+     or (select count(*) from public.maintenance_records where id='33000000-0000-4000-8000-000000000051') <> 1 then
+    raise exception 'Fleet owner cannot read own incident and maintenance records';
+  end if;
   if exists(select 1 from public.vehicles where id='e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf55') then
     raise exception 'Fleet owner can read a vehicle from another fleet';
   end if;
@@ -441,6 +453,18 @@ begin
   if (select count(*) from public.vehicles where fleet_id='b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d51') <> 2 then
     raise exception 'Dispatcher should read fleet vehicles';
   end if;
+  if (select count(*) from public.incidents where id='11000000-0000-4000-8000-000000000051') <> 1
+     or (select count(*) from public.maintenance_records where id='33000000-0000-4000-8000-000000000051') <> 1 then
+    raise exception 'Dispatcher should read fleet incidents and maintenance records';
+  end if;
+  update public.incidents set description='unauthorized dispatcher edit'
+    where id='11000000-0000-4000-8000-000000000051';
+  get diagnostics changed_rows = row_count;
+  if changed_rows <> 0 then raise exception 'Dispatcher unexpectedly updated an incident'; end if;
+  update public.maintenance_records set description='unauthorized dispatcher edit'
+    where id='33000000-0000-4000-8000-000000000051';
+  get diagnostics changed_rows = row_count;
+  if changed_rows <> 0 then raise exception 'Dispatcher unexpectedly updated maintenance'; end if;
   if exists(select 1 from storage.objects
       where bucket_id='vehicle-registrations'
         and name='b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d51/e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51/registration.pdf') then
@@ -481,6 +505,18 @@ begin
      or not exists(select 1 from public.vehicles where id='e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51') then
     raise exception 'Driver should see only the vehicle assigned to them';
   end if;
+  if (select count(*) from public.incidents where id='11000000-0000-4000-8000-000000000051') <> 1
+     or (select count(*) from public.maintenance_records where id='33000000-0000-4000-8000-000000000051') <> 1 then
+    raise exception 'Assigned driver should read related incident and maintenance records';
+  end if;
+  update public.incidents set description='unauthorized driver edit'
+    where id='11000000-0000-4000-8000-000000000051';
+  get diagnostics changed_rows = row_count;
+  if changed_rows <> 0 then raise exception 'Driver unexpectedly updated an incident'; end if;
+  update public.maintenance_records set description='unauthorized driver edit'
+    where id='33000000-0000-4000-8000-000000000051';
+  get diagnostics changed_rows = row_count;
+  if changed_rows <> 0 then raise exception 'Driver unexpectedly updated maintenance'; end if;
   if exists(select 1 from public.vehicles where id='e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf53') then
     raise exception 'Driver can read an unassigned vehicle';
   end if;
@@ -512,6 +548,10 @@ select set_config('request.jwt.claim.sub','f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf55'
 set local role authenticated;
 do $rls_other_fleet_checks$
 begin
+  if (select count(*) from public.incidents where id='11000000-0000-4000-8000-000000000051') <> 0
+     or (select count(*) from public.maintenance_records where id='33000000-0000-4000-8000-000000000051') <> 0 then
+    raise exception 'Other fleet owner can read first fleet incident or maintenance record';
+  end if;
   if (select count(*) from public.vehicles where fleet_id='b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d52') <> 1
      or exists(select 1 from public.vehicles where id='e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51') then
     raise exception 'Second fleet owner isolation failed';
