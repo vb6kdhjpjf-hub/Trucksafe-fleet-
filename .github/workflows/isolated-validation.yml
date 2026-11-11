@@ -82,6 +82,12 @@ jobs:
       - name: Install PostgreSQL client
         if: steps.test-db.outputs.available == 'true'
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Verify reviewer foreign-key index migration (rollback-only)
+        if: steps.test-db.outputs.available == 'true'
+        shell: bash
+        run: |
+          set +x
+          psql "$SUPABASE_TEST_DB_URL" -X -v ON_ERROR_STOP=1 -f .github/tests/fk-index-migration-e2e.sql
       - name: Run rollback-only lifecycle and safety integration tests
         if: steps.test-db.outputs.available == 'true'
         shell: bash
