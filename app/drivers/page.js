@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 import { Truck, ArrowRight, Plus, Pencil, Phone, IdCard, CalendarDays, Users, LogOut } from "lucide-react";
 
 const emptyForm = { full_name: "", phone: "", license_number: "", license_class: "", license_expires_at: "" };
@@ -36,12 +37,14 @@ export default function DriversPage() {
   }, [router]);
 
   async function loadWorkspace(user) {
-    const { data: membership, error } = await supabase.from("fleet_members").select("fleet_id,role").eq("user_id", user.id).limit(1).maybeSingle();
-    if (error) { setMessage("לא הצלחנו לטעון את פרטי הצי: " + error.message); return; }
-    if (!membership) { router.replace("/"); return; }
-    const { data: current, error: fleetError } = await supabase.from("fleets").select("id,name").eq("id", membership.fleet_id).single();
-    if (fleetError) { setMessage("שגיאה בטעינת הצי: " + fleetError.message); return; }
-    setFleet({ ...current, role: membership.role });
+    const { data, error } = await resolveFleetWorkspace(supabase, user.id);
+    if (error) {
+      if (error.code === "AUTH_REQUIRED" || error.code === "NO_FLEET") router.replace("/");
+      else setMessage("לא הצלחנו לאמת את הצי: " + error.message);
+      return;
+    }
+    const current = data.fleet;
+    setFleet(current);
     await loadDrivers(current.id);
   }
 
