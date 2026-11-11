@@ -367,18 +367,18 @@ export default function TruckRoutingPage() {
           <label style={label}>רכב שמור ומאומת מהצי<select required style={field} value={selectedVehicleId} onChange={event => selectVehicle(event.target.value)}><option value="">בחר רכב מאומת</option>{vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.id}>{vehicle.registration_number}{vehicle.make ? " · " + vehicle.make : ""}</option>)}</select></label>
           <label style={label}>מוצא בישראל<div style={{ display: "flex", gap: 7, marginTop: 6 }}><input required maxLength={180} style={{ ...field, marginTop: 0, minWidth: 0 }} value={form.origin} onChange={e => update("origin", e.target.value)} placeholder="כתובת, יישוב או אזור"/><button type="button" onClick={useCurrentLocation} disabled={locating || busy} style={{ ...field, width: "auto", whiteSpace: "nowrap", marginTop: 0, cursor: "pointer" }}><MapPin size={15} style={{ verticalAlign: "middle" }}/> {locating ? "מאתר..." : "המיקום שלי"}</button></div></label>
           <label style={label}>יעד בישראל<input required maxLength={180} style={field} value={form.destination} onChange={e => update("destination", e.target.value)} placeholder="כתובת, יישוב או אזור"/></label>
-          <label style={label}>משקל בפועל בנסיעה (ק״ג)<input required type="number" min={selectedProfile?.emptyWeightKg || 1} max={selectedProfile?.grossWeightKg || 100000} step="1" style={field} value={form.currentWeightKg} onChange={e => update("currentWeightKg", e.target.value)} placeholder={selectedProfile ? `בין ${selectedProfile.emptyWeightKg} ל־${selectedProfile.grossWeightKg}` : "בחר רכב תחילה"} disabled={!selectedProfile}/></label>
+          <label style={label}>משקל כולל בפועל לנסיעה (ק״ג)<input required type="number" min={selectedProfile?.emptyWeightKg || 1} max={selectedProfile?.grossWeightKg || 100000} step="1" style={field} value={form.currentWeightKg} onChange={e => update("currentWeightKg", e.target.value)} placeholder={selectedProfile ? `בין ${selectedProfile.emptyWeightKg} ל־${selectedProfile.grossWeightKg}` : "בחר רכב תחילה"} disabled={!selectedProfile}/></label>
         </div>
         {selectedVehicle && selectedProfile ? <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: "#f5f8fc", border: "1px solid #e1e8f0", lineHeight: 1.7, fontSize: 13 }}>
           <b>פרופיל מאומת של הרכב</b>
           <div>גובה: {selectedProfile.heightCm} ס״מ · רוחב: {selectedProfile.widthCm} ס״מ · אורך: {selectedProfile.lengthCm} ס״מ</div>
           <div>משקל ריק: {selectedProfile.emptyWeightKg.toLocaleString("he-IL")} ק״ג · משקל כולל מותר: {selectedProfile.grossWeightKg.toLocaleString("he-IL")} ק״ג</div>
           <div>סרנים: {selectedProfile.axleCount} · נגררים: {selectedProfile.trailerCount} · משקל סרן שמור: {selectedProfile.weightPerAxleKg.toLocaleString("he-IL")} ק״ג</div>
-          <small style={{ color: "#667085" }}>המידות והנתונים נלקחים מפרופיל הרכב השמור שאומת מול מסמכי הרכב. נתוני הנסיעה אינם משנים את פרופיל הרכב.</small>
+          <small style={{ color: "#667085" }}>המידות והנתונים נלקחים מפרופיל הרכב השמור שאומת מול מסמכי הרכב. המשקל לנסיעה מוזן בנפרד ואינו נמדד על ידי המערכת; משקל סרן שמור הוא נתון מותר/רשום ואינו מדידה של העומס בפועל בכל סרן.</small>
         </div> : <p style={{ color: "#8a4b12", fontSize: 13 }}>לא נמצאו כלי רכב זמינים עם פרופיל ניתוב מלא ואימות רישיון. יש להשלים את פרטי הרכב ואימות המסמכים בלוח הבקרה לפני תכנון מסלול.</p>}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 18 }}>
           <button type="submit" disabled={busy || !providerReady || !selectedVehicleId || !selectedProfile} style={button}><Route size={17} style={{ verticalAlign: "middle" }}/> {busy ? "מחשב מסלול..." : providerReady ? "חשב מסלול למשאית" : "ממתין לחיבור שירות הניווט"}</button>
-          <span style={{ color: "#718096", fontSize: 12 }}>המערכת משתמשת רק בפרופיל רכב שמור ומאומת; יש להזין את המשקל בפועל לנסיעה הנוכחית.</span>
+          <span style={{ color: "#718096", fontSize: 12 }}>המערכת משתמשת בפרופיל רכב שמור ומאומת. המשקל בפועל מוזן ידנית — יש לבסס אותו על שקילה עדכנית או נתוני מטען אמינים, ולא על הערכה בלבד. המערכת אינה מחוברת לחיישן שקילה ואינה מאמתת חלוקת עומס בין הסרנים.</span>
         </div>
       </form>
 
