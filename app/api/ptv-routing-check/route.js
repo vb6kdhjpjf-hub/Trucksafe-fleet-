@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { buildPTVRoutingProbeRequest, assessPTVRoutingProbeResponse } from "../../../lib/ptv-routing-probe.mjs";
+import { resolveSingleFleetMembership } from "../../../lib/fleet-membership.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,12 +35,7 @@ export async function POST(request) {
       return response({ ok: false, reason: "invalid_session" }, 401);
     }
 
-    const { data: membership, error: membershipError } = await db
-      .from("fleet_members")
-      .select("fleet_id,role")
-      .eq("user_id", authData.user.id)
-      .limit(2)
-      .maybeSingle();
+    const { data: membership, error: membershipError } = await resolveSingleFleetMembership(db, authData.user.id);
     if (membershipError || !membership) {
       return response({ ok: false, reason: "fleet_membership_required" }, 403);
     }
