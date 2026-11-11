@@ -33,8 +33,8 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
-      - name: Run application and safety unit tests
-        run: npm run test:ptv
+      - name: Run application, safety and workflow tests
+        run: npm run test:ci
       - name: Build Next.js application
         run: npx next build
       - name: Run isolated concurrent application smoke tests
