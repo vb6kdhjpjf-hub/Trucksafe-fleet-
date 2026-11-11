@@ -70,7 +70,11 @@ test("live Auth fixture creates and cleans uniquely marked Test-only fleets and 
   assert.ok(liveAuth.includes('"fleet_manager"'));
   assert.ok(liveAuth.includes('admin.from("fleet_members").insert'));
   assert.ok(liveAuth.includes("removeOwnedFixtureFleets"));
-  assert.ok(liveAuth.includes('expectedVisible = role === "owner" || role === "fleet_manager" ? 3 : 1'));
+  assert.ok(liveAuth.includes('const roles = ["owner", "fleet_manager", "driver", "ambiguous", "unassigned"]'));
+  assert.ok(liveAuth.includes("secondFleetName"));
+  assert.ok(liveAuth.includes("visibleMemberships.length !== 2"));
+  assert.ok(liveAuth.includes("assertActualHttpAuthorization"));
+  assert.ok(liveAuth.includes('expectedVisible = role === "owner" || role === "fleet_manager" ? 4 : 1'));
   assert.ok(liveAuth.includes("fleet_manager_required"));
   assert.ok(liveAuth.includes('parsed.hostname !== `${TEST_PROJECT_REF}.supabase.co`'));
   assert.ok(liveAuth.includes('admin.auth.admin.createUser'));
