@@ -106,8 +106,8 @@ These results establish that the tested code passed those checks. They do not es
 A rollback-only CI test now creates two temporary benchmark relations with 100,000 synthetic rows each. It checks the PostgreSQL plans for two common fleet operations: filtering tasks by fleet and status, and loading the latest location history for a trip. The runner asserts that the expected composite indexes are actually used, that each limited query returns 100 rows, and that PostgreSQL reports an execution time.
 
 Latest observed isolated CI measurements on the dedicated Test project's PostgreSQL instance:
-- Fleet/status task query: `idx_trucksafe_perf_tasks_fleet_status` used; 100 rows returned in 2.922 ms.
-- Trip location history query: `idx_trucksafe_perf_locations_trip_recorded` used; 100 rows returned in 0.175 ms.
+- Fleet/status task query: `idx_trucksafe_perf_tasks_fleet_status` used; 100 rows returned in 2.922 ms and 4.183 ms across two CI runs.
+- Trip location history query: `idx_trucksafe_perf_locations_trip_recorded` used; 100 rows returned in 0.175 ms and 0.176 ms across two CI runs.
 
 These are synthetic temporary-table measurements, not production workload benchmarks or latency guarantees. The temporary tables and all 200,000 synthetic rows are rolled back; no public table, persistent schema, Test data, or Production data is changed. Larger realistic load testing against the application/API remains a separate milestone.
 
