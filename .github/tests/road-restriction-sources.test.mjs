@@ -67,3 +67,15 @@ test("Tel Aviv bridge GIS is local candidate geometry without measured clearance
   assert.equal(source.routingEligible, false);
   assert.match(source.limitations, /ללא גובה מעבר מדוד/);
 });
+
+
+test("regional out-of-service bridge roadblocks layer is candidate-only and has no measured truck clearance or national coverage", () => {
+  const source = getRoadRestrictionSource("regional-out-of-service-bridge-roadblocks-arcgis");
+  assert.ok(source);
+  assert.equal(source.candidateOnly, true);
+  assert.equal(source.routingEligible, false);
+  assert.equal(source.dataTypes.includes("regional_bridge_roadblocks"), true);
+  assert.match(source.limitations, /אזור קטן/);
+  assert.match(source.limitations, /ללא גובה מעבר מדוד/);
+  assert.equal(isSourceCandidateOnly(source), true);
+});

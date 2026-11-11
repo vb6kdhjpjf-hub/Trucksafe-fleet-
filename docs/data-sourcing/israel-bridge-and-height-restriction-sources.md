@@ -35,6 +35,15 @@ Safety rule: **none of the sources listed here is currently approved as a verifi
 - Interpretation: these are useful **responsibility-discovery / routing-of-enquiry** sources. They can help identify which body may own or control signage for a road segment. They do not contain a current inventory of truck height, weight, width, time-window or closure restrictions, and do not prove the current operational restriction state. The older authority directory also needs freshness confirmation before relying on it for current contacts.
 - Acquisition follow-up: use the authority-segment dataset and directory to build a candidate road-owner contact matrix, then request the actual restriction register, source documents, change feed and commercial-use permission from each responsible authority. Do not treat delegated signage authority as proof of asset ownership or measurement responsibility.
 
+
+### ArcGIS Feature Service – roadblocks and detours for out-of-service bridges
+- Service: https://services3.arcgis.com/PcGFyTym9yKZBRgz/ArcGIS/rest/services/gsharim_blocks/FeatureServer
+- Service description: "detours and roadblocks for out_of_service bridges"; it exposes layers for bridge roadblocks, detours, and bridges. The service metadata reports a maximum record count of 1,000 and an Israel Transverse Mercator coordinate reference system.
+- The roadblock layer metadata exposes bridge code and bridge ID fields. The inspected layer does not expose measured vertical clearance, gross/axle weight limits, time windows, current validity, road direction/lane, a clear publisher/copyright statement, or a documented update cadence.
+- Its full spatial extent is a small regional footprint, not nationwide coverage. Do not infer any road is clear outside the mapped footprint or because no feature is returned.
+- Interpretation: candidate-only evidence for discovering selected out-of-service bridges and possible detours. The source owner, authoritative status, freshness, licence, completeness, road-network matching, and operational update process remain unconfirmed. It must not be imported as a verified restriction feed or used to approve routes.
+- Registry key: `regional-out-of-service-bridge-roadblocks-arcgis`; `routingEligible: false`.
+
 ### Local authority GIS layers
 - Example: Tel Aviv municipal bridge layer: https://gisn.tel-aviv.gov.il/ArcGIS/rest/services/IView2/MapServer/550
 - It identifies bridge features and type within the municipal GIS.
