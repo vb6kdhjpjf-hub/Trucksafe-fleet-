@@ -14,7 +14,7 @@
     "test:smoke": "node scripts/smoke-app.mjs",
     "test:workflow-safety": "node --test .github/tests/workflow-safety.test.mjs",
     "test:ci": "npm run test:ptv && npm run test:cargo && node --test .github/tests/fleet-workspace.test.mjs .github/tests/fleet-api-access.integration.test.mjs .github/tests/live-auth-fixture-utils.test.mjs .github/tests/api-route-auth-coverage.test.mjs && npm run test:workflow-safety",
-    "test:cargo": "node --test .github/tests/shipment-quantities.test.mjs"
+    "test:cargo": "node --test .github/tests/shipment-quantities.test.mjs .github/tests/delivery-proof-photos.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
