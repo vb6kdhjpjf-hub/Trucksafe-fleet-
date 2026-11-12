@@ -1,6 +1,6 @@
 # Enterprise onboarding and data migration
 
-**Status:** CSV parsing and field mapping/row validation foundations are implemented and CI-tested. Upload UI, XLSX support, private staging, durable jobs, dry-run preview, commit APIs and customer records are not implemented yet.
+**Status:** CSV parsing, field mapping/row validation, and a browser-only CSV preview with read-only fleet identity preflight are implemented and CI-tested. XLSX support, private staging, durable jobs, server-side dry-run/commit APIs and customer records are not implemented yet.
 
 ## Product outcome
 An established fleet can adopt TruckSafe without manually recreating drivers, vehicles, customers or operational records. CSV/Excel is the first path; named system connectors follow only after API access, authorization and field semantics are verified.
@@ -31,7 +31,8 @@ Never execute spreadsheet formulas or macros. Validate size, row count, encoding
 ## Implemented foundation
 - `lib/enterprise-import-csv.mjs`: bounded CSV parser (20 MB, 100,000 data rows, 100 columns, 10,000 characters per field), BOM handling, comma/semicolon/tab detection, quoted values, strict malformed-quote handling and row-shape errors.
 - `lib/enterprise-import-mapping.mjs`: Hebrew/English header suggestions and initial drivers/vehicles field validation. Ambiguous mappings are not auto-selected; status/date/number values are not guessed; duplicate identifiers inside the file require review; imported vehicle dimensions and weights are explicitly flagged for document verification.
-- Automated tests are included in CI. These functions only parse and validate in memory; they do not upload files or write operational records.
+- `lib/enterprise-import-conflicts.mjs`: normalized fleet-identity conflict detection for driver license numbers and vehicle registration numbers. The `/imports` page reads existing identifiers through the signed-in client in bounded 1,000-row pages, limited to 100,000 records; incomplete/failed preflight blocks the full preview. This remains a read-only browser check, not an authoritative server-side import constraint.
+- Automated tests are included in CI. These functions only parse and validate in memory; the existing-identity check reads fleet-scoped records but does not upload files or write operational records.
 
 ## Target architecture
 - Browser upload, inspection, mapping, preview and progress; no service-role credentials.

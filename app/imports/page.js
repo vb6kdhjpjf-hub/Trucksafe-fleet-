@@ -8,6 +8,7 @@ import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 import { parseEnterpriseCsv } from "../../lib/enterprise-import-csv.mjs";
 import { suggestImportColumnMappings, validateEnterpriseImportRows } from "../../lib/enterprise-import-mapping.mjs";
 import { serializeEnterpriseCsv } from "../../lib/enterprise-import-export.mjs";
+import { flagExistingEnterpriseIdentityConflicts } from "../../lib/enterprise-import-conflicts.mjs";
 
 const FIELD_LABELS = {
   drivers: {
@@ -49,7 +50,8 @@ const ERROR_LABELS = {
   date_requires_iso_yyyy_mm_dd: "תאריך חייב להיות בפורמט YYYY-MM-DD",
   invalid_numeric_format: "ערך מספרי אינו תקין או אינו חד-משמעי",
   numeric_value_out_of_range: "ערך מספרי מחוץ לטווח המותר",
-  status_requires_manual_mapping: "ערך הסטטוס אינו נתמך ודורש התאמה ידנית"
+  status_requires_manual_mapping: "ערך הסטטוס אינו נתמך ודורש התאמה ידנית",
+  duplicate_identity_in_fleet: "המזהה כבר קיים בצי ודורש בדיקה לפני קליטה"
 };
 
 function downloadCsv(filename, rows) {
@@ -74,6 +76,8 @@ export default function ImportsPage() {
   const [validation, setValidation] = useState(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [existingIdentityValues, setExistingIdentityValues] = useState([]);
+  const [identityPreflight, setIdentityPreflight] = useState({ status: "idle", message: "" });
 
   useEffect(() => {
     let alive = true;
@@ -113,6 +117,8 @@ export default function ImportsPage() {
     setParsed(null);
     setMapping({});
     setValidation(null);
+    setExistingIdentityValues([]);
+    setIdentityPreflight({ status: "idle", message: "" });
     setMessage("");
   }
 
@@ -160,6 +166,58 @@ export default function ImportsPage() {
     return result.ok ? result : null;
   }, [parsed, entityType, mapping]);
 
+  useEffect(() => {
+    let alive = true;
+    if (!parsed || !fleet?.id || !canManage) {
+      setExistingIdentityValues([]);
+      setIdentityPreflight({ status: "idle", message: "" });
+      return () => { alive = false; };
+    }
+
+    const table = entityType === "drivers" ? "drivers" : "vehicles";
+    const identityField = entityType === "drivers" ? "license_number" : "registration_number";
+    setIdentityPreflight({ status: "loading", message: "בודק מזהים מול הרשומות הקיימות בצי…" });
+    setExistingIdentityValues([]);
+
+    (async () => {
+      const values = [];
+      const pageSize = 1000;
+      const maximumRows = 100000;
+      for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await supabase
+          .from(table)
+          .select(identityField)
+          .eq("fleet_id", fleet.id)
+          .not(identityField, "is", null)
+          .order("id", { ascending: true })
+          .range(offset, offset + pageSize - 1);
+        if (error) throw error;
+        const batch = (data || []).map(row => row[identityField]).filter(value => value != null && String(value).trim());
+        values.push(...batch);
+        if (values.length >= maximumRows && batch.length === pageSize) {
+          throw new Error("לא ניתן להשלים בדיקת כפילויות מלאה עבור צי גדול במיוחד.");
+        }
+        if (batch.length < pageSize) break;
+      }
+      if (alive) {
+        setExistingIdentityValues(values);
+        setIdentityPreflight({ status: "ready", message: `נבדקו ${values.length.toLocaleString("he-IL")} מזהים קיימים בצי.` });
+      }
+    })().catch(error => {
+      if (alive) {
+        setExistingIdentityValues([]);
+        setIdentityPreflight({ status: "error", message: error?.message || "בדיקת המזהים מול הצי נכשלה." });
+      }
+    });
+
+    return () => { alive = false; };
+  }, [parsed, entityType, fleet?.id, canManage]);
+
+  const displayPreview = useMemo(() => {
+    if (!preview || identityPreflight.status !== "ready") return preview;
+    return flagExistingEnterpriseIdentityConflicts(preview, entityType, existingIdentityValues);
+  }, [preview, entityType, existingIdentityValues, identityPreflight.status]);
+
   const missingRequired = useMemo(() => Object.entries(fields)
     .filter(([field]) => field === "full_name" || field === "registration_number")
     .filter(([field]) => mapping[field] === undefined || mapping[field] === ""), [fields, mapping]);
@@ -174,9 +232,9 @@ export default function ImportsPage() {
   }, [mapping, parsed]);
 
   function exportRejected() {
-    if (!preview) return;
+    if (!displayPreview || identityPreflight.status !== "ready") return;
     const rows = [["שורת מקור", "סוג נתונים", "שדות", "שגיאות", "אזהרות"]];
-    preview.rows.filter(row => row.errors.length || row.warnings.length).forEach(row => {
+    displayPreview.rows.filter(row => row.errors.length || row.warnings.length).forEach(row => {
       rows.push([
         row.rowNumber,
         entityType === "drivers" ? "נהגים" : "רכבים",
@@ -242,27 +300,30 @@ export default function ImportsPage() {
 
         <section className="fleet-panel">
           <div className="fleet-panel-head"><div><h3>3. תוצאות בדיקת הקובץ</h3><p>הבדיקה אינה שומרת נתונים. יש לאשר ולבדוק את כל האזהרות לפני קליטה עתידית.</p></div><ShieldCheck size={24}/></div>
-          {!preview ? <p className="status-late">לא ניתן להציג תוצאות. בדוק ששדות החובה ממופים ושכל עמודה משויכת פעם אחת בלבד.</p> : <>
+          {identityPreflight.status === "loading" && <p role="status">{identityPreflight.message}</p>}
+          {identityPreflight.status === "error" && <p className="status-late" role="alert">לא ניתן להשלים בדיקת כפילויות מול הצי הקיים. התוצאות אינן מלאות ולכן אין להסתמך עליהן: {identityPreflight.message}</p>}
+          {identityPreflight.status === "ready" && <p style={{ color: "#718096", fontSize: 13 }} role="status">{identityPreflight.message} הבדיקה לקריאה בלבד.</p>}
+          {identityPreflight.status !== "ready" || !displayPreview ? <p className="status-late">לא ניתן להציג תוצאות מלאות עד להשלמת בדיקת הכפילויות מול הצי.</p> : <>
             <div className="vehicle-list" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 12 }}>
-              <div className="fleet-stat"><b>{preview.summary.total}</b><span>סה״כ שורות</span></div>
-              <div className="fleet-stat"><b>{preview.summary.ready}</b><span>תקינות</span></div>
-              <div className="fleet-stat"><b>{preview.summary.review}</b><span>דורשות בדיקה</span></div>
-              <div className="fleet-stat"><b>{preview.summary.rejected}</b><span>נדחו</span></div>
+              <div className="fleet-stat"><b>{displayPreview.summary.total}</b><span>סה״כ שורות</span></div>
+              <div className="fleet-stat"><b>{displayPreview.summary.ready}</b><span>תקינות</span></div>
+              <div className="fleet-stat"><b>{displayPreview.summary.review}</b><span>דורשות בדיקה</span></div>
+              <div className="fleet-stat"><b>{displayPreview.summary.rejected}</b><span>נדחו</span></div>
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "18px 0" }}>
-              <button className="secondary-btn" onClick={exportRejected} disabled={!preview.rows.some(row => row.errors.length || row.warnings.length)}><Download size={15}/> הורדת דוח בדיקה</button>
+              <button className="secondary-btn" onClick={exportRejected} disabled={identityPreflight.status !== "ready" || !displayPreview?.rows.some(row => row.errors.length || row.warnings.length)}><Download size={15}/> הורדת דוח בדיקה</button>
             </div>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 650 }}>
                 <thead><tr><th style={{ textAlign: "right", padding: 10 }}>שורה</th><th style={{ textAlign: "right", padding: 10 }}>מזהה</th><th style={{ textAlign: "right", padding: 10 }}>תוצאה</th><th style={{ textAlign: "right", padding: 10 }}>פירוט</th></tr></thead>
-                <tbody>{preview.rows.slice(0, 50).map(row => {
+                <tbody>{displayPreview.rows.slice(0, 50).map(row => {
                   const identity = row.data.full_name || row.data.registration_number || "—";
-                  const details = [...row.errors.map(error => ERROR_LABELS[error.code] || error.code), ...row.warnings.map(warning => warning.code === "safety_document_review_required" ? "נתון בטיחותי מחייב אימות מול מסמכי הרכב" : warning.code === "duplicate_identity_in_file" ? "מזהה כפול בקובץ" : warning.code)];
+                  const details = [...row.errors.map(error => ERROR_LABELS[error.code] || error.code), ...row.warnings.map(warning => warning.code === "safety_document_review_required" ? "נתון בטיחותי מחייב אימות מול מסמכי הרכב" : warning.code === "duplicate_identity_in_file" ? "מזהה כפול בקובץ" : ERROR_LABELS[warning.code] || warning.code)];
                   return <tr key={row.rowNumber} style={{ borderTop: "1px solid #e8edf3" }}><td style={{ padding: 10 }}>{row.rowNumber}</td><td style={{ padding: 10 }}>{identity}</td><td style={{ padding: 10 }}>{row.disposition === "ready" ? "תקין" : row.disposition === "review" ? "בדיקה" : "נדחה"}</td><td style={{ padding: 10, color: details.length ? "#a15c00" : "#16803c" }}>{details.join(" · ") || "עבר בדיקת מבנה וערכים"}</td></tr>;
                 })}</tbody>
               </table>
             </div>
-            {preview.rows.length > 50 && <p style={{ color: "#718096" }}>מוצגות 50 השורות הראשונות בלבד. דוח הבדיקה כולל את כל השורות שדורשות טיפול.</p>}
+            {displayPreview.rows.length > 50 && <p style={{ color: "#718096" }}>מוצגות 50 השורות הראשונות בלבד. דוח הבדיקה כולל את כל השורות שדורשות טיפול.</p>}
           </>}
         </section>
       </>}
