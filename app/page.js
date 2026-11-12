@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
-import { Truck, ShieldCheck, LogOut, Plus, Users, Navigation, AlertTriangle, ClipboardList, BarChart3, Wrench, Route } from "lucide-react";
+import { Truck, ShieldCheck, LogOut, Plus, Users, Navigation, AlertTriangle, ClipboardList, BarChart3, Wrench, Route, Scale } from "lucide-react";
 import { isDriverEligibleForVehicleAssignment } from "../lib/driver-eligibility.mjs";
 import { isSupportedFleetRole } from "../lib/fleet-membership.mjs";
 

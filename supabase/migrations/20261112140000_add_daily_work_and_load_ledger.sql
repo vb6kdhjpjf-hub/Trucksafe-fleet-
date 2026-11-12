@@ -111,6 +111,152 @@ create table public.daily_load_events (
 create index daily_load_events_plan_created_idx
   on public.daily_load_events(plan_id,created_at);
 
+create or replace function public.create_daily_work_plan(
+  p_fleet_id uuid,p_work_date date,p_driver_id uuid,p_vehicle_id uuid,
+  p_tare_weight_kg bigint,p_registered_gross_limit_kg bigint,p_registered_axle_limit_kg bigint,
+  p_initial_gross_weight_kg bigint,p_initial_heaviest_axle_kg bigint,
+  p_measurement_at timestamptz,p_measurement_source text,p_measurement_reference text,p_stops jsonb
+)
+returns uuid language plpgsql security definer set search_path = ''
+as $function$
+declare
+  v_actor uuid := auth.uid();
+  v_plan_id uuid;
+  v_stop jsonb;
+  v_sequence integer := 0;
+  v_operation text;
+  v_address text;
+  v_quantity bigint;
+  v_vehicle public.vehicles%rowtype;
+  v_driver public.drivers%rowtype;
+begin
+  if v_actor is null then raise exception 'Authentication required'; end if;
+  if not private.has_fleet_role(p_fleet_id,array['owner','fleet_manager','dispatcher']::text[]) then
+    raise exception 'Only an authorized fleet manager may create a daily work plan';
+  end if;
+  if p_work_date is null or p_driver_id is null or p_vehicle_id is null then
+    raise exception 'Work date, driver and vehicle are required';
+  end if;
+
+  select * into v_driver from public.drivers
+  where id=p_driver_id and fleet_id=p_fleet_id;
+  if not found or v_driver.status <> 'active' then
+    raise exception 'The assigned driver is not active in this fleet';
+  end if;
+  select * into v_vehicle from public.vehicles
+  where id=p_vehicle_id and fleet_id=p_fleet_id;
+  if not found or v_vehicle.status not in ('available','assigned') then
+    raise exception 'The selected vehicle is not available in this fleet';
+  end if;
+  if v_vehicle.registration_verification_status is distinct from 'verified'
+     or v_vehicle.empty_weight_kg is null or v_vehicle.gross_weight_kg is null
+     or v_vehicle.weight_per_axle_kg is null then
+    raise exception 'Vehicle registration and all weight limits must be verified before planning';
+  end if;
+  if p_tare_weight_kg is distinct from v_vehicle.empty_weight_kg
+     or p_registered_gross_limit_kg is distinct from v_vehicle.gross_weight_kg
+     or p_registered_axle_limit_kg is distinct from v_vehicle.weight_per_axle_kg then
+    raise exception 'Submitted vehicle limits do not match the verified registration profile';
+  end if;
+  if p_initial_gross_weight_kg is null
+     or p_initial_gross_weight_kg < v_vehicle.empty_weight_kg
+     or p_initial_gross_weight_kg > v_vehicle.gross_weight_kg
+     or p_initial_heaviest_axle_kg is null or p_initial_heaviest_axle_kg <= 0
+     or p_initial_heaviest_axle_kg > v_vehicle.weight_per_axle_kg
+     or p_initial_heaviest_axle_kg > p_initial_gross_weight_kg then
+    raise exception 'Initial measured weights exceed the verified vehicle limits';
+  end if;
+  if p_measurement_source is null or p_measurement_source not in ('weighbridge_ticket','certified_onboard_scale')
+     or p_measurement_reference is null or length(btrim(p_measurement_reference))=0
+     or p_measurement_at is null or p_measurement_at > now() + interval '5 minutes'
+     or p_measurement_at < now() - interval '24 hours' then
+    raise exception 'A recent, referenced initial gross and axle measurement is required';
+  end if;
+  if p_stops is null or jsonb_typeof(p_stops) <> 'array'
+     or jsonb_array_length(p_stops) < 1 or jsonb_array_length(p_stops) > 30 then
+    raise exception 'A daily plan must contain between 1 and 30 stops';
+  end if;
+
+  insert into public.daily_work_plans(
+    fleet_id,work_date,driver_id,vehicle_id,status,tare_weight_kg,
+    registered_gross_limit_kg,registered_axle_limit_kg,current_gross_weight_kg,
+    current_heaviest_axle_kg,measurement_at,measurement_source,measurement_reference,created_by
+  ) values (
+    p_fleet_id,p_work_date,p_driver_id,p_vehicle_id,'planned',v_vehicle.empty_weight_kg,
+    v_vehicle.gross_weight_kg,v_vehicle.weight_per_axle_kg,p_initial_gross_weight_kg,
+    p_initial_heaviest_axle_kg,p_measurement_at,p_measurement_source,btrim(p_measurement_reference),v_actor
+  ) returning id into v_plan_id;
+
+  for v_stop in select value from jsonb_array_elements(p_stops)
+  loop
+    v_sequence := v_sequence + 1;
+    v_operation := v_stop->>'operation_kind';
+    v_address := btrim(coalesce(v_stop->>'address',''));
+    begin
+      v_quantity := (v_stop->>'planned_quantity_kg')::bigint;
+    exception when others then
+      raise exception 'Stop % has an invalid planned quantity',v_sequence;
+    end;
+    if v_operation is null or v_operation not in ('load','unload')
+       or v_address='' or v_quantity is null or v_quantity<=0 then
+      raise exception 'Stop % is missing a valid operation, address or quantity',v_sequence;
+    end if;
+    insert into public.daily_work_stops(fleet_id,plan_id,sequence_no,operation_kind,address,planned_quantity_kg)
+    values(p_fleet_id,v_plan_id,v_sequence,v_operation,v_address,v_quantity);
+  end loop;
+  return v_plan_id;
+end;
+$function$;
+
+revoke all on function public.create_daily_work_plan(uuid,date,uuid,uuid,bigint,bigint,bigint,bigint,bigint,timestamptz,text,text,jsonb) from public,anon;
+grant execute on function public.create_daily_work_plan(uuid,date,uuid,uuid,bigint,bigint,bigint,bigint,bigint,timestamptz,text,text,jsonb) to authenticated;
+
+create or replace function public.activate_daily_work_plan(p_fleet_id uuid,p_plan_id uuid)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_plan public.daily_work_plans%rowtype;
+  v_vehicle public.vehicles%rowtype;
+  v_driver public.drivers%rowtype;
+begin
+  if auth.uid() is null then raise exception 'Authentication required'; end if;
+  if not private.has_fleet_role(p_fleet_id,array['owner','fleet_manager','dispatcher']::text[]) then
+    raise exception 'Only an authorized fleet manager may activate a daily work plan';
+  end if;
+  select * into v_plan from public.daily_work_plans
+  where id=p_plan_id and fleet_id=p_fleet_id for update;
+  if not found or v_plan.status <> 'planned' then
+    raise exception 'Daily work plan is not available for activation';
+  end if;
+  select * into v_vehicle from public.vehicles
+  where id=v_plan.vehicle_id and fleet_id=p_fleet_id for update;
+  if not found or v_vehicle.status not in ('available','assigned')
+     or v_vehicle.registration_verification_status is distinct from 'verified'
+     or v_vehicle.empty_weight_kg is distinct from v_plan.tare_weight_kg
+     or v_vehicle.gross_weight_kg is distinct from v_plan.registered_gross_limit_kg
+     or v_vehicle.weight_per_axle_kg is distinct from v_plan.registered_axle_limit_kg then
+    raise exception 'Vehicle is unavailable or its verified registration profile has changed';
+  end if;
+  select * into v_driver from public.drivers
+  where id=v_plan.driver_id and fleet_id=p_fleet_id;
+  if not found or v_driver.status <> 'active' then
+    raise exception 'Assigned driver is no longer active';
+  end if;
+  if not exists(select 1 from public.daily_work_stops s where s.plan_id=p_plan_id and s.fleet_id=p_fleet_id) then
+    raise exception 'Daily work plan has no stops';
+  end if;
+  update public.daily_work_plans set status='active',updated_at=now()
+  where id=p_plan_id and fleet_id=p_fleet_id;
+  return p_plan_id;
+end;
+$function$;
+
+revoke all on function public.activate_daily_work_plan(uuid,uuid) from public,anon;
+grant execute on function public.activate_daily_work_plan(uuid,uuid) to authenticated;
+
 alter table public.daily_work_plans enable row level security;
 alter table public.daily_work_stops enable row level security;
 alter table public.daily_load_events enable row level security;
@@ -203,15 +349,16 @@ declare
   v_next_revision integer;
   v_actor uuid := auth.uid();
   v_is_manager boolean;
+  v_vehicle public.vehicles%rowtype;
 begin
   if v_actor is null then raise exception 'Authentication required'; end if;
   if p_event_key is null or p_stop_id is null or p_plan_id is null or p_fleet_id is null then
     raise exception 'Missing daily load operation identifiers';
   end if;
-  if p_operation_kind not in ('load','unload') or p_quantity_kg is null or p_quantity_kg <= 0 then
+  if p_operation_kind is null or p_operation_kind not in ('load','unload') or p_quantity_kg is null or p_quantity_kg <= 0 then
     raise exception 'Invalid loading or unloading quantity';
   end if;
-  if p_measurement_source not in ('weighbridge_ticket','certified_onboard_scale')
+  if p_measurement_source is null or p_measurement_source not in ('weighbridge_ticket','certified_onboard_scale')
      or p_measurement_reference is null or length(btrim(p_measurement_reference)) = 0
      or p_measured_at is null
      or p_measured_at > now() + interval '5 minutes'
@@ -235,6 +382,16 @@ begin
     where d.id=v_plan.driver_id and d.fleet_id=p_fleet_id and d.user_id=v_actor
   ) then raise exception 'Only the assigned driver or an authorized fleet manager may record this stop'; end if;
   if v_plan.status <> 'active' then raise exception 'Daily work plan is not active'; end if;
+  select * into v_vehicle from public.vehicles
+  where id=v_plan.vehicle_id and fleet_id=p_fleet_id
+  for update;
+  if not found or v_vehicle.registration_verification_status is distinct from 'verified'
+     or v_vehicle.empty_weight_kg is distinct from v_plan.tare_weight_kg
+     or v_vehicle.gross_weight_kg is distinct from v_plan.registered_gross_limit_kg
+     or v_vehicle.weight_per_axle_kg is distinct from v_plan.registered_axle_limit_kg then
+    raise exception 'Vehicle registration or verified weight profile changed; stop load updates until re-verification';
+  end if;
+
   if v_plan.load_revision <> p_expected_revision then raise exception 'Stale load revision'; end if;
   if exists (
     select 1 from public.daily_load_events
