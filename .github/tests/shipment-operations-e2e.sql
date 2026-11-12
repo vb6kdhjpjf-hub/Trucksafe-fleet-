@@ -30,8 +30,8 @@ begin
   '[{"description":"משטחי שתייה","unit":"pallet","planned_quantity":12},{"description":"קרטונים","unit":"carton","planned_quantity":24},{"description":"מוצר במשקל","unit":"kg","planned_quantity":125.5}]'::jsonb,
   '[{"address":"מחסן צפון","stop_type":"delivery","items":[{"line_index":0,"planned_quantity":12},{"line_index":1,"planned_quantity":24},{"line_index":2,"planned_quantity":125.5}]}]'::jsonb
  );
- select id into stop_id from public.shipment_stops where shipment_id=shipment_test_block.shipment_id;
- if (select count(*) from public.shipment_lines where shipment_id=shipment_test_block.shipment_id)<>3 then
+ select id into stop_id from public.shipment_stops s where s.shipment_id=shipment_test_block.shipment_id;
+ if (select count(*) from public.shipment_lines sl where sl.shipment_id=shipment_test_block.shipment_id)<>3 then
   raise exception 'Expected pallet, carton and kg lines in one shipment';
  end if;
  insert into pg_temp.shipment_test_results values('shipment supports pallet, carton and kg quantities independently','PASS');
@@ -48,7 +48,7 @@ begin
   fleet_id,shipment_id,stop_id,'12000000-0000-4000-8000-000000000001'::uuid,
   (select jsonb_agg(jsonb_build_object('stop_line_id',id,'delivered_quantity',planned_quantity,
    'damaged_quantity',0,'rejected_quantity',0,'returned_quantity',0))
-   from public.shipment_stop_lines where shipment_id=shipment_test_block.shipment_id and shipment_stop_lines.stop_id=shipment_test_block.stop_id),
+   from public.shipment_stop_lines sl where sl.shipment_id=shipment_test_block.shipment_id and sl.stop_id=shipment_test_block.stop_id),
   null);
  if result->>'stop_status'<>'completed'
   or (select status from public.shipments where id=shipment_test_block.shipment_id)<>'delivered' then
@@ -59,7 +59,7 @@ begin
  begin
   perform public.record_shipment_stop_result(fleet_id,shipment_id,stop_id,'12000000-0000-4000-8000-000000000002'::uuid,
    (select jsonb_agg(jsonb_build_object('stop_line_id',id,'delivered_quantity',planned_quantity+1))
-    from public.shipment_stop_lines where shipment_id=shipment_test_block.shipment_id and shipment_stop_lines.stop_id=shipment_test_block.stop_id),null);
+    from public.shipment_stop_lines sl where sl.shipment_id=shipment_test_block.shipment_id and sl.stop_id=shipment_test_block.stop_id),null);
  exception when others then get stacked diagnostics msg=message_text; rejected:=msg ilike '%quantities are invalid%'; end;
  if not rejected then raise exception 'Over-delivery was not rejected'; end if;
  insert into pg_temp.shipment_test_results values('over-delivery beyond the stop allocation is rejected','PASS');
