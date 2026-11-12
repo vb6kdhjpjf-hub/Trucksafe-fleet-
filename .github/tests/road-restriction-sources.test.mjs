@@ -263,3 +263,17 @@ test("Survey of Israel BNTAL is national topographic asset discovery only, not t
   assert.match(source.limitations, /תנאי רישיון מסחרי/);
   assert.equal(isSourceCandidateOnly(source), true);
 });
+
+
+test("every registered source remains routing-ineligible until a separate safety approval process exists", () => {
+  const ids = ROAD_RESTRICTION_SOURCES.map(source => source.id);
+  assert.equal(new Set(ids).size, ids.length, "source IDs must be unique");
+
+  for (const source of ROAD_RESTRICTION_SOURCES) {
+    assert.equal(typeof source.id, "string");
+    assert.ok(source.id.length > 0);
+    assert.match(source.url, /^https:\\/\\//);
+    assert.equal(source.routingEligible, false, `${source.id} must not enable routing from registry metadata`);
+    assert.equal(isSourceCandidateOnly(source), true, `${source.id} must remain candidate-only for routing decisions`);
+  }
+});
