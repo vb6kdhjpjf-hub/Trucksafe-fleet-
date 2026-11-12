@@ -431,9 +431,51 @@ async function main() {
     });
     await assertActualHttpAuthorization({ baseUrl: httpServer.baseUrl, token: "invalid-signed-token", role: "invalid" });
 
+    // Membership is re-read from Test Postgres on every API request: removing a row
+    // must revoke an otherwise valid, still-signed JWT without requiring re-login.
+    const dispatcher = fixtures.find(item => item.role === "dispatcher");
+    const dispatcherSession = signedIn[fixtures.indexOf(dispatcher)];
+    const { data: removedMembership, error: removeMembershipError } = await admin
+      .from("fleet_members")
+      .delete()
+      .eq("fleet_id", createdFleet.id)
+      .eq("user_id", dispatcher.user.id)
+      .select("user_id,fleet_id");
+    if (removeMembershipError || removedMembership?.length !== 1) {
+      throw new Error("Test-only membership revocation fixture did not remove exactly one dispatcher membership.");
+    }
+    const revokedAccess = await resolveFleetApiAccess(dispatcherSession.client, dispatcherSession.token);
+    assert.equal(revokedAccess.status, 403, "a valid JWT must lose fleet access immediately after membership removal");
+    assert.equal(revokedAccess.reason, "fleet_membership_required");
+    await assertActualRouteAuthorization({ url, anonKey, token: dispatcherSession.token, role: "unassigned" });
+    await assertActualHttpAuthorization({ baseUrl: httpServer.baseUrl, token: dispatcherSession.token, role: "unassigned" });
+
+    // A manager demotion must also take effect for the same signed JWT immediately.
+    const manager = fixtures.find(item => item.role === "fleet_manager");
+    const managerSession = signedIn[fixtures.indexOf(manager)];
+    const { data: demotedRows, error: demotionError } = await admin
+      .from("fleet_members")
+      .update({ role: "driver" })
+      .eq("fleet_id", createdFleet.id)
+      .eq("user_id", manager.user.id)
+      .eq("role", "fleet_manager")
+      .select("user_id,role");
+    if (demotionError || demotedRows?.length !== 1 || demotedRows[0].role !== "driver") {
+      throw new Error("Test-only role-demotion fixture did not change exactly one fleet_manager membership to driver.");
+    }
+    const demotedGeneral = await resolveFleetApiAccess(managerSession.client, managerSession.token);
+    assert.equal(demotedGeneral.status, 200, "demoted manager should retain ordinary driver fleet access");
+    assert.equal(demotedGeneral.data.membership.role, "driver");
+    const demotedManagerOnly = await resolveFleetApiAccess(managerSession.client, managerSession.token, {
+      allowedRoles: ["owner", "fleet_manager"]
+    });
+    assert.equal(demotedManagerOnly.status, 403, "demoted manager must lose manager-only access without re-login");
+    assert.equal(demotedManagerOnly.reason, "fleet_manager_required");
+    await assertActualRouteAuthorization({ url, anonKey, token: managerSession.token, role: "driver" });
+    await assertActualHttpAuthorization({ baseUrl: httpServer.baseUrl, token: managerSession.token, role: "driver" });
+
     process.stdout.write(
-      "Live Test Auth passed: seven signed Test identities (owner, fleet_manager, dispatcher, safety_manager, driver, ambiguous multi-fleet, unassigned), " +
-      "PostgREST membership reads, RLS visibility, actual route-handler authorization, and invalid-token denial all matched expectations.\n"
+      "Live Test Auth passed: seven signed Test identities, RLS visibility, actual route and HTTP authorization, invalid-token denial, immediate membership revocation, and immediate manager-role demotion all matched expectations.\\n"
     );
   } catch (error) {
     testError = error;
