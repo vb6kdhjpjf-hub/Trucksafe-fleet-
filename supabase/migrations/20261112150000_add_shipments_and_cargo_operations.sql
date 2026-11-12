@@ -1,3 +1,15 @@
+-- Test schemas may not yet have the composite unique keys required by tenant-scoped foreign keys.
+do $constraints$
+begin
+ if not exists(select 1 from pg_constraint where conrelid='public.vehicles'::regclass and conname='vehicles_fleet_id_id_key') then
+  alter table public.vehicles add constraint vehicles_fleet_id_id_key unique(fleet_id,id);
+ end if;
+ if not exists(select 1 from pg_constraint where conrelid='public.drivers'::regclass and conname='drivers_fleet_id_id_key') then
+  alter table public.drivers add constraint drivers_fleet_id_id_key unique(fleet_id,id);
+ end if;
+end
+$constraints$;
+
 -- Tenant-scoped shipment and cargo quantity operations. No weight is inferred from item counts.
 create table public.shipments (
  id uuid primary key default gen_random_uuid(),
