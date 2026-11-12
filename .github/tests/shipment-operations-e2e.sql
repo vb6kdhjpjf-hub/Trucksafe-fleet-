@@ -1,7 +1,9 @@
 -- Rollback-only shipment and unit-safe cargo operation tests. Test project only.
 begin;
 \ir ../../supabase/migrations/20261112150000_add_shipments_and_cargo_operations.sql
+\ir ../../supabase/migrations/20261112160000_add_delivery_notes_and_proof_of_delivery.sql
 create temporary table shipment_test_results(scenario text primary key,outcome text not null) on commit drop;
+create temporary table shipment_test_fixture(fleet_id uuid,shipment_id uuid,stop_id uuid,owner_id uuid,driver_user_id uuid) on commit drop;
 do $test$
 <<shipment_test_block>>
 declare
@@ -77,7 +79,77 @@ begin
   raise exception 'Shipment write privileges are not safely scoped';
  end if;
  insert into pg_temp.shipment_test_results values('shipment tables are read-only to browser clients and writes use authenticated RPCs','PASS');
+ insert into pg_temp.shipment_test_fixture values(fleet_id,shipment_id,stop_id,owner_id,driver_user_id);
 end
 $test$;
+
+do $delivery_document_test$
+declare
+ f record; result jsonb; note_id uuid; note_number text; snapshot jsonb; adjustment_id uuid; rejected boolean; msg text;
+begin
+ select * into f from pg_temp.shipment_test_fixture;
+ perform set_config('request.jwt.claim.sub',f.driver_user_id::text,true);
+ rejected:=false;
+ begin
+  perform public.complete_delivery_document(f.fleet_id,f.shipment_id,f.stop_id,
+   '13000000-0000-4000-8000-000000000001'::uuid,null,null,'{}'::text[],null,null,null,
+   'signature missing',10,8,1);
+ exception when others then get stacked diagnostics msg=message_text; rejected:=msg ilike '%authorized manager%'; end;
+ if not rejected then raise exception 'Assigned driver was allowed to bypass recipient signature'; end if;
+ insert into pg_temp.shipment_test_results values('driver cannot issue a delivery note without signature or manager exception','PASS');
+
+ perform set_config('request.jwt.claim.sub',f.owner_id::text,true);
+ perform public.update_delivery_note_settings(f.fleet_id,'חברת בדיקה בע״מ','515000000','אזור תעשייה צפון','04-0000000','ops@example.invalid','TN');
+ result:=public.complete_delivery_document(f.fleet_id,f.shipment_id,f.stop_id,
+  '13000000-0000-4000-8000-000000000002'::uuid,null,null,'{}'::text[],null,null,null,
+  'חתימת מקבל לא זמינה; אושר על ידי מנהל',10,8,1);
+ note_id:=(result->>'note_id')::uuid; note_number:=result->>'note_number';
+ if note_number<>'TN-0000001' or result->>'proof_status'<>'authorized_exception' then
+  raise exception 'Delivery note numbering or authorized exception state is incorrect';
+ end if;
+ select document_snapshot into snapshot from public.delivery_notes where id=note_id;
+ if snapshot->'issuer'->>'name'<>'חברת בדיקה בע״מ'
+  or snapshot->'pallet_exchange'->>'outstanding'<>'2'
+  or jsonb_array_length(snapshot->'cargo_lines')<>3
+  or snapshot->>'legal_notice'<>'Delivery note; not a tax invoice.' then
+  raise exception 'Delivery note snapshot is missing issuer, cargo, pallet exchange or legal disclaimer';
+ end if;
+ insert into pg_temp.shipment_test_results values('immutable numbered delivery note snapshots include cargo and pallet exchange','PASS');
+
+ result:=public.complete_delivery_document(f.fleet_id,f.shipment_id,f.stop_id,
+  '13000000-0000-4000-8000-000000000002'::uuid,null,null,'{}'::text[],null,null,null,
+  'חתימת מקבל לא זמינה; אושר על ידי מנהל',10,8,1);
+ if result->>'note_id'<>note_id::text or result->>'note_number'<>note_number then
+  raise exception 'Idempotent delivery note retry created a different document';
+ end if;
+ insert into pg_temp.shipment_test_results values('delivery document issuance is idempotent for repeated event keys','PASS');
+
+ rejected:=false;
+ begin update public.delivery_notes set document_snapshot='{}'::jsonb where id=note_id;
+ exception when others then get stacked diagnostics msg=message_text; rejected:=msg ilike '%immutable%'; end;
+ if not rejected then raise exception 'Issued delivery note snapshot was mutable'; end if;
+ insert into pg_temp.shipment_test_results values('issued delivery note cannot be edited or deleted','PASS');
+
+ adjustment_id:=public.add_delivery_note_adjustment(f.fleet_id,note_id,
+  '13000000-0000-4000-8000-000000000003'::uuid,'correction','תיקון פרטי מקבל',
+  '{"recipient_name":"מקבל מתוקן"}'::jsonb);
+ if not exists(select 1 from public.delivery_note_adjustments where id=adjustment_id and adjustment_type='correction') then
+  raise exception 'Append-only correction was not recorded';
+ end if;
+ insert into pg_temp.shipment_test_results values('corrections are appended separately without changing the issued snapshot','PASS');
+
+ if has_table_privilege('authenticated','public.delivery_notes','INSERT')
+  or has_table_privilege('authenticated','public.delivery_notes','UPDATE')
+  or has_table_privilege('authenticated','public.delivery_proofs','INSERT')
+  or has_table_privilege('authenticated','public.delivery_note_adjustments','INSERT')
+  or not has_table_privilege('authenticated','public.delivery_notes','SELECT')
+  or not has_function_privilege('authenticated','public.complete_delivery_document(uuid,uuid,uuid,uuid,text,text,text[],numeric,numeric,text,text,numeric,numeric,numeric)','EXECUTE')
+  or has_function_privilege('anon','public.complete_delivery_document(uuid,uuid,uuid,uuid,text,text,text[],numeric,numeric,text,text,numeric,numeric,numeric)','EXECUTE') then
+  raise exception 'Delivery document privileges are not safely scoped';
+ end if;
+ insert into pg_temp.shipment_test_results values('delivery records are read-only to browser clients and written only by scoped RPCs','PASS');
+end
+$delivery_document_test$;
+
 select scenario,outcome from pg_temp.shipment_test_results order by scenario;
 rollback;
