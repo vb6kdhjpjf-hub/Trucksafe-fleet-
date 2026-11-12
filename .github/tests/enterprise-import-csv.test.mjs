@@ -1,64 +1,44 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseEnterpriseCsv } from "../../lib/enterprise-import-csv.mjs";
-
-test("parses quoted commas, escaped quotes and CRLF records", () => {
-  const result = parseEnterpriseCsv('name,notes\\r\\n"ACME, Israel","said ""hello"""\\r\\n');
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.rows[0].values, ["ACME, Israel", 'said "hello"']);
+test("parses quoted commas, escaped quotes and CRLF", () => {
+  const r = parseEnterpriseCsv('name,notes\r\n"ACME, Israel","said ""hello"""\r\n');
+  assert.equal(r.ok, true); assert.deepEqual(r.rows[0].values, ["ACME, Israel", 'said "hello"']);
 });
-
 test("detects semicolon and tab delimiters", () => {
-  assert.equal(parseEnterpriseCsv("שם;טלפון\\nדנה;0501").delimiter, ";");
-  assert.equal(parseEnterpriseCsv("name\\tphone\\nDana\\t0501").delimiter, "\\t");
+  assert.equal(parseEnterpriseCsv("שם;טלפון\nדנה;0501").delimiter, ";");
+  assert.equal(parseEnterpriseCsv("name\tphone\nDana\t0501").delimiter, "\t");
 });
-
-test("strips UTF-8 BOM and trims header names", () => {
-  const result = parseEnterpriseCsv("\\uFEFF Name , Phone \\nDana,0501");
-  assert.deepEqual(result.headers, ["Name", "Phone"]);
+test("strips BOM and trims headers", () => assert.deepEqual(parseEnterpriseCsv("\uFEFF Name , Phone \nDana,0501").headers, ["Name", "Phone"]));
+test("rejects duplicate normalized or blank headers", () => {
+  assert.equal(parseEnterpriseCsv("Email,email\na,b").error, "duplicate_headers");
+  assert.equal(parseEnterpriseCsv("name,,phone\na,b,c").error, "empty_header");
 });
-
-test("rejects duplicate headers after normalization", () => {
-  const result = parseEnterpriseCsv("Email,email\\na,b");
-  assert.deepEqual(result, { ok: false, error: "duplicate_headers" });
+test("reports row shape errors and source line numbers", () => {
+  const r = parseEnterpriseCsv("name,phone\nDana,0501\nNoam\nAvi,0502");
+  assert.equal(r.summary.acceptedShape, 2); assert.equal(r.summary.rejectedShape, 1);
+  assert.equal(r.rows[1].rowNumber, 3); assert.equal(r.rows[1].error, "column_count_mismatch");
 });
-
-test("rejects blank and duplicate header cells", () => {
-  assert.equal(parseEnterpriseCsv("name,,phone\\na,b,c").error, "empty_header");
+test("preserves embedded newlines in quoted cells", () => {
+  const r = parseEnterpriseCsv('name,notes\nDana,"first line\nsecond line"\n');
+  assert.equal(r.rows[0].values[1], "first line\nsecond line");
 });
-
-test("returns row-level shape errors without discarding valid rows", () => {
-  const result = parseEnterpriseCsv("name,phone\\nDana,0501\\nNoam\\nAvi,0502");
-  assert.equal(result.summary.acceptedShape, 2);
-  assert.equal(result.summary.rejectedShape, 1);
-  assert.equal(result.rows[1].rowNumber, 3);
-  assert.equal(result.rows[1].error, "column_count_mismatch");
+test("rejects malformed quoting", () => {
+  assert.equal(parseEnterpriseCsv('name,notes\nDana,"oops').error, "unterminated_quote");
+  assert.equal(parseEnterpriseCsv('name,notes\nDana,"ok"x').error, "unexpected_character_after_quote");
 });
-
-test("preserves embedded newlines in quoted values", () => {
-  const result = parseEnterpriseCsv('name,notes\\nDana,"first line\\nsecond line"\\n');
-  assert.equal(result.rows[0].values[1], "first line\\nsecond line");
-});
-
-test("rejects unterminated quotes and invalid characters after a quote", () => {
-  assert.equal(parseEnterpriseCsv('name,notes\\nDana,"oops').error, "unterminated_quote");
-  assert.equal(parseEnterpriseCsv('name,notes\\nDana,"ok"x').error, "unexpected_character_after_quote");
-});
-
 test("enforces byte, row, column and field limits", () => {
-  assert.equal(parseEnterpriseCsv("a\\nx", { maxBytes: 1 }).error, "file_too_large");
-  assert.equal(parseEnterpriseCsv("a\\n1\\n2", { maxRows: 1 }).error, "too_many_rows");
-  assert.equal(parseEnterpriseCsv("a,b\\n1,2", { maxColumns: 1 }).error, "too_many_columns");
-  assert.equal(parseEnterpriseCsv("a\\n1234", { maxFieldLength: 3 }).error, "field_too_long");
+  assert.equal(parseEnterpriseCsv("a\nx", { maxBytes: 1 }).error, "file_too_large");
+  assert.equal(parseEnterpriseCsv("a\n1\n2", { maxRows: 1 }).error, "too_many_rows");
+  assert.equal(parseEnterpriseCsv("a,b\n1,2", { maxColumns: 1 }).error, "too_many_columns");
+  assert.equal(parseEnterpriseCsv("a\n1234", { maxFieldLength: 3 }).error, "field_too_long");
 });
-
-test("treats formula-looking cells as inert text", () => {
-  const result = parseEnterpriseCsv("name,note\\nDana,=HYPERLINK(\"https://example.invalid\")");
-  assert.equal(result.rows[0].values[1], '=HYPERLINK("https://example.invalid")');
+test("keeps formula-looking cells as inert text", () => {
+  const r = parseEnterpriseCsv('name,note\nDana,=HYPERLINK("https://example.invalid")');
+  assert.equal(r.rows[0].values[1], '=HYPERLINK("https://example.invalid")');
 });
-
-test("ignores blank lines and rejects empty files or unsupported delimiters", () => {
+test("ignores blank lines and rejects empty or unsupported input", () => {
   assert.equal(parseEnterpriseCsv("  ").error, "empty_file");
-  assert.equal(parseEnterpriseCsv("a|b\\n1|2", { delimiter: "|" }).error, "unsupported_delimiter");
-  assert.equal(parseEnterpriseCsv("a,b\\n\\n1,2").rows.length, 1);
+  assert.equal(parseEnterpriseCsv("a|b\n1|2", { delimiter: "|" }).error, "unsupported_delimiter");
+  assert.equal(parseEnterpriseCsv("a,b\n\n1,2").rows.length, 1);
 });
