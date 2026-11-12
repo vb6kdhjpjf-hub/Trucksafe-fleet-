@@ -196,7 +196,7 @@ begin
   where id='delivery-proof-private'
    and public=false
    and file_size_limit=10485760
-   and allowed_mime_types @> array['image/png','image/jpeg','image/webp']::text[]
+   and allowed_mime_types = array['image/png','image/jpeg','image/webp']::text[]
  ) then
   raise exception 'Delivery proof bucket must remain private and restricted to approved image types and size';
  end if;
@@ -204,8 +204,12 @@ begin
   select 1 from pg_policies
   where schemaname='storage' and tablename='objects'
    and policyname='delivery_proof_objects_upload_scoped'
-   and cmd='INSERT' and roles @> array['authenticated']::name[]
+   and cmd='INSERT' and roles = array['authenticated']::name[]
    and with_check like '%delivery-proof-private%'
+   and with_check like '%shipments%'
+   and with_check like '%shipment_stops%'
+   and with_check like '%drivers%'
+   and with_check like '%has_fleet_role%'
  ) then
   raise exception 'Scoped authenticated delivery proof upload policy is missing';
  end if;
@@ -213,8 +217,12 @@ begin
   select 1 from pg_policies
   where schemaname='storage' and tablename='objects'
    and policyname='delivery_proof_objects_read_scoped'
-   and cmd='SELECT' and roles @> array['authenticated']::name[]
+   and cmd='SELECT' and roles = array['authenticated']::name[]
    and qual like '%delivery-proof-private%'
+   and qual like '%shipments%'
+   and qual like '%shipment_stops%'
+   and qual like '%drivers%'
+   and qual like '%has_fleet_role%'
  ) then
   raise exception 'Scoped authenticated delivery proof read policy is missing';
  end if;
