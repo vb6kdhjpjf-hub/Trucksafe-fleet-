@@ -166,3 +166,17 @@ test("Ministry 2026 height-obstacle guidelines define lane-level measured cleara
   assert.match(source.limitations, /מדידה תקופתית/);
   assert.match(source.limitations, /לא שכבת נתונים בפועל/);
 });
+
+
+test("Tel Aviv municipal roadworks ArcGIS layer is city-scoped event discovery only", () => {
+  const source = getRoadRestrictionSource("tel-aviv-municipal-roadworks-arcgis");
+  assert.ok(source);
+  assert.equal(source.publisher, "עיריית תל אביב-יפו");
+  assert.equal(source.candidateOnly, true);
+  assert.equal(source.routingEligible, false);
+  assert.equal(source.dataTypes.includes("temporary_lane_reduction"), true);
+  assert.match(source.limitations, /לתחום תל אביב-יפו בלבד/);
+  assert.match(source.limitations, /לא מקור ארצי/);
+  assert.match(source.limitations, /לא לאישור מסלול/);
+  assert.equal(isSourceCandidateOnly(source), true);
+});

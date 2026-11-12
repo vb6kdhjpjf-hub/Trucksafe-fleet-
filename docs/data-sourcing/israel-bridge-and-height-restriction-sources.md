@@ -198,3 +198,12 @@ The Ministry's second-edition height-obstacle guidelines (April 2026) provide a 
 This creates a practical acceptance benchmark for the dataset request and future ingestion. A bridge GIS row containing only `Gavrit_Min` / `Gavrit_Max` is not enough: the supplier must identify whether each value is measured or posted, provide the lane-specific survey record and supporting plan/evidence, survey date and responsible body, and show how subsequent surveys and roadworks updates are handled. The ±1 cm requirement is the survey standard in the guidelines; it must not be confused with the bridge layer's separate 1 m spatial-location accuracy.
 
 **Implementation consequence:** require lane-level measured clearance and a survey evidence trail before any record can be considered for verified restriction review. Keep the guideline document itself as a measurement standard only, not as a source of individual bridge locations or route permissions.
+
+
+## 14. Tel Aviv municipal roadworks ArcGIS layer — temporary-event discovery only (reviewed 12 November 2026)
+
+An official Tel Aviv-Yafo municipal ArcGIS feature layer publishes roadworks and traffic-impacting events as line geometry. Its metadata describes daytime/nighttime works, public events, sports/cultural events, lane reductions or closures, and start/end dates and times. Fields include work description, lane-reduction description, start/end date and time, an open-works indicator, and a data-import date.
+
+This is a useful example of a structured **temporary-event** feed, but it is limited to Tel Aviv-Yafo and is not a national road restriction source. The metadata does not establish a real-time service-level freshness guarantee, completeness, or authoritative semantics for the open/closed indicator. A work-zone record does not necessarily mean a full road closure and says nothing by itself about truck height, weight, or axle restrictions.
+
+**Implementation consequence:** register it only as a city-scoped candidate. Before any integration, verify licensing, actual update cadence, field semantics, temporal validity and completeness, and corroborate closures with an authoritative traffic notice. Never treat the layer as national coverage, a verified truck restriction, or route approval.
