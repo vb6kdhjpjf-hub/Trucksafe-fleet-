@@ -70,7 +70,9 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
     if(!hasSignature&&(!canOverride||exception.trim().length<5)){notify("נדרשת חתימת מקבל. רק בעלים או מנהל צי יכולים לתעד חריגת חתימה מנומקת.","error");return;}
     const numbers=[palletsDelivered,palletsReceived,palletsDamaged].map(Number);
     if(numbers.some(n=>!Number.isFinite(n)||n<0)||numbers[2]>numbers[1]){notify("יש לבדוק את כמויות המשטחים שהוחזרו והפגומים.","error");return;}
+    if(photos.length>8){notify("אפשר לצרף עד 8 תמונות לאישור מסירה.","error");return;}
     if(photos.some(f=>!["image/png","image/jpeg","image/webp"].includes(f.type)||f.size>10*1024*1024)){notify("אפשר לצרף עד 10MB לכל תמונה בפורמט PNG, JPG או WEBP.","error");return;}
+    if(photos.reduce((total,file)=>total+file.size,0)>40*1024*1024){notify("הנפח הכולל של התמונות לאישור אחד מוגבל ל־40MB. אפשר לבחור פחות תמונות או להקטין אותן.","error");return;}
     // Freeze the payload once an upload or RPC may have started. A timeout is
     // ambiguous: the server may already have committed the note. Retrying with
     // edited data and the same idempotency key must never be possible.
@@ -96,11 +98,12 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
       const photoPaths=[];
       for(let i=0;i<photos.length;i++){
         const file=photos[i];
-        const fingerprint=[file.name,file.size,file.lastModified,file.type].join(":");
-        let entry=attempt.photoEntries.find(item=>item.fingerprint===fingerprint);
+        // Match the actual File object, not its name/size/timestamp: two
+        // different photos can share that metadata but must never share a path.
+        let entry=attempt.photoEntries.find(item=>item.file===file);
         if(!entry){
           const ext=file.type==="image/png"?"png":file.type==="image/webp"?"webp":"jpg";
-          entry={fingerprint,file,path:prefix+crypto.randomUUID()+"."+ext,uploaded:false};
+          entry={file,path:prefix+crypto.randomUUID()+"."+ext,uploaded:false};
           attempt.photoEntries.push(entry);
         }
         if(!entry.uploaded){
@@ -134,8 +137,9 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
       <label>משטחים פגומים<input disabled={attemptLocked} type="number" min="0" step="0.001" value={palletsDamaged} onChange={e=>setPalletsDamaged(e.target.value)}/></label>
     </div>
     <label>הערת מסירה (לא חובה)<textarea disabled={attemptLocked} rows={2} maxLength={1000} value={note} onChange={e=>setNote(e.target.value)} placeholder="הערה למשרד או ללקוח"/></label>
-    <label>תמונות מסירה (לא חובה)<input disabled={attemptLocked} type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={e=>setPhotos(Array.from(e.target.files||[]).slice(0,8))}/></label>
-    {photos.length>0&&<small>{photos.length} תמונות נבחרו</small>}
+    <label>תמונות מסירה (לא חובה)<input disabled={attemptLocked} type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={e=>setPhotos(Array.from(e.target.files||[]))}/></label>
+    <small>עד 8 תמונות, 10MB לכל תמונה ועד 40MB בסך הכול. פורמטים: PNG, JPG או WEBP.</small>
+    {photos.length>0&&<small>{photos.length} תמונות נבחרו · {(photos.reduce((total,file)=>total+file.size,0)/1024/1024).toFixed(1)}MB</small>}
     {attemptLocked&&<small>פרטי הניסיון נעולים כדי לאפשר ניסיון חוזר בטוח ללא שינוי נתוני המסירה.</small>}
     <button className="primary-btn" disabled={busy}><CheckCircle2 size={16}/>{busy?"שומר אישור...":attemptLocked?"ניסיון חוזר לשמירה":"שמירת אישור והפקת תעודה"}</button>
   </form>;
