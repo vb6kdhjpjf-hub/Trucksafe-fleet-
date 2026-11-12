@@ -76,7 +76,7 @@
     "payload_sha256": {
       "type": "string",
       "pattern": "^[a-fA-F0-9]{64}$",
-      "description": "SHA-256 of the exact original UTF-8 JSON payload string preserved in quarantine."
+      "description": "SHA-256 of the UTF-8 bytes of JSON.stringify(envelope.payload), i.e. the canonical serialization of the parsed JSON value. Original whitespace and key ordering are not preserved; duplicate object keys follow JSON.parse semantics."
     },
     "review": {
       "type": "object",
