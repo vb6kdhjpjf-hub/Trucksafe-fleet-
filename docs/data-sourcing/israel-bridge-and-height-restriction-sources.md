@@ -288,3 +288,19 @@ Sources:
 - [Tel Aviv municipal bridge inventory, ArcGIS layer 550](https://gisn.tel-aviv.gov.il/ArcGIS/rest/services/IView2/MapServer/550).
 - [Tel Aviv municipal “roadblocks to bridges”, ArcGIS layer 551](https://gisn.tel-aviv.gov.il/ArcGIS/rest/services/IView2/MapServer/551).
 - [Ministry of Transport, Guidelines for height obstacles, second edition, April 2026](https://www.gov.il/BlobFolder/policy/traffic_height_obstacle/he/Guidelines-for-height-obstacles-2026.pdf).
+
+
+## 22. Netivei Israel bridge-management system — documented acquisition lead, not a public clearance feed (reviewed 12 November 2026)
+
+Two public records establish that Netivei Israel has operated structured bridge-asset and engineering-survey processes:
+
+- The State Comptroller's report on interurban road maintenance records that Netivei Israel's Bridge Management Unit (מנ״ג) surveyed its bridge-structure inventory in 2016. The report describes condition grading and, at the time of the audit (completed March 2017), also records shortcomings in external oversight and professional review of bridge maintenance. This is historical oversight evidence, not a current inventory or proof of today's controls.
+- Netivei Israel's 2021 annual report describes periodic engineering surveys of road structures and its bridge-management system as receiving initial and routine bridge/structure condition surveys. It says survey response in 2022 would follow company policy. The described purpose is engineering condition, maintenance prioritisation and rehabilitation planning; the report does not establish a public, current truck-clearance or restriction feed.
+
+**Acquisition implication:** the existing Netivei Israel inventory lead should explicitly request a current extract or controlled data-sharing route from the bridge-management/engineering data owner, not merely a generic bridge map. Ask whether records include stable asset IDs, road/chainage and geometry, physical vertical clearance by lane/direction, posted clearance separately, width/weight/axle constraints, effective dates, last field-survey dates, works/change history, temporary closures, source documents, update cadence, and an accountable data owner. Request a sample data dictionary and sample records before any ingestion. Confirm commercial storage, transformation, display and route-decision rights in writing.
+
+**Safety boundary:** evidence that a bridge-management system and periodic engineering surveys exist does not prove that the system records vehicle clearance, that its coverage is complete, that records are current, or that data can be redistributed. No public extract has been verified here. Keep this lead candidate-only; do not infer clearance, restriction absence, route safety or legal permission from it.
+
+Sources:
+- [State Comptroller — Interurban Road Maintenance, Report 68A (published 2017)](https://library.mevaker.gov.il/sites/DigitalLibrary/Pages/Reports/153-16.aspx).
+- [Netivei Israel — 2021 annual report, section 5.2.5–5.2.6 (bridge-management surveys and maintenance)](https://www.gov.il/BlobFolder/dynamiccollectorresultitem/israelroads_financial_report_2021_year/he/companies_data_and_reports_israelroads_financial_report_2021_year.pdf).
