@@ -23,6 +23,7 @@ const verifiedRestriction = overrides => ({
   is_active: true,
   verification_status: "verified",
   source_url: "https://example.org/official-notice",
+  source_name: "Official Road Authority",
   verified_at: "2026-11-07T12:00:00.000Z",
   verified_by: "reviewer-1",
   source_last_checked_at: "2026-11-08T12:00:00.000Z",
