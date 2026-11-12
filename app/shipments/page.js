@@ -155,6 +155,7 @@ function DeliveryNotePrint({ note, onClose }) {
       <table className="delivery-print-table"><thead><tr><th>#</th><th>תיאור פריט</th><th>יחידה</th><th>מתוכנן</th><th>נמסר</th><th>פגום</th><th>נדחה</th><th>הוחזר</th></tr></thead><tbody>{(s.cargo_lines||[]).map((line,i)=><tr key={i}><td>{i+1}</td><td>{line.description}</td><td>{units.find(u=>u[0]===line.unit)?.[1]||line.unit}</td><td>{line.planned_quantity}</td><td>{line.delivered_quantity}</td><td>{line.damaged_quantity}</td><td>{line.rejected_quantity}</td><td>{line.returned_quantity}</td></tr>)}</tbody></table>
       <div className="delivery-pallet-summary"><b>החלפת משטחים</b><span>נמסרו: {pallet.delivered||0}</span><span>התקבלו: {pallet.received||0}</span><span>פגומים: {pallet.damaged||0}</span><span>יתרה: {pallet.outstanding||0}</span></div>
       <div className="delivery-print-proof"><div><b>אישור מקבל</b><p>{proof.recipient_name||"לא התקבלה חתימה"}</p>{note.signatureUrl&&<img className="delivery-signature-image" src={note.signatureUrl} alt="חתימת מקבל הסחורה"/>}<small>{proof.status==="signed"?"חתימה נשמרה באופן מאובטח":"חריגת חתימה באישור מנהל"}</small></div><div><b>הערות</b><p>{proof.recipient_note||proof.exception_reason||"—"}</p></div></div>
+      {(note.photoUrls||[]).length>0&&<section className="delivery-print-photos"><b>תמונות מאישור המסירה</b><div>{note.photoUrls.map((url,index)=><figure key={url}><img src={url} alt={"תיעוד מסירה "+(index+1)}/><figcaption>תמונה {index+1}</figcaption></figure>)}</div></section>}
       {corrections.length>0&&<div className="delivery-print-adjustments"><b>תיעוד תיקונים נלווים</b>{corrections.map(a=><p key={a.id}>{a.reason} · {new Date(a.created_at).toLocaleString("he-IL")}</p>)}</div>}
       <footer>מסמך זה הוא תעודת משלוח ואינו חשבונית מס.</footer>
     </article>
@@ -288,9 +289,19 @@ export default function ShipmentsPage(){
     finally{setBusy(false);}
   }
   async function openNote(note){
-    const path=note.document_snapshot?.proof?.signature_object_path;
-    if(path){const {data,error}=await supabase.storage.from("delivery-proof-private").createSignedUrl(path,300);if(error){notify("לא ניתן לטעון חתימה לתצוגת התעודה: "+error.message,"error");return;}setSelectedNote({...note,signatureUrl:data.signedUrl});}
-    else setSelectedNote(note);
+    const storage=supabase.storage.from("delivery-proof-private");
+    const proof=note.document_snapshot?.proof||{};
+    const paths=Array.isArray(proof.photo_object_paths)?proof.photo_object_paths:[];
+    const signaturePromise=proof.signature_object_path
+      ?storage.createSignedUrl(proof.signature_object_path,300)
+      :Promise.resolve({data:null,error:null});
+    const photoPromises=paths.map(path=>storage.createSignedUrl(path,300));
+    const [signature,...photos]=await Promise.all([signaturePromise,...photoPromises]);
+    if(signature.error||photos.some(result=>result.error)){
+      notify("לא ניתן לטעון את כל קובצי אישור המסירה. בדוק הרשאות אחסון ונסה שוב.","error");
+      return;
+    }
+    setSelectedNote({...note,signatureUrl:signature.data?.signedUrl||null,photoUrls:photos.map(result=>result.data.signedUrl)});
   }
   async function adjustNote(note,type){
     const reason=window.prompt(type==="cancellation"?"סיבת ביטול תעודת המשלוח:":"סיבת תיקון לתעודת המשלוח:");
