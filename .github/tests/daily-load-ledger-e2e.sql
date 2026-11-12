@@ -6,6 +6,7 @@ begin;
 create temporary table daily_load_test_results(scenario text primary key,outcome text not null) on commit drop;
 
 do $test$
+<<test_block>>
 declare
   owner_id uuid := 'a1000000-0000-4000-8000-000000000001';
   driver_user_id uuid := 'a1000000-0000-4000-8000-000000000002';
@@ -17,6 +18,7 @@ declare
   plan_id uuid := 'e1000000-0000-4000-8000-000000000001';
   stop_unload uuid := 'f1000000-0000-4000-8000-000000000001';
   stop_load uuid := 'f1000000-0000-4000-8000-000000000002';
+  stop_overunload uuid := 'f1000000-0000-4000-8000-000000000003';
   event_unload uuid := '11000000-0000-4000-8000-000000000001';
   event_load uuid := '11000000-0000-4000-8000-000000000002';
   result jsonb;
@@ -60,7 +62,8 @@ begin
   insert into public.daily_work_stops(id,fleet_id,plan_id,sequence_no,operation_kind,address,planned_quantity_kg)
   values
     (stop_unload,fleet_id,plan_id,1,'unload','לקוח א׳',3000),
-    (stop_load,fleet_id,plan_id,2,'load','לקוח ב׳',2000);
+    (stop_load,fleet_id,plan_id,2,'load','לקוח ב׳',2000),
+    (stop_overunload,fleet_id,plan_id,3,'unload','בדיקת פריקה עודפת',10000);
 
   perform set_config('request.jwt.claim.sub',driver_user_id::text,true);
 
@@ -116,7 +119,7 @@ begin
   rejected := false;
   begin
     perform public.record_daily_load_operation(
-      fleet_id,plan_id,stop_load,'11000000-0000-4000-8000-000000000005'::uuid,
+      fleet_id,plan_id,stop_overunload,'11000000-0000-4000-8000-000000000005'::uuid,
       'unload',10000,8000,4000,now(),'certified_onboard_scale','SCALE-EMPTY',1
     );
   exception when others then
@@ -134,10 +137,10 @@ begin
      or (result->>'load_revision')::integer <> 2 then
     raise exception 'Second stop did not build on the first stop load state';
   end if;
-  if (select count(*) from public.daily_load_events where plan_id=plan_id) <> 2 then
+  if (select count(*) from public.daily_load_events e where e.plan_id=test_block.plan_id) <> 2 then
     raise exception 'Expected exactly two append-only load events';
   end if;
-  if (select current_gross_weight_kg from public.daily_work_plans where id=plan_id) <> 20000 then
+  if (select current_gross_weight_kg from public.daily_work_plans where id=test_block.plan_id) <> 20000 then
     raise exception 'Daily load snapshot is not equal to final event state';
   end if;
   insert into pg_temp.daily_load_test_results values('multiple stops update one daily load snapshot in order','PASS');
