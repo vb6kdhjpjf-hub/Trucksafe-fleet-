@@ -66,3 +66,16 @@ test("explains fail-closed catalogue, stale verification, and invalid route evid
   assert.ok(messages.some(message => message.includes("חורג מאזור הפעילות המאומת")));
   assert.ok(messages.some(message => message.includes("נתוני מידות או משקל הרכב אינם מלאים")));
 });
+
+test("explains empty catalogues and malformed restriction records without exposing raw codes", () => {
+  const messages = formatRejectedRouteMessages([{
+    reason: "unresolved_fleet_restrictions",
+    unresolved: [
+      { roadName: "כביש 4", reason: "restriction_catalog_empty" },
+      { roadName: "כביש 2", reason: "malformed_restriction_record" }
+    ]
+  }]);
+  assert.ok(messages.some(message => message.includes("מאגר מגבלות הדרך ריק")));
+  assert.ok(messages.some(message => message.includes("רשומת מגבלת הדרך אינה תקינה")));
+  assert.equal(messages.some(message => message.includes("restriction_catalog_empty")), false);
+});
