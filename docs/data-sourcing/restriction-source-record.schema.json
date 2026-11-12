@@ -76,7 +76,7 @@
     "payload_sha256": {
       "type": "string",
       "pattern": "^[a-fA-F0-9]{64}$",
-      "description": "SHA-256 of the UTF-8 bytes of JSON.stringify(envelope.payload), i.e. the canonical serialization of the parsed JSON value. Original whitespace and key ordering are not preserved; duplicate object keys follow JSON.parse semantics."
+      "description": "SHA-256 of the UTF-8 bytes of JSON.stringify(envelope.payload) after JSON.parse. Original whitespace is discarded. Object keys are serialized using JavaScript JSON.stringify property-enumeration semantics, not sorted into a key-order-independent canonical form. Duplicate JSON object keys are collapsed by JSON.parse, with the last value retained. This hash is an integrity checksum of the parsed payload, not a signature and not a byte-for-byte hash of the original source file."
     },
     "review": {
       "type": "object",

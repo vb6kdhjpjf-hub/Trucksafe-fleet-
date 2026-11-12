@@ -97,3 +97,26 @@ test("enforces optional reviewer and notes length limits", () => {
   assert.ok(errors.includes("review.reviewer must be a string of at most 200 characters"));
   assert.ok(errors.includes("review.notes must be a string of at most 4000 characters"));
 });
+
+
+test("canonical payload checksum ignores whitespace but follows parsed JavaScript property order", () => {
+  const spaced = JSON.parse('{ "b": 2, "a": 1 }');
+  const compact = JSON.parse('{"b":2,"a":1}');
+  const canonical = JSON.stringify(spaced);
+  assert.equal(canonical, JSON.stringify(compact));
+
+  const digestFor = value => createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
+  const envelope = validEnvelope({
+    payload: spaced,
+    payload_sha256: digestFor(spaced)
+  });
+  assert.deepEqual(validateCandidateRestrictionEnvelope(envelope, canonical), { valid: true, errors: [] });
+
+  const reordered = JSON.parse('{"a":1,"b":2}');
+  assert.notEqual(JSON.stringify(reordered), canonical);
+  assert.notEqual(digestFor(reordered), envelope.payload_sha256);
+
+  const duplicateKeys = JSON.parse('{"a":1,"a":2}');
+  assert.deepEqual(duplicateKeys, { a: 2 });
+  assert.equal(JSON.stringify(duplicateKeys), '{"a":2}');
+});
