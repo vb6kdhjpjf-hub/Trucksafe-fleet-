@@ -70,3 +70,13 @@ test("rejects numeric values with ambiguous locale formatting and invalid ranges
   assert.equal(result.summary.rejected, 1);
   assert.ok(result.rows[0].errors.some(x => x.code === "column_count_mismatch"));
 });
+
+test("canonical field names are indexed once and map to source indexes", () => {
+  const result = suggestImportColumnMappings(["registration_number", "make"], "vehicles");
+  assert.equal(result.fields.registration_number.sourceIndex, 0);
+  assert.deepEqual(result.ambiguousFields, []);
+  const parsed = parseEnterpriseCsv("registration_number,make\\n1234567,Volvo");
+  const validated = validateEnterpriseImportRows(parsed, "vehicles", result);
+  assert.equal(validated.ok, true);
+  assert.equal(validated.rows[0].data.registration_number, "1234567");
+});
