@@ -8,6 +8,13 @@ import { ArrowRight, AlertTriangle, Plus, RefreshCw, ShieldAlert } from "lucide-
 
 const blank = { road_name: "", restriction_type: "height", direction: "", max_height_m: "", max_weight_t: "", max_width_m: "", max_length_m: "", valid_from: "", valid_until: "", active_from: "", active_until: "", latitude: "", longitude: "", start_latitude: "", start_longitude: "", end_latitude: "", end_longitude: "", location_accuracy_m: "", measured_clearance_m: "", measurement_date: "", measurement_accuracy_cm: "", measurement_method: "", measurement_location_note: "", measurement_document_url: "", structure_id: "", road_segment_id: "", lane_id: "", passage_length_m: "", surveyor: "", posted_clearance_status: "unknown", posted_clearance_m: "", measurement_coverage: { both_sides_measured: false, lane_center_measured: false, left_edge_measured: false, right_edge_measured: false, hanging_installations_checked: false, passage_center_measured: false }, source_type: "user_report", source_name: "", source_url: "", source_reference: "", source_updated_at: "", expires_at: "", notes: "" };
 const labels = { height: "גובה מרבי", weight: "משקל מרבי", width: "רוחב מרבי", length: "אורך מרבי", hazmat: "חומרים מסוכנים", time_window: "הגבלת שעות", closed: "כביש סגור", other: "אחר" };
+const isValidMeasurementDate = value => {
+  if (typeof value !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === value &&
+    value <= new Date().toISOString().slice(0, 10);
+};
 
 export default function RoadRestrictionsPage() {
   const router = useRouter();
@@ -192,13 +199,14 @@ export default function RoadRestrictionsPage() {
         const postedEvidenceValid = row.posted_clearance_status === "posted"
           ? Number.isFinite(Number(row.posted_clearance_m)) && Number(row.posted_clearance_m) >= 0.5 && Number(row.posted_clearance_m) <= 20
           : ["not_posted", "unknown"].includes(row.posted_clearance_status) && row.posted_clearance_m == null;
-        if (!Number.isFinite(measured) || !row.measurement_date ||
+        if (!Number.isFinite(measured) || measured < 0.5 || measured > 20 ||
+            !isValidMeasurementDate(row.measurement_date) ||
             !Number.isFinite(Number(row.measurement_accuracy_cm)) || Number(row.measurement_accuracy_cm) <= 0 || Number(row.measurement_accuracy_cm) > 1 ||
             !row.measurement_method?.trim() || String(row.measurement_location_note || "").trim().length < 12 ||
             !/^https:\/\//i.test(String(row.measurement_document_url || "")) ||
             !row.structure_id?.trim() || !row.road_segment_id?.trim() || !row.lane_id?.trim() ||
             !["forward", "backward"].includes(row.direction) ||
-            !Number.isFinite(Number(row.passage_length_m)) || Number(row.passage_length_m) <= 0 ||
+            !Number.isFinite(Number(row.passage_length_m)) || Number(row.passage_length_m) <= 0 || Number(row.passage_length_m) > 1000 ||
             !row.surveyor?.trim() || !completeCoverage || !postedEvidenceValid ||
             !Number.isFinite(margin) || margin < 0.20 || margin > 0.29) {
           setMessage("לאימות גובה נדרשים מזהי מבנה, מקטע ונתיב, כיוון, אורך מעבר, מודד, תיעוד מדידה וכיסוי מלא של הנתיב, סטטוס שילוט והפרש בטיחות של 20–29 ס״מ.");
