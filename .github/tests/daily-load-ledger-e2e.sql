@@ -68,14 +68,14 @@ begin
   -- Synthetic privileged fixture update inside this rollback-only test; this is
   -- not a live Auth/service-role integration test and creates no persistent record.
   perform set_config('request.jwt.claim.role','service_role',true);
-  update public.vehicles set registration_document_path=fleet_id::text||'/'||vehicle_id::text||'/registration.pdf'
-    where public.vehicles.id=vehicle_id and public.vehicles.fleet_id=fleet_id;
+  update public.vehicles set registration_document_path=test_block.fleet_id::text||'/'||vehicle_id::text||'/registration.pdf'
+    where public.vehicles.id=vehicle_id and public.vehicles.fleet_id=test_block.fleet_id;
   update public.vehicles set
     registration_verification_status='verified',
     registration_verified_at=now(),
     registration_verified_by=owner_id,
     registration_verification_note='Synthetic test fixture approval'
-    where public.vehicles.id=vehicle_id and public.vehicles.fleet_id=fleet_id;
+    where public.vehicles.id=vehicle_id and public.vehicles.fleet_id=test_block.fleet_id;
   perform set_config('request.jwt.claim.role','authenticated',true);
   rejected := false;
   begin
@@ -243,10 +243,10 @@ begin
   insert into pg_temp.daily_load_test_results values('manager activation rechecks the assigned driver and verified vehicle profile','PASS');
 
   select id into created_stop_id from public.daily_work_stops
-  where public.daily_work_stops.plan_id=created_plan_id and public.daily_work_stops.fleet_id=fleet_id order by public.daily_work_stops.sequence_no limit 1;
+  where public.daily_work_stops.plan_id=created_plan_id and public.daily_work_stops.fleet_id=test_block.fleet_id order by public.daily_work_stops.sequence_no limit 1;
   perform set_config('request.jwt.claim.role','service_role',true);
   update public.vehicles set registration_verification_status='pending'
-    where public.vehicles.id=vehicle_id and public.vehicles.fleet_id=fleet_id;
+    where public.vehicles.id=vehicle_id and public.vehicles.fleet_id=test_block.fleet_id;
   perform set_config('request.jwt.claim.role','authenticated',true);
   perform set_config('request.jwt.claim.sub',driver_user_id::text,true);
   rejected := false;
@@ -264,7 +264,7 @@ begin
 
   perform set_config('request.jwt.claim.role','service_role',true);
   update public.vehicles set registration_verification_status='verified'
-    where public.vehicles.id=vehicle_id and public.vehicles.fleet_id=fleet_id;
+    where public.vehicles.id=vehicle_id and public.vehicles.fleet_id=test_block.fleet_id;
   perform set_config('request.jwt.claim.role','authenticated',true);
   result := public.record_daily_load_operation(
     fleet_id,created_plan_id,created_stop_id,'11000000-0000-4000-8000-000000000100'::uuid,
