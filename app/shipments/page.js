@@ -15,7 +15,7 @@ const emptyStop = (count=1) => ({ address:"", allocations:Array.from({length:cou
 const emptyForm = () => ({ customer_name:"", customer_reference:"", delivery_reference:"", scheduled_at:"", assigned_driver_id:"", assigned_vehicle_id:"", notes:"", lines:[emptyLine()], stops:[emptyStop()] });
 const eventKey = () => crypto.randomUUID();
 
-function SignaturePad({ canvasRef, onClear, onChange }) {
+function SignaturePad({ canvasRef, onClear, onChange, disabled=false }) {
   const drawing = useRef(false);
   const last = useRef(null);
   function point(event) {
@@ -35,7 +35,7 @@ function SignaturePad({ canvasRef, onClear, onChange }) {
   }
   function end(){drawing.current=false;last.current=null;}
   function clear(){const c=canvasRef.current;c.getContext("2d").clearRect(0,0,c.width,c.height);onChange(false);onClear?.();}
-  return <div className="proof-signature"><div className="proof-signature-head"><b>חתימת מקבל הסחורה</b><button type="button" className="secondary-btn" onClick={clear}><X size={14}/> ניקוי חתימה</button></div><canvas ref={canvasRef} width={720} height={220} onPointerDown={start} onPointerMove={move} onPointerUp={end} onPointerCancel={end} aria-label="אזור חתימה של מקבל הסחורה"/><small>יש לחתום בתוך המסגרת. החתימה נשמרת באופן פרטי כחלק מאישור המסירה.</small></div>;
+  return <div className="proof-signature"><div className="proof-signature-head"><b>חתימת מקבל הסחורה</b><button type="button" className="secondary-btn" onClick={clear} disabled={disabled}><X size={14}/> ניקוי חתימה</button></div><canvas ref={canvasRef} width={720} height={220} style={disabled?{pointerEvents:"none",opacity:0.7}:undefined} onPointerDown={start} onPointerMove={move} onPointerUp={end} onPointerCancel={end} aria-label="אזור חתימה של מקבל הסחורה"/><small>יש לחתום בתוך המסגרת. החתימה נשמרת באופן פרטי כחלק מאישור המסירה.</small></div>;
 }
 
 function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBusy, notify, onSaved }) {
@@ -47,6 +47,7 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
   const [palletsDamaged,setPalletsDamaged]=useState("0");
   const [photos,setPhotos]=useState([]);
   const [hasSignature,setHasSignature]=useState(false);
+  const [attemptLocked,setAttemptLocked]=useState(false);
   const padRef=useRef(null);
   // Keep one idempotency key and stable private object paths for this mounted
   // proof attempt. If the server commits but the response is lost, retrying
@@ -70,6 +71,10 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
     const numbers=[palletsDelivered,palletsReceived,palletsDamaged].map(Number);
     if(numbers.some(n=>!Number.isFinite(n)||n<0)||numbers[2]>numbers[1]){notify("יש לבדוק את כמויות המשטחים שהוחזרו והפגומים.","error");return;}
     if(photos.some(f=>!["image/png","image/jpeg","image/webp"].includes(f.type)||f.size>10*1024*1024)){notify("אפשר לצרף עד 10MB לכל תמונה בפורמט PNG, JPG או WEBP.","error");return;}
+    // Freeze the payload once an upload or RPC may have started. A timeout is
+    // ambiguous: the server may already have committed the note. Retrying with
+    // edited data and the same idempotency key must never be possible.
+    setAttemptLocked(true);
     setBusy(true);
     const prefix=fleetId+"/"+shipment.id+"/"+stop.id+"/";
     try{
@@ -120,18 +125,19 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
   return <form className="proof-panel" onSubmit={submit}>
     <h4><PenLine size={17}/> אישור מסירה ותעודת משלוח</h4>
     <p>השלם את פרטי המסירה. חתימת המקבל נדרשת; חריגה מחייבת אישור מנהל ותיעוד סיבה.</p>
-    <label>שם מקבל הסחורה<input maxLength={160} value={recipient} onChange={e=>setRecipient(e.target.value)} placeholder="שם מלא"/></label>
-    <SignaturePad canvasRef={padRef} onChange={setHasSignature} onClear={()=>setHasSignature(false)}/>
-    {canOverride&&!hasSignature&&<label>סיבת חריגה — מדוע לא התקבלה חתימה?<textarea rows={2} maxLength={1000} value={exception} onChange={e=>setException(e.target.value)} placeholder="הסבר ותיעוד אישור מנהל"/></label>}
+    <label>שם מקבל הסחורה<input disabled={attemptLocked} maxLength={160} value={recipient} onChange={e=>setRecipient(e.target.value)} placeholder="שם מלא"/></label>
+    <SignaturePad canvasRef={padRef} onChange={setHasSignature} onClear={()=>setHasSignature(false)} disabled={attemptLocked}/>
+    {canOverride&&!hasSignature&&<label>סיבת חריגה — מדוע לא התקבלה חתימה?<textarea disabled={attemptLocked} rows={2} maxLength={1000} value={exception} onChange={e=>setException(e.target.value)} placeholder="הסבר ותיעוד אישור מנהל"/></label>}
     <div className="proof-grid">
-      <label>משטחים שנמסרו<input type="number" min="0" step="0.001" value={palletsDelivered} onChange={e=>setPalletsDelivered(e.target.value)}/></label>
-      <label>משטחים שהתקבלו בחזרה<input type="number" min="0" step="0.001" value={palletsReceived} onChange={e=>setPalletsReceived(e.target.value)}/></label>
-      <label>משטחים פגומים<input type="number" min="0" step="0.001" value={palletsDamaged} onChange={e=>setPalletsDamaged(e.target.value)}/></label>
+      <label>משטחים שנמסרו<input disabled={attemptLocked} type="number" min="0" step="0.001" value={palletsDelivered} onChange={e=>setPalletsDelivered(e.target.value)}/></label>
+      <label>משטחים שהתקבלו בחזרה<input disabled={attemptLocked} type="number" min="0" step="0.001" value={palletsReceived} onChange={e=>setPalletsReceived(e.target.value)}/></label>
+      <label>משטחים פגומים<input disabled={attemptLocked} type="number" min="0" step="0.001" value={palletsDamaged} onChange={e=>setPalletsDamaged(e.target.value)}/></label>
     </div>
-    <label>הערת מסירה (לא חובה)<textarea rows={2} maxLength={1000} value={note} onChange={e=>setNote(e.target.value)} placeholder="הערה למשרד או ללקוח"/></label>
-    <label>תמונות מסירה (לא חובה)<input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={e=>setPhotos(Array.from(e.target.files||[]).slice(0,8))}/></label>
+    <label>הערת מסירה (לא חובה)<textarea disabled={attemptLocked} rows={2} maxLength={1000} value={note} onChange={e=>setNote(e.target.value)} placeholder="הערה למשרד או ללקוח"/></label>
+    <label>תמונות מסירה (לא חובה)<input disabled={attemptLocked} type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={e=>setPhotos(Array.from(e.target.files||[]).slice(0,8))}/></label>
     {photos.length>0&&<small>{photos.length} תמונות נבחרו</small>}
-    <button className="primary-btn" disabled={busy}><CheckCircle2 size={16}/>{busy?"שומר אישור...":"שמירת אישור והפקת תעודה"}</button>
+    {attemptLocked&&<small>פרטי הניסיון נעולים כדי לאפשר ניסיון חוזר בטוח ללא שינוי נתוני המסירה.</small>}
+    <button className="primary-btn" disabled={busy}><CheckCircle2 size={16}/>{busy?"שומר אישור...":attemptLocked?"ניסיון חוזר לשמירה":"שמירת אישור והפקת תעודה"}</button>
   </form>;
 }
 
