@@ -237,6 +237,16 @@ begin
  if p_event_key is null or p_fleet_id is null or p_shipment_id is null or p_stop_id is null then
   raise exception 'Missing delivery document identifiers';
  end if;
+ if (p_gps_latitude is null) <> (p_gps_longitude is null)
+  or (p_gps_latitude is not null and (p_gps_latitude not between -90 and 90 or p_gps_longitude not between -180 and 180)) then
+  raise exception 'GPS coordinates must be supplied as a valid pair';
+ end if;
+ if p_gps_latitude is not null then
+  -- Match NUMERIC(9,6) storage precision before snapshotting and comparing
+  -- idempotent retries, even when a caller supplies higher precision.
+  p_gps_latitude:=round(p_gps_latitude,6);
+  p_gps_longitude:=round(p_gps_longitude,6);
+ end if;
  v_is_manager:=private.has_fleet_role(p_fleet_id,array['owner','fleet_manager','dispatcher']::text[]);
  v_can_override:=private.has_fleet_role(p_fleet_id,array['owner','fleet_manager']::text[]);
  select s.* into v_shipment from public.shipments s
@@ -275,16 +285,7 @@ begin
   or exists(select 1 from public.delivery_proofs p where p.fleet_id=p_fleet_id and p.stop_id=p_stop_id) then
   raise exception 'A delivery document already exists for this stop';
  end if;
- if (p_gps_latitude is null) <> (p_gps_longitude is null)
-  or (p_gps_latitude is not null and (p_gps_latitude not between -90 and 90 or p_gps_longitude not between -180 and 180)) then
-  raise exception 'GPS coordinates must be supplied as a valid pair';
- end if;
- if p_gps_latitude is not null then
-  -- Match NUMERIC(9,6) storage precision before snapshotting and comparing
-  -- idempotent retries, even when a caller supplies higher precision.
-  p_gps_latitude:=round(p_gps_latitude,6);
-  p_gps_longitude:=round(p_gps_longitude,6);
- end if;
+
  if least(coalesce(p_pallets_delivered,0),coalesce(p_pallets_received,0),coalesce(p_pallets_damaged,0))<0
   or coalesce(p_pallets_damaged,0)>coalesce(p_pallets_received,0) then
   raise exception 'Invalid pallet exchange quantities';
