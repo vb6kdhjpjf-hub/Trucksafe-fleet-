@@ -260,3 +260,31 @@ A 2019 National Road Safety Authority accident-investigation report records that
 **Acquisition implication:** any future request to Netivei Israel should explicitly separate technical data access from permission to travel. Ask for the current policy, the legal/operational disclaimer required for public display, the competent authority for each asset, and the formal exceptional-load permit workflow. The product must display that data is informational and does not replace road signs, traffic regulations, permits or instructions from road authorities. Do not infer that a road is safe or legally permitted solely because a bridge-height value is published or no restriction is listed.
 
 Source: [National Road Safety Authority report on the Road 4 accident investigation (2019)](https://www.gov.il/BlobFolder/reports/accident_report2019_road4_14082017/he/reports_accident_report2019_road4_14082017.pdf).
+
+
+## 21. Tel Aviv bridge inventory and measured-clearance evidence — data contract (reviewed 12 November 2026)
+
+The municipal bridge layer (ArcGIS layer 550) is a city-scoped asset inventory. Its published fields include bridge identifiers/names, type or purpose, road-segment identifiers, street names, connecting streets, import date and geometry. The separate municipal “roadblocks to bridges” layer (layer 551) exposes bridge identifiers/codes and point geometry. Neither layer publishes measured under-bridge clearance, signed clearance, lane/direction-specific limits, truck weight/axle limits, or a measurement record. These layers can help locate candidate assets only; a bridge inventory record is not a restriction record and is not evidence that a passage is safe.
+
+The Ministry of Transport's April 2026 height-obstacle guideline describes a materially more demanding physical survey: vertical clearance measurement accuracy of ±1 cm; measurements at each lane including lane centre and edge/marking locations; measurements on both sides of the obstacle; a centre measurement where the passage length exceeds 20 m; inclusion of hanging installations; periodic remeasurement; and use of the lowest measured value for each lane as the controlling value. The guideline also distinguishes physically measured clearance from the value displayed on a road sign. A sign value must never be silently substituted for a physical measurement.
+
+### Minimum evidence required before a clearance can be considered verified
+
+A future operational clearance record must be attributable to one exact structure and road segment and must contain, at minimum:
+
+- **Asset identity:** stable bridge/obstacle ID, road name/number, segment reference and geospatial position, with a documented match to the routed road edge.
+- **Passage identity:** travel direction and lane (including lane-specific variation); do not assume both directions or all lanes share one value.
+- **Two separate values:** physically measured clearance and posted/signed clearance, each with its own provenance. Never infer one from the other.
+- **Survey evidence:** measured value, units, measurement method, instrument/survey reference, stated accuracy, measurement date, surveyor/competent source, and evidence/document reference.
+- **Survey coverage:** confirmation that the prescribed lane positions, both sides, centre where required, and hanging installations were included; retain the lowest valid value per lane.
+- **Validity and maintenance:** effective/verification date, last inspection or remeasurement date, known changes/roadworks, and an expiry/review policy. A catalogue refresh timestamp is not a survey date.
+- **Authority and legal context:** issuing/competent authority, source dataset and version, approval/evidence reference, and any permit/signage conditions. Technical clearance data does not itself grant legal permission to travel.
+
+A record missing any required identity, passage, measurement, provenance or currency evidence must remain **UNKNOWN / NOT VERIFIED**. It must not be converted into “no restriction”, “safe”, “clear”, or route approval. If a route decision depends on an unknown passage, the safe outcome is to withhold clearance and direct the operator to authoritative verification. Absence of a bridge or restriction row in any discovery layer is not proof of absence in the real road network.
+
+**Implementation boundary:** keep the Tel Aviv inventory and bridge-block marker layers candidate-only. They may support asset discovery and later reconciliation with a competent authority's measured survey. They must not independently create an enforceable restriction, a physical clearance value, or a route-safe result. The national Ministry guideline is a survey standard, not a nationwide measured-clearance feed.
+
+Sources:
+- [Tel Aviv municipal bridge inventory, ArcGIS layer 550](https://gisn.tel-aviv.gov.il/ArcGIS/rest/services/IView2/MapServer/550).
+- [Tel Aviv municipal “roadblocks to bridges”, ArcGIS layer 551](https://gisn.tel-aviv.gov.il/ArcGIS/rest/services/IView2/MapServer/551).
+- [Ministry of Transport, Guidelines for height obstacles, second edition, April 2026](https://www.gov.il/BlobFolder/policy/traffic_height_obstacle/he/Guidelines-for-height-obstacles-2026.pdf).
