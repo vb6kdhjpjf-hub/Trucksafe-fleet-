@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { Truck, ShieldCheck, LogOut, Plus, Users, Navigation, AlertTriangle, ClipboardList, BarChart3, Wrench, Route } from "lucide-react";
 import { isDriverEligibleForVehicleAssignment } from "../lib/driver-eligibility.mjs";
+import { isSupportedFleetRole } from "../lib/fleet-membership.mjs";
 
 export default function Home() {
   const [session,setSession]=useState(null);
@@ -74,7 +75,13 @@ export default function Home() {
     let role="owner";
     if(memberships.length===1){
       const membership=memberships[0];
-      role=membership.role||"owner";
+      if(!isSupportedFleetRole(membership.role)){
+        setFleet(null);
+        setWorkspaceError("תפקיד החברות בצי אינו תקין. הגישה נחסמה עד שבעל הצי יתקן את ההרשאה.");
+        setWorkspaceChecked(true);
+        return;
+      }
+      role=membership.role;
       const fleetResult=await supabase.from("fleets").select("id,name").eq("id",membership.fleet_id).single();
       if(!isCurrent())return;
       if(fleetResult.error){
@@ -293,6 +300,7 @@ export default function Home() {
 
   async function addVehicle(e){
     e.preventDefault();
+    if(!fleet?.id||!isSupportedFleetRole(fleet.role)||!["owner","fleet_manager"].includes(fleet.role)){setMessage("רק בעלים או מנהל צי יכולים להוסיף רכב.");return;}
     if(!hasEligibleSelectedDriver()){setMessage("הנהג שנבחר אינו פעיל או שרישיון הנהיגה שלו פג/לא הוגדר. יש לבחור נהג מתאים או להשאיר ללא שיוך.");return;}
     setBusy(true);setMessage("");
     const optionalNumber=value=>value.trim()===""?null:Number(value);
