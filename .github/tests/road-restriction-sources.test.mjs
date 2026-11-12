@@ -234,3 +234,14 @@ test("Ministry traffic-authority directory is stale contact discovery only and n
   assert.match(source.limitations, /אינה ממפה סמכות לנכס או למקטע מסוים/);
   assert.equal(isSourceCandidateOnly(source), true);
 });
+
+
+test("delegated area authority catalogue refresh does not prove row-level authority currency", () => {
+  const source = getRoadRestrictionSource("mot-area-signing-authority");
+  assert.ok(source);
+  assert.equal(source.lastPublished, "2026-07-22");
+  assert.match(source.limitations, /YEARMONTH/);
+  assert.match(source.limitations, /202303/);
+  assert.match(source.limitations, /אינו מוכיח שכל מתחם/);
+  assert.equal(source.routingEligible, false);
+});

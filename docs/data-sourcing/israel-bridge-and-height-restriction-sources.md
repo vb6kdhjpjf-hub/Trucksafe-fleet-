@@ -235,3 +235,10 @@ Two additional Ministry catalogues help identify which body may need to validate
 - The **traffic-authority directory** lists authority names, types and codes, including national infrastructure companies. Its indexed CSV was last updated on 28 February 2023 and is therefore a stale starting list, not a current responsibility register.
 
 These are useful for building an authority-contact matrix, but neither dataset describes bridge clearance, weight limits, truck access, operating hours or temporary closures. A delegated signing authority is not necessarily the bridge asset owner, maintenance operator or data custodian. Every assignment must be confirmed with the relevant body for the exact road segment/asset and current date. Neither dataset may create a restriction, clear a road, or approve a route.
+
+
+## 18. Delegated signing-authority areas — distinguish catalogue refresh from row currency (reviewed 12 November 2026)
+
+The Ministry's `area_authority` catalogue is listed as updated on 22 July 2026 and contains 231 area records. The CSV includes a `YEARMONTH` field; visible examples include 202303, 202312 and 202403. Therefore, a recent catalogue file timestamp must not be mistaken for a fresh authority determination for every area. The layer is useful for finding a likely delegated signing authority, but it does not establish the current responsible body for a specific bridge, road segment or maintenance asset.
+
+**Implementation consequence:** keep it as an authority-discovery candidate. Any responsibility assignment must be checked against the row's own period and confirmed with the authority for the exact asset/segment and effective date. It is not a restriction dataset and cannot approve or block a route.
