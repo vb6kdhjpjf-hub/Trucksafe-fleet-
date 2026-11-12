@@ -20,7 +20,7 @@ A stop can be completed only once. Event keys are unique per plan, stale revisio
 
 The migration and rollback-only integration test are on the isolated development branch. The CI test runner applies the migration only inside a transaction against the dedicated Test database and rolls it back. No production schema has been changed, no production data was copied, and no deployment was made.
 
-The driver and dispatcher screens are not yet wired to these tables. That is the next integration stage, after the Test database migration and concurrency/security tests pass.
+The manager/dispatcher and assigned-driver workflows are wired in `app/daily-work/page.js`. Managers and dispatchers create plans and activate them through the server-side RPCs; assigned drivers see only their permitted plans through fleet-scoped RLS and submit measured stop completions through `record_daily_load_operation`. The page reads plan and stop data through the authenticated Supabase client; it does not write load events directly. The isolated CI suite exercises the migration and rollback-only database behavior. A separate live-device usability pass and operational pilot remain release gates.
 
 ## Manager workflow and registration binding
 
