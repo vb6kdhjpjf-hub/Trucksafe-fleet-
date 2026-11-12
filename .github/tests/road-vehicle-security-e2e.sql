@@ -329,8 +329,23 @@ begin
   if status_value <> 'unverified' then
     raise exception 'Lane evidence edit did not invalidate height verification';
   end if;
+  -- Re-verify the corrected lane record, then change the physical measurement.
+  -- The measurement itself is material evidence and must invalidate verification.
+  update public.road_restrictions
+  set verification_status='verified',
+      verification_note='Re-reviewed complete lane survey evidence after lane correction',
+      source_last_checked_at=now()
+  where id=height_restriction_id;
+  update public.road_restrictions
+  set measured_clearance_m=4.70
+  where id=height_restriction_id;
+  select verification_status into status_value
+  from public.road_restrictions where id=height_restriction_id;
+  if status_value <> 'unverified' then
+    raise exception 'Physical clearance measurement edit did not invalidate height verification';
+  end if;
   insert into pg_temp.road_vehicle_security_results
-  values('lane-specific height survey verification','PASS','Per-lane evidence required for verification; evidence edits invalidate review');
+  values('lane-specific height survey verification','PASS','Per-lane evidence and physical measurement edits invalidate review');
 
   -- A dispatcher cannot change facts on an already verified restriction.
   perform set_config('request.jwt.claim.sub',dispatcher_id::text,true);
