@@ -207,3 +207,12 @@ An official Tel Aviv-Yafo municipal ArcGIS feature layer publishes roadworks and
 This is a useful example of a structured **temporary-event** feed, but it is limited to Tel Aviv-Yafo and is not a national road restriction source. The metadata does not establish a real-time service-level freshness guarantee, completeness, or authoritative semantics for the open/closed indicator. A work-zone record does not necessarily mean a full road closure and says nothing by itself about truck height, weight, or axle restrictions.
 
 **Implementation consequence:** register it only as a city-scoped candidate. Before any integration, verify licensing, actual update cadence, field semantics, temporal validity and completeness, and corroborate closures with an authoritative traffic notice. Never treat the layer as national coverage, a verified truck restriction, or route approval.
+
+
+## 15. Tel Aviv municipal bridge / tunnel inventory — asset discovery only (reviewed 12 November 2026)
+
+The Tel Aviv-Yafo municipal ArcGIS layer 550 contains line geometry for bridges, tunnels and underpasses. Its attributes include a bridge identifier, name, purpose/type (including road bridges, pedestrian bridges, rail bridges, tunnels and pedestrian underpasses), associated street names and a data-import date.
+
+It is a useful municipal asset inventory lead, but it is limited to Tel Aviv-Yafo. Its published fields do not include vertical clearance, weight/width limits, measurement evidence, lane or travel direction. It therefore cannot establish whether a truck can safely pass beneath or across any structure. The absence of an asset from this municipal layer is not evidence that no bridge or restriction exists.
+
+**Implementation consequence:** keep this source city-scoped and discovery-only. It may help identify candidate structures for later authoritative survey matching, subject to coverage, freshness and licence checks; it must never create a verified restriction or approve a route.

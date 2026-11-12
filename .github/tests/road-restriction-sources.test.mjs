@@ -180,3 +180,17 @@ test("Tel Aviv municipal roadworks ArcGIS layer is city-scoped event discovery o
   assert.match(source.limitations, /לא לאישור מסלול/);
   assert.equal(isSourceCandidateOnly(source), true);
 });
+
+
+test("Tel Aviv municipal bridge inventory is an asset-discovery layer, not a clearance dataset", () => {
+  const source = getRoadRestrictionSource("tel-aviv-municipal-bridge-inventory-arcgis");
+  assert.ok(source);
+  assert.equal(source.publisher, "עיריית תל אביב-יפו");
+  assert.equal(source.candidateOnly, true);
+  assert.equal(source.routingEligible, false);
+  assert.equal(source.dataTypes.includes("municipal_bridge_geometry"), true);
+  assert.match(source.limitations, /בתחום תל אביב-יפו בלבד/);
+  assert.match(source.limitations, /אין בה שדות גובה מעבר/);
+  assert.match(source.limitations, /לא לאישור מסלול/);
+  assert.equal(isSourceCandidateOnly(source), true);
+});
