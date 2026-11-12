@@ -62,7 +62,7 @@ function downloadCsv(filename, rows) {
   anchor.href = url;
   anchor.download = filename;
   anchor.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export default function ImportsPage() {
@@ -126,8 +126,8 @@ export default function ImportsPage() {
     clearPreview();
     setBusy(true);
     try {
-      if (!file.name.toLowerCase().endsWith(".csv") && file.type !== "text/csv" && file.type !== "application/vnd.ms-excel") {
-        setMessage("בשלב זה נתמכים קובצי CSV בלבד. תמיכה ב-Excel תתווסף לאחר בדיקת אבטחה.");
+      if (!file.name.toLowerCase().endsWith(".csv")) {
+        setMessage("בשלב זה נתמכים קובצי CSV בלבד. יש לייצא קובצי Excel לפורמט CSV לפני ההעלאה.");
         return;
       }
       if (file.size > 20 * 1024 * 1024) {
@@ -166,6 +166,15 @@ export default function ImportsPage() {
   const missingRequired = useMemo(() => Object.entries(fields)
     .filter(([field]) => field === "full_name" || field === "registration_number")
     .filter(([field]) => mapping[field] === undefined || mapping[field] === ""), [fields, mapping]);
+
+  const duplicateSourceMappings = useMemo(() => {
+    const counts = new Map();
+    for (const source of Object.values(mapping)) {
+      if (source === undefined || source === "") continue;
+      counts.set(source, (counts.get(source) || 0) + 1);
+    }
+    return [...counts.entries()].filter(([, count]) => count > 1).map(([source]) => parsed?.headers?.[source] ?? String(source));
+  }, [mapping, parsed]);
 
   function exportRejected() {
     if (!preview) return;
@@ -223,7 +232,7 @@ export default function ImportsPage() {
           <div className="form-grid">
             {Object.entries(fields).map(([field, label]) => (
               <label key={field}>{label}
-                <select value={mapping[field] ?? ""} onChange={event => setMapping(current => ({ ...current, [field]: event.target.value === "" ? "" : Number(event.target.value) }))}>
+                <select value={mapping[field] ?? ""} onChange={event => { setMapping(current => ({ ...current, [field]: event.target.value === "" ? "" : Number(event.target.value) })); setMessage(""); }}>
                   <option value="">לא לייבא</option>
                   {parsed.headers.map((header, index) => <option key={index} value={index}>{header}</option>)}
                 </select>
@@ -231,11 +240,12 @@ export default function ImportsPage() {
             ))}
           </div>
           {missingRequired.length > 0 && <p className="status-late">נדרשת התאמה של שדה חובה: {missingRequired.map(([, label]) => label).join(", ")}.</p>}
+          {duplicateSourceMappings.length > 0 && <p className="status-late">אותה עמודה משויכת ליותר משדה אחד: {duplicateSourceMappings.join(", ")}. יש לבחור עמודה שונה לכל שדה.</p>}
         </section>
 
         <section className="fleet-panel">
           <div className="fleet-panel-head"><div><h3>3. תוצאות בדיקת הקובץ</h3><p>הבדיקה אינה שומרת נתונים. יש לאשר ולבדוק את כל האזהרות לפני קליטה עתידית.</p></div><ShieldCheck size={24}/></div>
-          {!preview ? <p className="status-late">לא ניתן להציג תוצאות עד שכל שדות החובה ימופו.</p> : <>
+          {!preview ? <p className="status-late">לא ניתן להציג תוצאות. בדוק ששדות החובה ממופים ושכל עמודה משויכת פעם אחת בלבד.</p> : <>
             <div className="vehicle-list" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 12 }}>
               <div className="fleet-stat"><b>{preview.summary.total}</b><span>סה״כ שורות</span></div>
               <div className="fleet-stat"><b>{preview.summary.ready}</b><span>תקינות</span></div>
