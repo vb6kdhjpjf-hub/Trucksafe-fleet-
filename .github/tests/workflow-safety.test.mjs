@@ -83,11 +83,11 @@ test("live Auth fixture creates and cleans uniquely marked Test-only fleets and 
   assert.ok(!liveAuth.includes("INSERT INTO auth.users"));
 });
 
-
+ 
 test("GitHub workflow actions use maintained Node 24-compatible releases", () => {
   for (const [name, workflow] of [["backup", backup], ["restore", restore], ["validation", validation]]) {
-    assert.doesNotMatch(workflow, /actions\\/(?:checkout|setup-node)@v[1-6](?:\\b|$)/, name + " must not use deprecated Node 20 action majors");
+    assert.doesNotMatch(workflow, /actions\/(?:checkout|setup-node)@v[1-6](?:\b|$)/, name + " must not use deprecated Node 20 action majors");
   }
-  assert.match(backup, /actions\\/upload-artifact@v7/);
-  assert.match(restore, /actions\\/download-artifact@v8/);
+  assert.match(backup, /actions\/upload-artifact@v7/);
+  assert.match(restore, /actions\/download-artifact@v8/);
 });
