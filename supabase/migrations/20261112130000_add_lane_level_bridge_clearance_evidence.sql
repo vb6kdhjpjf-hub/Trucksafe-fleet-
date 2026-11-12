@@ -47,7 +47,32 @@ begin
       or NEW.surveyor is distinct from OLD.surveyor
       or NEW.posted_clearance_status is distinct from OLD.posted_clearance_status
       or NEW.posted_clearance_m is distinct from OLD.posted_clearance_m
-      or NEW.measurement_coverage is distinct from OLD.measurement_coverage;
+      or NEW.measurement_coverage is distinct from OLD.measurement_coverage
+      -- Physical survey facts and the restriction's mapped position are part
+      -- of the verification evidence too; changing any of them invalidates it.
+      or NEW.direction is distinct from OLD.direction
+      or NEW.measured_clearance_m is distinct from OLD.measured_clearance_m
+      or NEW.measurement_date is distinct from OLD.measurement_date
+      or NEW.measurement_accuracy_cm is distinct from OLD.measurement_accuracy_cm
+      or NEW.measurement_method is distinct from OLD.measurement_method
+      or NEW.measurement_location_note is distinct from OLD.measurement_location_note
+      or NEW.measurement_document_url is distinct from OLD.measurement_document_url
+      or NEW.source_name is distinct from OLD.source_name
+      or NEW.source_url is distinct from OLD.source_url
+      or NEW.source_reference is distinct from OLD.source_reference
+      or NEW.source_updated_at is distinct from OLD.source_updated_at
+      or NEW.max_height_m is distinct from OLD.max_height_m
+      or NEW.latitude is distinct from OLD.latitude
+      or NEW.longitude is distinct from OLD.longitude
+      or NEW.start_latitude is distinct from OLD.start_latitude
+      or NEW.start_longitude is distinct from OLD.start_longitude
+      or NEW.end_latitude is distinct from OLD.end_latitude
+      or NEW.end_longitude is distinct from OLD.end_longitude
+      or NEW.valid_from is distinct from OLD.valid_from
+      or NEW.valid_until is distinct from OLD.valid_until
+      or NEW.active_from is distinct from OLD.active_from
+      or NEW.active_until is distinct from OLD.active_until
+      or NEW.expires_at is distinct from OLD.expires_at;
     if OLD.verification_status='verified' and evidence_changed then
       if not private.has_fleet_role(NEW.fleet_id, ARRAY['owner','fleet_manager']::text[]) then
         raise exception 'Only fleet owners and fleet managers may change verified lane clearance evidence';
