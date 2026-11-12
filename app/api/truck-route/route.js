@@ -7,6 +7,7 @@ import { checkTruckRouteQuota } from "../../../lib/truck-route-quota.mjs";
 import { readJsonBodyLimited } from "../../../lib/request-body-limits.mjs";
 import { resolveFleetApiAccess } from "../../../lib/fleet-api-access.mjs";
 import { loadFleetRoadRestrictions } from "../../../lib/fleet-road-restrictions.mjs";
+import { summarizeRejectedRouteCandidates } from "../../../lib/truck-route-rejection.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -220,17 +221,7 @@ export async function POST(request) {
           validated: false,
           rejectedCandidateCount: selection.rejected.length
         },
-        rejectedCandidates: selection.rejected.slice(0, 5).map(candidate => ({
-          reason: candidate.reason,
-          conflicts: (candidate.restrictionCheck?.conflicts || []).slice(0, 5).map(item => ({
-            roadName: typeof item.roadName === "string" ? item.roadName.slice(0, 120) : null,
-            restrictionType: item.restrictionType
-          })),
-          unresolved: (candidate.restrictionCheck?.unresolved || []).slice(0, 5).map(item => ({
-            roadName: typeof item.roadName === "string" ? item.roadName.slice(0, 120) : null,
-            reason: item.reason
-          }))
-        }))
+        rejectedCandidates: summarizeRejectedRouteCandidates(selection.rejected)
       }, 409);
     }
 

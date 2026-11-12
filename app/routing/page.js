@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { getSavedTruckRoutingProfile } from "../../lib/truck-routing-profile.mjs";
+import { formatRejectedRouteMessages } from "../../lib/truck-route-rejection.mjs";
 import { ArrowRight, MapPin, Navigation, Route, ShieldAlert, Truck } from "lucide-react";
 
 const initial = {
@@ -308,30 +309,7 @@ export default function TruckRoutingPage() {
       });
       const data = await response.json();
       if (!response.ok) {
-        const reasonLabels = {
-          unresolved_fleet_restrictions: "פרטי מגבלות הדרך במסלול אינם מלאים או שאינם מאומתים",
-          fleet_restriction_conflict: "המסלול מתנגש עם מגבלת דרך של הצי",
-          provider_restriction_notice: "ספק הניווט סימן במסלול מגבלה קריטית",
-          missing_route_sections: "ספק הניווט לא החזיר גאומטריית מסלול מלאה",
-          invalid_route_geometry: "נתוני תוואי המסלול אינם תקינים",
-          invalid_route_summary: "נתוני אורך או משך המסלול אינם תקינים"
-        };
-        const unresolvedLabels = {
-          height_clearance_evidence_incomplete: "גובה המעבר אינו מאומת לפי מדידה מלאה לכל נתיב",
-          restriction_type_requires_manual_review: "סוג המגבלה דורש בדיקה ידנית",
-          missing_or_invalid_restriction_limit: "חסר ערך מגבלה תקין",
-          incomplete_time_window: "חלון שעות ההגבלה אינו מלא",
-          missing_or_invalid_location_or_route_geometry: "מיקום המגבלה או תוואי המסלול אינם מדויקים מספיק",
-          schedule_or_route_duration_cannot_be_evaluated_safely: "לא ניתן לאמת את שעות ההגבלה לאורך הנסיעה"
-        };
-        const details = (data.rejectedCandidates || []).flatMap(candidate => [
-          reasonLabels[candidate.reason] || "חלופת מסלול נדחתה בבדיקת בטיחות",
-          ...(candidate.conflicts || []).map(item =>
-            (item.roadName ? item.roadName + " — " : "") + "התנגשות עם מגבלת דרך"),
-          ...(candidate.unresolved || []).map(item =>
-            (item.roadName ? item.roadName + " — " : "") +
-            (unresolvedLabels[item.reason] || "נדרש אימות של נתוני המגבלה"))
-        ]).slice(0, 12);
+        const details = formatRejectedRouteMessages(data.rejectedCandidates || []);
         setMessage((data.error || "לא הצלחנו לחשב מסלול.") + (details.length ? " פירוט: " + details.join("; ") : ""));
         return;
       }
