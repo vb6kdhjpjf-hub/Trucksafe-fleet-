@@ -148,3 +148,17 @@ test("Ministry bridge GIS specification is a useful schema lead but not an opera
   assert.match(source.limitations, /אינו דורש שיטת מדידה/);
   assert.equal(isSourceCandidateOnly(source), true);
 });
+
+
+test("Ministry 2026 height-obstacle guidelines define lane-level measured clearance survey requirements but are not a data feed", () => {
+  const source = getRoadRestrictionSource("mot-height-obstacle-guidelines-2026");
+  assert.ok(source);
+  assert.equal(source.publisher, "משרד התחבורה והבטיחות בדרכים");
+  assert.equal(source.candidateOnly, false);
+  assert.equal(source.routingEligible, false);
+  assert.equal(source.dataTypes.includes("measurement_method"), true);
+  assert.match(source.limitations, /דיוק ±1 ס״מ/);
+  assert.match(source.limitations, /במרכז כל נתיב/);
+  assert.match(source.limitations, /מדידה תקופתית/);
+  assert.match(source.limitations, /לא שכבת נתונים בפועל/);
+});
