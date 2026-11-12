@@ -147,11 +147,14 @@ test("Ministry bridge GIS specification is a useful schema lead but not an opera
   assert.equal(source.lastPublished, "2025-11-25");
   assert.equal(source.candidateOnly, true);
   assert.equal(source.routingEligible, false);
-  assert.equal(source.dataTypes.includes("posted_clearance_field"), true);
+  assert.equal(source.dataTypes.includes("posted_or_measured_clearance_field"), true);
+  assert.equal(source.dataTypes.includes("clearance_source_ambiguous"), true);
   assert.match(source.limitations, /לא מאגר גשרים תפעולי/);
-  assert.match(source.limitations, /על פי השלט/);
-  assert.match(source.limitations, /לא מדידות פיזיות מאומתות/);
-  assert.match(source.limitations, /אינו מגדיר ערך מרווח אנכי שנמדד בפועל לכל נתיב/);
+  assert.match(source.limitations, /אי-התאמה בתוך המפרט/);
+  assert.match(source.limitations, /אין שדה שמבדיל לכל רשומה/);
+  assert.match(source.limitations, /Source ו-D_Update/);
+  assert.match(source.limitations, /הדיוק המרחבי של מטר מתייחס למיקום/);
+  assert.match(source.limitations, /לא ערך מרווח אנכי מדוד נפרד לכל נתיב/);
   assert.equal(isSourceCandidateOnly(source), true);
 });
 
