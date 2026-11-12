@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
+import { validateDeliveryPhotoFiles, findDeliveryPhotoEntry } from "../../lib/delivery-proof-photos.mjs";
 import { ArrowRight, ClipboardList, Plus, Truck, UserRound, MapPin, FileText, Package, CheckCircle2, Printer, PenLine, RefreshCw, X, ShieldCheck, Scale } from "lucide-react";
 
 const units = [
@@ -70,9 +71,11 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
     if(!hasSignature&&(!canOverride||exception.trim().length<5)){notify("נדרשת חתימת מקבל. רק בעלים או מנהל צי יכולים לתעד חריגת חתימה מנומקת.","error");return;}
     const numbers=[palletsDelivered,palletsReceived,palletsDamaged].map(Number);
     if(numbers.some(n=>!Number.isFinite(n)||n<0)||numbers[2]>numbers[1]){notify("יש לבדוק את כמויות המשטחים שהוחזרו והפגומים.","error");return;}
-    if(photos.length>8){notify("אפשר לצרף עד 8 תמונות לאישור מסירה.","error");return;}
-    if(photos.some(f=>!["image/png","image/jpeg","image/webp"].includes(f.type)||f.size>10*1024*1024)){notify("אפשר לצרף עד 10MB לכל תמונה בפורמט PNG, JPG או WEBP.","error");return;}
-    if(photos.reduce((total,file)=>total+file.size,0)>40*1024*1024){notify("הנפח הכולל של התמונות לאישור אחד מוגבל ל־40MB. אפשר לבחור פחות תמונות או להקטין אותן.","error");return;}
+    const photoIssue=validateDeliveryPhotoFiles(photos);
+    if(photoIssue){
+      const messages={too_many:"אפשר לצרף עד 8 תמונות לאישור מסירה.",invalid_file:"אפשר לצרף רק PNG, JPG או WEBP, עד 10MB לכל תמונה.",total_too_large:"הנפח הכולל של התמונות לאישור אחד מוגבל ל־40MB. אפשר לבחור פחות תמונות או להקטין אותן.",invalid_selection:"בחירת התמונות אינה תקינה."};
+      notify(messages[photoIssue]||messages.invalid_selection,"error");return;
+    }
     // Freeze the payload once an upload or RPC may have started. A timeout is
     // ambiguous: the server may already have committed the note. Retrying with
     // edited data and the same idempotency key must never be possible.
@@ -100,7 +103,7 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
         const file=photos[i];
         // Match the actual File object, not its name/size/timestamp: two
         // different photos can share that metadata but must never share a path.
-        let entry=attempt.photoEntries.find(item=>item.file===file);
+        let entry=findDeliveryPhotoEntry(attempt.photoEntries,file);
         if(!entry){
           const ext=file.type==="image/png"?"png":file.type==="image/webp"?"webp":"jpg";
           entry={file,path:prefix+crypto.randomUUID()+"."+ext,uploaded:false};
