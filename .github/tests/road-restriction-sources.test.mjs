@@ -248,3 +248,18 @@ test("delegated area authority catalogue refresh does not prove row-level author
   assert.match(source.limitations, /אינו מוכיח שכל מתחם/);
   assert.equal(source.routingEligible, false);
 });
+
+ 
+test("Survey of Israel BNTAL is national topographic asset discovery only, not truck clearance evidence", () => {
+  const source = getRoadRestrictionSource("survey-of-israel-bntal-topographic-database");
+  assert.ok(source);
+  assert.equal(source.publisher, "המרכז למיפוי ישראל");
+  assert.equal(source.contact, "service@mapi.gov.il");
+  assert.equal(source.candidateOnly, true);
+  assert.equal(source.routingEligible, false);
+  assert.equal(source.dataTypes.includes("national_topographic_structure_geometry_discovery"), true);
+  assert.match(source.limitations, /אינו מאשר שקיימת שכבת גשרים ייעודית/);
+  assert.match(source.limitations, /גובה מבנה טופוגרפי אינו גובה פנוי מתחת לגשר/);
+  assert.match(source.limitations, /תנאי רישיון מסחרי/);
+  assert.equal(isSourceCandidateOnly(source), true);
+});
