@@ -20,31 +20,21 @@ The database test runner executes the SQL files in `.github/tests/` inside trans
 
 **Important:** setting PostgreSQL request-claim variables is a synthetic claim simulation. It is not a signed JWT, does not validate a real Supabase Auth session, and is not live Supabase Auth end-to-end coverage. The local Supabase JS SDK fixture in `.github/tests/fleet-api-access.integration.test.mjs` is also a local protocol fixture, not a connection to a live Auth service.
 
-## Required next stage for live Auth coverage
+## Live Supabase Auth integration
 
-Do not create test identities by directly inserting into or deleting from `auth.users`. Before live Auth E2E is introduced, establish a disposable Test-only Auth fixture that:
-
-- Uses Supabase Auth Admin APIs from a trusted server-side test runner.
-- Is restricted to the dedicated Test project and cannot target Production.
-- Creates uniquely identified synthetic users and records their IDs for cleanup.
-- Cleans up users through the Auth Admin API in a guaranteed teardown path, including failed tests.
-- Never exposes service-role credentials to browser code, client bundles, logs, or chat.
-
-Until that fixture and cleanup guarantees are in place, report the current coverage accurately as synthetic-claim PostgreSQL RLS integration plus local SDK protocol tests. The expanded driver write-denial checks were added in commit `c124f9c` and passed both CI jobs (`validate` and `database-integration`) against the dedicated Test database.
-
-## Opt-in live Supabase Auth integration
-
-The optional `auth-integration` job runs only on pushes to `test/isolated-e2e-ci`; it does not receive Auth secrets on pull-request events. It runs only when all three GitHub Actions secrets are configured:
+The `auth-integration` job runs only on a direct push to `test/isolated-e2e-ci`, or on a manual dispatch on that branch with explicit confirmation. Pull-request events do not receive the live Test Auth secrets. The job runs only when all three dedicated Test secrets are configured:
 
 - `SUPABASE_TEST_URL` — must resolve exactly to `https://yxxrgblpqzhnnyojbwcr.supabase.co`.
 - `SUPABASE_TEST_ANON_KEY` — public Test-project key used only by the server-side test runner.
-- `SUPABASE_TEST_SERVICE_ROLE_KEY` — privileged Test-project key used only by the server-side Admin API client.
+- `SUPABASE_TEST_SERVICE_ROLE_KEY` — privileged Test-project key used only by the server-side Auth Admin client.
 
-The runner refuses any other URL, creates one confirmed synthetic Test Auth user through `auth.admin.createUser()`, signs in through the public Auth endpoint, validates the resulting signed access token with Auth, then performs a real `fleet_members` PostgREST lookup and verifies that a user with no membership is denied by the API. It does not create fleet memberships or modify application tables.
+The runner has a hard hostname guard and refuses Production. It creates seven disposable identities through Supabase Auth Admin APIs, signs in through the public Auth API, validates their real signed JWTs, and uses their tokens for actual PostgREST and local production-mode HTTP requests. The identities cover owner, fleet manager, dispatcher, safety manager, driver, a user with ambiguous multi-fleet membership, and an unassigned user. Coverage includes role-specific RLS visibility, manager-only access, fail-closed ambiguous membership, unauthenticated and invalid-token denial, actual API route authorization, immediate membership revocation, immediate manager-role demotion, and rejection of forged `user_metadata` privilege claims.
 
-The cleanup selector requires both a server-controlled `app_metadata.trucksafe_ci_fixture` marker and the dedicated `trucksafe-ci-` email prefix. It sweeps stale marked identities before a run, removes the created fixture in a `finally` path, and runs a second cleanup step with `if: always()`. If a runner is terminated before cleanup, the next Test Auth run sweeps any remaining marked fixture before creating another. Cleanup is performed only through the Supabase Auth Admin API; there are no direct writes to `auth.users`.
+The app server is bound to `127.0.0.1`; the Test service-role key is kept out of the server process and browser bundle. Provider keys remain empty and routing coverage approval remains false, so the tests stop at the configured safety gates rather than invoking HERE/PTV or claiming safe routing.
 
-The live test intentionally covers a real signed-in identity with **zero** fleet memberships. It does not yet prove positive membership access, role-specific RLS, or cross-fleet authorization using live Auth users. Those remain separate gates and must not be inferred from this smoke test or from synthetic SQL claim simulations. If the three secrets are absent, the job emits a notice and skips the live test rather than claiming it passed.
+Cleanup uses only the Supabase Auth Admin API and exact server-controlled fixture markers. It removes marked fleets and users in a guaranteed teardown path and performs a second cleanup step with `if: always()`. The latest verified run removed all seven identities and fleets; the follow-up sweep found zero remaining fixtures. No direct writes to `auth.users` are permitted.
+
+This live signed-token suite is distinct from rollback-only SQL tests that simulate JWT claims using PostgreSQL request settings. The latter do not validate signed tokens. Neither suite is a browser E2E test against a deployed app, proves production configuration, or validates routing-provider accuracy or Israeli restriction coverage. If the secrets are absent, Auth integration is skipped and must not be reported as passed.
 
 ## Release and safety gates
 
