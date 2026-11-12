@@ -44,8 +44,8 @@ test("detects candidate payload and assessment report changes", async t => {
   await writeFile(f.candidateFile, JSON.stringify(changed));
   await assert.rejects(verifyHumanReviewEvent(f), /Candidate payload hash/);
   await writeFile(f.candidateFile, originalCandidate);
-  const originalCandidate = JSON.parse(await readFile(f.candidateFile, "utf8"));
-  await writeFile(f.assessmentReportFile, JSON.stringify({ valid: false, approved_for_routing: false, candidate_payload_sha256: originalCandidate.payload_sha256, dimensions: {} }));
+  const restoredCandidate = JSON.parse(await readFile(f.candidateFile, "utf8"));
+  await writeFile(f.assessmentReportFile, JSON.stringify({ valid: false, approved_for_routing: false, candidate_payload_sha256: restoredCandidate.payload_sha256, dimensions: {} }));
   await assert.rejects(verifyHumanReviewEvent(f), /Assessment report hash/);
 });
 
