@@ -9,13 +9,15 @@ test("quotes commas, quotes and line breaks using RFC-style CSV escaping", () =>
 
 test("neutralizes spreadsheet formula prefixes including leading whitespace", () => {
   for (const value of ["=1+1", "+SUM(A1:A2)", "-1+2", "@SUM(A1)", "  =HYPERLINK(\"https://example.invalid\")"]) {
-    assert.equal(escapeEnterpriseCsvCell(value).startsWith("'"), true, value);
+    const cell = escapeEnterpriseCsvCell(value);
+    assert.equal(cell.startsWith("'") || cell.startsWith("\"'"), true, value);
   }
 });
 
 test("neutralizes leading tab, carriage return and newline controls", () => {
   for (const value of ["\t=1+1", "\r=1+1", "\n=1+1"]) {
-    assert.equal(escapeEnterpriseCsvCell(value).startsWith("'"), true);
+    const cell = escapeEnterpriseCsvCell(value);
+    assert.equal(cell.startsWith("'") || cell.startsWith("\"'"), true);
   }
 });
 
