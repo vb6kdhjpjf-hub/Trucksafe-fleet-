@@ -15,7 +15,7 @@ TruckSafe has a substantial fleet-management application and an isolated validat
 
 ## Workstreams
 
-| Enterprise onboarding and data migration | Product requirement captured; implementation not started | Guided Excel/CSV migration and later approved connectors, with mapping, validation, dry-run, duplicate review, audit and reconciliation. No one-by-one re-entry for established fleets. |
+| Enterprise onboarding and data migration | CSV parser and driver/vehicle mapping + row validation foundation implemented; import workflow not yet implemented | Next: private upload, customer entity, staging/job ledger, dry-run preview, role-gated idempotent commit, duplicate review and reconciliation. Excel and named ERP/TMS connectors follow after dependency and access review. No one-by-one re-entry for established fleets. |
 
 | Workstream | Current status | Evidence / remaining gate |
 |---|---|---|
@@ -368,4 +368,4 @@ Security: one verified fleet per import; authorized roles only; ambiguous matche
 
 Enterprise adoption also needs a labelled synthetic demo fleet, role-based onboarding, customer-approved migration rehearsal, reconciliation report, data ownership/export/retention documentation, security/access-control evidence, support/escalation expectations and measurable pilot outcomes.
 
-**Status:** product plan only. Migration Center, parsers, import APIs and connectors are not implemented. No customer data or Production schema/data has been changed.
+**Status:** CSV parser and initial driver/vehicle mapping and validation helpers are implemented and CI-tested. Migration Center UI, private upload, XLSX parser, staging/job ledger, import APIs, customer entity and connectors remain unimplemented. No operational records, customer data or Production schema/data have been changed.

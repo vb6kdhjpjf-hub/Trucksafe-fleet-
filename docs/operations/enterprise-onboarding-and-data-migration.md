@@ -1,6 +1,6 @@
 # Enterprise onboarding and data migration
 
-**Status:** blueprint only; implementation has not started.
+**Status:** CSV parsing and field mapping/row validation foundations are implemented and CI-tested. Upload UI, XLSX support, private staging, durable jobs, dry-run preview, commit APIs and customer records are not implemented yet.
 
 ## Product outcome
 An established fleet can adopt TruckSafe without manually recreating drivers, vehicles, customers or operational records. CSV/Excel is the first path; named system connectors follow only after API access, authorization and field semantics are verified.
@@ -27,6 +27,11 @@ An established fleet can adopt TruckSafe without manually recreating drivers, ve
 Every import belongs to exactly one verified fleet. Enforce tenant scope in API and database writes. Never match on display name alone; ambiguous matches require human review. Preview updates; no silent overwrite. Preserve source system/ID, import job, source row/sheet, source timestamp and transformation version. Validate relationships; use bounded server-side batches and stable idempotency keys. Dry-run writes nothing. Keep personal data/document contents out of logs.
 
 Never execute spreadsheet formulas or macros. Validate size, row count, encoding, dates/time zones, units, precision, identifiers and duplicate keys. Spreadsheet values do not prove truck safety or driver eligibility: missing/questionable dimensions, gross/tare/axle weights, licence data, registration approval, bridge clearance, restriction provenance, GPS or delivery proof remain unverified and require existing verification workflows.
+
+## Implemented foundation
+- `lib/enterprise-import-csv.mjs`: bounded CSV parser (20 MB, 100,000 data rows, 100 columns, 10,000 characters per field), BOM handling, comma/semicolon/tab detection, quoted values, strict malformed-quote handling and row-shape errors.
+- `lib/enterprise-import-mapping.mjs`: Hebrew/English header suggestions and initial drivers/vehicles field validation. Ambiguous mappings are not auto-selected; status/date/number values are not guessed; duplicate identifiers inside the file require review; imported vehicle dimensions and weights are explicitly flagged for document verification.
+- Automated tests are included in CI. These functions only parse and validate in memory; they do not upload files or write operational records.
 
 ## Target architecture
 - Browser upload, inspection, mapping, preview and progress; no service-role credentials.

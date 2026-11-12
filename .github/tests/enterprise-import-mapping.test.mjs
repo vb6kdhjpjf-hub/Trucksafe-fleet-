@@ -22,6 +22,7 @@ test("normalizes valid driver rows and rejects non-ISO dates", () => {
   const parsed = parseEnterpriseCsv("שם מלא,טלפון,תוקף רישיון\nדנה כהן,0501234567,2027-05-31\nאורי,0502222222,31/05/2027");
   const mapping = suggestImportColumnMappings(parsed.headers, "drivers");
   const result = validateEnterpriseImportRows(parsed, "drivers", mapping);
+  assert.equal(result.ok, true);
   assert.equal(result.summary.ready, 1);
   assert.equal(result.summary.rejected, 1);
   assert.equal(result.rows[0].data.full_name, "דנה כהן");
@@ -33,6 +34,7 @@ test("maps vehicle fields but flags imported safety specifications for document 
   const parsed = parseEnterpriseCsv("מספר רישוי,יצרן,דגם,גובה סמ,משקל כולל קג\n1234567,Volvo,FH,390,40000");
   const mapping = suggestImportColumnMappings(parsed.headers, "vehicles");
   const result = validateEnterpriseImportRows(parsed, "vehicles", mapping);
+  assert.equal(result.ok, true);
   assert.equal(result.summary.review, 1);
   assert.equal(result.rows[0].data.registration_number, "1234567");
   assert.equal(result.rows[0].data.height_cm, 390);
@@ -43,6 +45,7 @@ test("detects duplicate fleet identity values within the uploaded file", () => {
   const parsed = parseEnterpriseCsv("registration_number,make\n123-45-678,Volvo\n12345678,MAN");
   const mapping = suggestImportColumnMappings(parsed.headers, "vehicles");
   const result = validateEnterpriseImportRows(parsed, "vehicles", mapping);
+  assert.equal(result.ok, true);
   assert.equal(result.summary.review, 2);
   assert.ok(result.rows.every(row => row.warnings.some(x => x.code === "duplicate_identity_in_file")));
 });
@@ -63,6 +66,7 @@ test("rejects numeric values with ambiguous locale formatting and invalid ranges
   const parsed = parseEnterpriseCsv("registration_number,year,capacity_kg\n123,2027,1,500");
   const mapping = suggestImportColumnMappings(parsed.headers, "vehicles");
   const result = validateEnterpriseImportRows(parsed, "vehicles", mapping);
+  assert.equal(result.ok, true);
   assert.equal(result.summary.rejected, 1);
   assert.ok(result.rows[0].errors.some(x => x.code === "column_count_mismatch"));
 });
