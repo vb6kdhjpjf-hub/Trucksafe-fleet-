@@ -127,3 +127,20 @@ A read-only migration-history comparison was performed after the security/perfor
 - Do not create the indexes manually or insert a migration-history row. Once explicitly authorized, apply the existing reviewed migration through the migration workflow to the dedicated Test project, then verify both index definitions, the migration history, and the advisor output. Production remains out of scope.
 - The 17 unused-index notices are not grounds for index removal in a low-activity Test project. Retain them pending workload evidence.
 - The dashboard's Data API Exposed Schemas setting is still unverified. Database runtime settings did not expose a usable `pgrst.db_schemas` value; verify the dashboard setting directly before relying on schema invisibility.
+
+
+## Test security and storage review (2026-11-12)
+
+A further read-only review was completed against the dedicated Test project after the reviewer-index migration. No application data, Auth users, grants, policies, or storage objects were changed.
+
+- RLS is enabled on all 12 tables in `public` and the one table in `private`. The reviewed fleet tables have fleet-scoped policies; the route-request table has user-scoped SELECT/INSERT policies, while its current table grant remains SELECT-only for `authenticated`.
+- Both existing Storage buckets are private. `incident-photos` accepts JPEG/PNG/WEBP up to 5 MiB; `vehicle-registrations` accepts PDF/JPEG/PNG/WEBP up to 8 MiB. The Test project currently has zero objects in either bucket.
+- The two SECURITY DEFINER functions reported by the security advisor, `public.finish_trip` and `public.start_trip_with_inspection`, were inspected. Both set an empty search_path, reject missing Auth identity, verify active fleet membership, scope records to the supplied fleet, and apply driver/manager authorization before writes. The advisor warnings remain visible because authenticated users are intentionally allowed to call these RPCs; do not silence them by weakening or removing the checks. Keep them under explicit security regression tests.
+- The `private` schema currently grants USAGE to `authenticated`, and selected helper functions are executable by authenticated users. This is not proof that the schema is or is not exposed by PostgREST. The Data API Exposed Schemas dashboard setting remains the one unresolved configuration check; do not rely on the schema name alone for isolation.
+- Existing public tables have broad table-level grants to API roles, but RLS is enabled on every inspected public table. No privilege reduction was made because it requires a full application/API compatibility review and could break legitimate access. New import/staging tables must use explicit least-privilege grants and RLS by design.
+
+### Reviewer-index migration applied to Test
+
+With explicit user authorization, the existing reviewed migration was applied through the Supabase migration workflow to **TruckSafe Fleet Test only**. Supabase recorded migration version `20261112140904` (`add_verified_by_fk_indexes`). Catalog verification confirmed both expected B-tree indexes on the correct columns. The performance advisor no longer reports the original missing-FK-index findings; it now reports the two new indexes among unused indexes, which is expected in a low-activity Test environment. No index was removed.
+
+Production remains unchanged and out of scope. No deployment or PR merge was performed.
