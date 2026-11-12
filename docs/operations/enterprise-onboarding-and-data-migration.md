@@ -95,3 +95,24 @@ The next implementation step is a durable, private staging layer. This section r
 - Fault-injection tests for interrupted upload, interrupted validation, process termination during a batch, duplicate retry, and uncertain commit response.
 - A reconciliation report must compare source rows with ready/review/rejected and committed/skipped/conflicted/failed outcomes. No green “complete” state unless counts reconcile.
 - No migration is applied to either Production or Test as part of this design note. Schema changes must first be reviewed as additive migration files on the Draft branch and validated only against the dedicated Test project.
+
+## Test-environment architecture inspection (2026-11-12)
+
+Read-only inspection was performed against the dedicated **TruckSafe Fleet Test** project only. No schema, data, grants, Auth users, or project settings were changed.
+
+### Findings
+
+- The Test database is PostgreSQL 17.11. The existing `public.drivers` and `public.vehicles` tables have RLS enabled and fleet-scoped manager write policies; their schema already contains the canonical fields needed for the first insert-only master-data phase.
+- The current app uses a browser-side Supabase client in `lib/supabase.js` with `persistSession`; the import page calls `auth.getSession()` in the browser. There is no existing Next.js server Supabase session helper or `@supabase/ssr` dependency in the inspected project files. A server route must therefore not assume that an authenticated cookie session is already available.
+- The Test database has a `private` schema and an existing `private.truck_route_requests` table. The `authenticated` role has schema USAGE and SELECT on that table; it does not have INSERT privilege on that table. The `service_role` and `anon` roles do not have USAGE on `private`. This existing object is unrelated to import staging and must not be repurposed.
+- The runtime query for `pgrst.db_schemas` returned NULL; this does **not** establish the dashboard's configured Exposed Schemas. The Data API exposure list must be checked in project settings before relying on any schema being hidden or exposed. A schema named `private` is not, by its name alone, proof of API isolation.
+- Existing public master-data tables have broad table-level grants for API roles, while row access is constrained by RLS. New staging objects must not inherit that access pattern: no anon/authenticated table grants, no public row access, and explicit least-privilege grants only.
+- The Test security advisor continues to report two pre-existing SECURITY DEFINER RPC warnings: `public.finish_trip` and `public.start_trip_with_inspection`. They were previously reviewed read-only for explicit fleet/role checks and a fixed empty search_path; they were not changed as part of import work. Keep them as a separate tracked security review item.
+
+### Implementation decision
+
+Do not add import tables or routes until the server trust boundary is explicit. The browser currently owns the Supabase session, so the first server endpoint must receive a bearer access token over HTTPS, validate it with Supabase Auth (`auth.getUser(token)`), and independently resolve the current fleet membership and role from database-backed records. Do not trust a client-supplied user ID, fleet ID, role, or target record ID.
+
+For durable staging, prefer a dedicated staging store whose tables are inaccessible to anon/authenticated roles and whose server-side access is narrowly scoped. If a server-only service credential is used, it must remain outside all `NEXT_PUBLIC_` variables and browser bundles; the route must complete signed-user and current-role checks before every privileged operation, including commit. Never expose the staging schema through the Data API merely to make it convenient for the browser. An alternative dedicated database role with narrowly scoped grants may be evaluated before choosing the final storage path.
+
+Before implementation, inspect the exact Supabase Data API Exposed Schemas setting and available server-only environment configuration names (never print secret values). Then add the route, staged-job tables, and tests as additive files/migrations on the Draft branch only. Validate the migration and real signed-user route against the isolated Test project; do not apply it to Test until the migration and rollback/test plan have been reviewed. Production remains out of scope.
