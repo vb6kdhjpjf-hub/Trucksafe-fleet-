@@ -138,13 +138,13 @@ begin
     raise exception 'Work date, driver and vehicle are required';
   end if;
 
-  select * into v_driver from public.drivers
-  where id=p_driver_id and fleet_id=p_fleet_id;
+  select d.* into v_driver from public.drivers d
+  where d.id=p_driver_id and d.fleet_id=p_fleet_id;
   if not found or v_driver.status <> 'active' then
     raise exception 'The assigned driver is not active in this fleet';
   end if;
-  select * into v_vehicle from public.vehicles
-  where id=p_vehicle_id and fleet_id=p_fleet_id;
+  select v.* into v_vehicle from public.vehicles v
+  where v.id=p_vehicle_id and v.fleet_id=p_fleet_id;
   if not found or v_vehicle.status not in ('available','assigned') then
     raise exception 'The selected vehicle is not available in this fleet';
   end if;
@@ -226,13 +226,13 @@ begin
   if not private.has_fleet_role(p_fleet_id,array['owner','fleet_manager','dispatcher']::text[]) then
     raise exception 'Only an authorized fleet manager may activate a daily work plan';
   end if;
-  select * into v_plan from public.daily_work_plans
-  where id=p_plan_id and fleet_id=p_fleet_id for update;
+  select p.* into v_plan from public.daily_work_plans p
+  where p.id=p_plan_id and p.fleet_id=p_fleet_id for update;
   if not found or v_plan.status <> 'planned' then
     raise exception 'Daily work plan is not available for activation';
   end if;
-  select * into v_vehicle from public.vehicles
-  where id=v_plan.vehicle_id and fleet_id=p_fleet_id for update;
+  select v.* into v_vehicle from public.vehicles v
+  where v.id=v_plan.vehicle_id and v.fleet_id=p_fleet_id for update;
   if not found or v_vehicle.status not in ('available','assigned')
      or v_vehicle.registration_verification_status is distinct from 'verified'
      or v_vehicle.empty_weight_kg is distinct from v_plan.tare_weight_kg
@@ -240,16 +240,16 @@ begin
      or v_vehicle.weight_per_axle_kg is distinct from v_plan.registered_axle_limit_kg then
     raise exception 'Vehicle is unavailable or its verified registration profile has changed';
   end if;
-  select * into v_driver from public.drivers
-  where id=v_plan.driver_id and fleet_id=p_fleet_id;
+  select d.* into v_driver from public.drivers d
+  where d.id=v_plan.driver_id and d.fleet_id=p_fleet_id;
   if not found or v_driver.status <> 'active' then
     raise exception 'Assigned driver is no longer active';
   end if;
   if not exists(select 1 from public.daily_work_stops s where s.plan_id=p_plan_id and s.fleet_id=p_fleet_id) then
     raise exception 'Daily work plan has no stops';
   end if;
-  update public.daily_work_plans set status='active',updated_at=now()
-  where id=p_plan_id and fleet_id=p_fleet_id;
+  update public.daily_work_plans as p set status='active',updated_at=now()
+  where p.id=p_plan_id and p.fleet_id=p_fleet_id;
   return p_plan_id;
 end;
 $function$;
@@ -264,7 +264,7 @@ alter table public.daily_load_events enable row level security;
 create policy daily_work_plans_select_member
 on public.daily_work_plans for select to authenticated
 using (
-  private.has_fleet_role(fleet_id,array['owner','fleet_manager','dispatcher','safety_manager']::text[])
+  private.has_fleet_role(daily_work_plans.fleet_id,array['owner','fleet_manager','dispatcher','safety_manager']::text[])
   or exists (
     select 1 from public.drivers d
     where d.id = daily_work_plans.driver_id
@@ -276,20 +276,20 @@ using (
 create policy daily_work_plans_insert_managers
 on public.daily_work_plans for insert to authenticated
 with check (
-  private.has_fleet_role(fleet_id,array['owner','fleet_manager','dispatcher']::text[])
+  private.has_fleet_role(daily_work_plans.fleet_id,array['owner','fleet_manager','dispatcher']::text[])
   and created_by = (select auth.uid())
   and status in ('planned','active')
 );
 
 create policy daily_work_plans_update_managers
 on public.daily_work_plans for update to authenticated
-using (private.has_fleet_role(fleet_id,array['owner','fleet_manager','dispatcher']::text[]))
-with check (private.has_fleet_role(fleet_id,array['owner','fleet_manager','dispatcher']::text[]));
+using (private.has_fleet_role(daily_work_plans.fleet_id,array['owner','fleet_manager','dispatcher']::text[]))
+with check (private.has_fleet_role(daily_work_plans.fleet_id,array['owner','fleet_manager','dispatcher']::text[]));
 
 create policy daily_work_stops_select_member
 on public.daily_work_stops for select to authenticated
 using (
-  private.has_fleet_role(fleet_id,array['owner','fleet_manager','dispatcher','safety_manager']::text[])
+  private.has_fleet_role(daily_work_stops.fleet_id,array['owner','fleet_manager','dispatcher','safety_manager']::text[])
   or exists (
     select 1 from public.daily_work_plans p
     join public.drivers d on d.id=p.driver_id and d.fleet_id=p.fleet_id
@@ -300,17 +300,17 @@ using (
 
 create policy daily_work_stops_insert_managers
 on public.daily_work_stops for insert to authenticated
-with check (private.has_fleet_role(fleet_id,array['owner','fleet_manager','dispatcher']::text[]));
+with check (private.has_fleet_role(daily_work_stops.fleet_id,array['owner','fleet_manager','dispatcher']::text[]));
 
 create policy daily_work_stops_update_managers
 on public.daily_work_stops for update to authenticated
-using (private.has_fleet_role(fleet_id,array['owner','fleet_manager','dispatcher']::text[]))
-with check (private.has_fleet_role(fleet_id,array['owner','fleet_manager','dispatcher']::text[]));
+using (private.has_fleet_role(daily_work_stops.fleet_id,array['owner','fleet_manager','dispatcher']::text[]))
+with check (private.has_fleet_role(daily_work_stops.fleet_id,array['owner','fleet_manager','dispatcher']::text[]));
 
 create policy daily_load_events_select_member
 on public.daily_load_events for select to authenticated
 using (
-  private.has_fleet_role(fleet_id,array['owner','fleet_manager','dispatcher','safety_manager']::text[])
+  private.has_fleet_role(daily_load_events.fleet_id,array['owner','fleet_manager','dispatcher','safety_manager']::text[])
   or exists (
     select 1 from public.daily_work_plans p
     join public.drivers d on d.id=p.driver_id and d.fleet_id=p.fleet_id
@@ -372,8 +372,8 @@ begin
   );
 
   select * into v_plan
-  from public.daily_work_plans
-  where id=p_plan_id and fleet_id=p_fleet_id
+  from public.daily_work_plans as p
+  where p.id=p_plan_id and p.fleet_id=p_fleet_id
   for update;
 
   if not found then raise exception 'Daily work plan not found in this fleet'; end if;
@@ -382,8 +382,8 @@ begin
     where d.id=v_plan.driver_id and d.fleet_id=p_fleet_id and d.user_id=v_actor
   ) then raise exception 'Only the assigned driver or an authorized fleet manager may record this stop'; end if;
   if v_plan.status <> 'active' then raise exception 'Daily work plan is not active'; end if;
-  select * into v_vehicle from public.vehicles
-  where id=v_plan.vehicle_id and fleet_id=p_fleet_id
+  select * into v_vehicle from public.vehicles as v
+  where v.id=v_plan.vehicle_id and v.fleet_id=p_fleet_id
   for update;
   if not found or v_vehicle.registration_verification_status is distinct from 'verified'
      or v_vehicle.empty_weight_kg is distinct from v_plan.tare_weight_kg
@@ -394,13 +394,13 @@ begin
 
   if v_plan.load_revision <> p_expected_revision then raise exception 'Stale load revision'; end if;
   if exists (
-    select 1 from public.daily_load_events
-    where plan_id=p_plan_id and event_key=p_event_key
+    select 1 from public.daily_load_events as e
+    where e.plan_id=p_plan_id and e.event_key=p_event_key
   ) then raise exception 'Duplicate load operation event'; end if;
 
   select * into v_stop
-  from public.daily_work_stops
-  where id=p_stop_id and fleet_id=p_fleet_id and plan_id=p_plan_id
+  from public.daily_work_stops as s
+  where s.id=p_stop_id and s.fleet_id=p_fleet_id and s.plan_id=p_plan_id
   for update;
   if not found then raise exception 'Stop not found in this daily work plan'; end if;
   if v_stop.status <> 'pending' then raise exception 'Stop is already completed or unavailable'; end if;
@@ -431,7 +431,7 @@ begin
     p_measured_at,p_measurement_source,btrim(p_measurement_reference),v_next_revision,v_actor
   );
 
-  update public.daily_work_plans
+  update public.daily_work_plans as p
   set current_gross_weight_kg=p_measured_gross_weight_kg,
       current_heaviest_axle_kg=p_measured_heaviest_axle_kg,
       load_revision=v_next_revision,
@@ -439,11 +439,11 @@ begin
       measurement_source=p_measurement_source,
       measurement_reference=btrim(p_measurement_reference),
       updated_at=now()
-  where id=p_plan_id and fleet_id=p_fleet_id;
+  where p.id=p_plan_id and p.fleet_id=p_fleet_id;
 
-  update public.daily_work_stops
+  update public.daily_work_stops as s
   set status='completed',actual_quantity_kg=p_quantity_kg,completed_at=now(),updated_at=now()
-  where id=p_stop_id and fleet_id=p_fleet_id;
+  where s.id=p_stop_id and s.fleet_id=p_fleet_id;
 
   return jsonb_build_object(
     'plan_id',p_plan_id,
