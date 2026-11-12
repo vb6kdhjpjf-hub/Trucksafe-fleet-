@@ -219,7 +219,18 @@ export async function POST(request) {
         restrictionValidation: {
           validated: false,
           rejectedCandidateCount: selection.rejected.length
-        }
+        },
+        rejectedCandidates: selection.rejected.slice(0, 5).map(candidate => ({
+          reason: candidate.reason,
+          conflicts: (candidate.restrictionCheck?.conflicts || []).slice(0, 5).map(item => ({
+            roadName: typeof item.roadName === "string" ? item.roadName.slice(0, 120) : null,
+            restrictionType: item.restrictionType
+          })),
+          unresolved: (candidate.restrictionCheck?.unresolved || []).slice(0, 5).map(item => ({
+            roadName: typeof item.roadName === "string" ? item.roadName.slice(0, 120) : null,
+            reason: item.reason
+          }))
+        }))
       }, 409);
     }
 
