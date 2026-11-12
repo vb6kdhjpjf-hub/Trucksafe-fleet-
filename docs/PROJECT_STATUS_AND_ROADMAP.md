@@ -15,9 +15,9 @@ TruckSafe has a substantial fleet-management application and an isolated validat
 
 ## Workstreams
 
-| Enterprise onboarding and data migration | CSV parser and driver/vehicle mapping + row validation foundation implemented; import workflow not yet implemented | Next: private upload, customer entity, staging/job ledger, dry-run preview, role-gated idempotent commit, duplicate review and reconciliation. Excel and named ERP/TMS connectors follow after dependency and access review. No one-by-one re-entry for established fleets. |
-
 | Workstream | Current status | Evidence / remaining gate |
+|---|---|---|
+| Enterprise onboarding and data migration | CSV parser, Hebrew/English mapping, validation and browser-only preview with read-only fleet identity preflight implemented | Driver license and vehicle registration collisions against existing fleet rows are flagged for review. Preview is blocked if the read-only preflight fails or exceeds its 100,000-row safety cap. No upload, staging, durable jobs or operational writes exist yet. Next: private staging, server-side dry-run, role-gated idempotent commit, reconciliation and recovery. XLSX and named ERP/TMS connectors follow after dependency and access review. |
 |---|---|---|
 | Fleet workspace and dashboard | Implemented in the application | Login, fleet membership, fleet dashboard and operational modules exist; dashboard loading now fails closed when an account has multiple fleet memberships or multiple owned fleets instead of selecting one arbitrarily. Complete user-acceptance testing is still required. |
 | Drivers, vehicles and tasks | Implemented; safety checks added | Driver eligibility, vehicle lifecycle and task/pre-trip flows have automated tests. Isolated authenticated-role tests now verify cross-fleet row isolation, dispatcher write denial, driver assignment-scoped vehicle reads, authenticated driver start/finish RPC authorization, and private registration-document read/upload restrictions. Real-user acceptance and edge-case review remain. |
@@ -34,12 +34,12 @@ TruckSafe has a substantial fleet-management application and an isolated validat
 
 ## Verified engineering baseline
 
-The latest verified isolated validation run is [GitHub Actions run 43186466322](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43186466322), on commit `430512e4702267eeb584d1fb2e7de76124f487c6`. All three jobs passed: application validation, rollback-only database integration on the dedicated Test project, and live Test Auth integration.
+The latest verified isolated validation run is [GitHub Actions run 43201819301](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43201819301), on commit `731d69f11cfdb1b6f1aa7b38ed3b65743e7cdfc3`. The matching [pull-request validation run 43201830998](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43201830998) also passed. All three push jobs passed: application validation, rollback-only database integration on the dedicated Test project, and live Test Auth integration.
 
 Recorded results:
-- Application and safety tests passed (210 tests); delivery quantity, photo and GPS tests passed (17); fleet API access tests passed (40); workflow safety tests passed (8).
-- Dependency audit reported 0 vulnerabilities. The Next.js production build and 20 concurrent application smoke requests passed.
-- Database integration passed, including delivery-proof storage policy assertions, rejection of incomplete GPS coordinate pairs, six-decimal GPS snapshot normalization, and idempotent replay of a delivery event with GPS evidence. SQL fixtures and migration checks are rollback-only on the dedicated Test database.
+- Application and safety tests passed (210 tests); delivery quantity, photo and GPS tests passed (19); fleet API access tests passed (40); enterprise-import tests passed (30); workflow safety tests passed (8).
+- Dependency audit reported 0 vulnerabilities. The Next.js production build and concurrent application smoke tests passed.
+- Database integration passed. SQL fixtures and migration checks are rollback-only on the dedicated Test database.
 - Live Auth integration passed with seven disposable signed Test identities: owner, fleet manager, dispatcher, safety manager, driver, ambiguous multi-fleet user and unassigned user. It exercised real signed JWT validation, PostgREST membership reads, RLS visibility, actual route and local production-mode HTTP authorization, invalid-token denial, immediate membership revocation, manager-role demotion and rejection of forged `user_metadata` privilege claims.
 - Auth fixture cleanup removed all seven marked Test identities and their fleets through the Supabase Auth Admin API; the follow-up cleanup found zero remaining fixtures.
 - Delivery proof now supports optional GPS capture only after an explicit driver action; no background location tracking is performed. Coordinates are range-checked and normalized to the database's six-decimal precision before idempotency comparison.
