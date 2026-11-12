@@ -33,9 +33,11 @@ Safety rule: **none of the sources listed here is currently approved as a verifi
 - The application's current verification policy requires source-backed measurement evidence before a height restriction can be marked verified.
 
 ### Israel Railways grade-separation dataset
-- Official dataset search lead: https://data.gov.il/
-- The previously located dataset identifies grade-separation locations/names and maintenance responsibility, but does not provide measured vertical clearance.
-- Permitted use: candidate discovery only. It cannot establish a height restriction or a safe/unsafe truck passage.
+- Official dataset: https://data.gov.il/he/datasets/ministry_of_transport/levelseparation
+- The catalogue currently exposes a CSV with 618 records, last updated 30 June 2024. The visible fields include rail/grade-separation name, X/Y coordinates, road, hectometer/chainage, location/description, whether rail passes over, status, year-month, maintenance body, and traffic-authority code/type.
+- The published schema does not include measured or posted clearance, truck weight/axle limits, width/length limits, lane/direction-specific restrictions, or restriction time windows. This is a rail/road grade-separation subset, not a comprehensive inventory of every road bridge in Israel.
+- The catalogue lists `GOLDO@MOT.GOV.IL` as its contact mailbox. The update date is old relative to this review, so the current status and any newer version must be confirmed.
+- Permitted use: candidate discovery only. It cannot establish a height restriction or a safe/unsafe truck passage; absence of a record does not prove no bridge or restriction exists.
 
 ### Ministry of Transport — delegated road-signing authority datasets
 - Official road-authority segment dataset: https://data.gov.il/he/datasets/ministry_of_transport/roadauthority. Its description says it maps road segments where the traffic-signing authority was delegated to a body other than the municipality. The publisher is the Ministry of Transport; the page lists `pinusi@mot.gov.il` as its contact mailbox and shows a dataset update date of 22 July 2026.
