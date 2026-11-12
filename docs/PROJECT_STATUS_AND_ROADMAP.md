@@ -32,7 +32,7 @@ TruckSafe has a substantial fleet-management application and an isolated validat
 
 ## Verified engineering baseline
 
-The latest verified isolated validation run is [GitHub Actions run 43185916978](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43185916978), on commit `21fbceebfe1c980cb6c4fb911c1ae1b14aae404f`. All three jobs passed: application validation, rollback-only database integration on the dedicated Test project, and live Test Auth integration.
+The latest verified isolated validation run is [GitHub Actions run 43186466322](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43186466322), on commit `430512e4702267eeb584d1fb2e7de76124f487c6`. All three jobs passed: application validation, rollback-only database integration on the dedicated Test project, and live Test Auth integration.
 
 Recorded results:
 - Application and safety tests passed (210 tests); delivery quantity, photo and GPS tests passed (17); fleet API access tests passed (40); workflow safety tests passed (8).
