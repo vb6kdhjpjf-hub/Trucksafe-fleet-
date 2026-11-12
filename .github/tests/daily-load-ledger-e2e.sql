@@ -43,7 +43,7 @@ begin
         (other_fleet_id,'Other Daily Load Test Fleet',other_owner_id);
 
   insert into public.fleet_members(fleet_id,user_id,role)
-  values(fleet_id,driver_user_id,'driver');
+  values(fleet_id,owner_id,'owner'),(fleet_id,driver_user_id,'driver');
 
   insert into public.drivers(id,fleet_id,user_id,full_name,license_expires_at,status)
   values(driver_id,fleet_id,driver_user_id,'Daily Test Driver',current_date+365,'active');
