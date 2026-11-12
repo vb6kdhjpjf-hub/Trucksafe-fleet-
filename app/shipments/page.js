@@ -48,6 +48,10 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
   const [photos,setPhotos]=useState([]);
   const [hasSignature,setHasSignature]=useState(false);
   const padRef=useRef(null);
+  // Keep one idempotency key and stable private object paths for this mounted
+  // proof attempt. If the server commits but the response is lost, retrying
+  // must return the original note rather than issue a second document.
+  const proofAttempt=useRef({eventKey:eventKey(),signaturePath:null,signatureUploaded:false,photoEntries:[]});
   async function submit(event){
     event.preventDefault();
     if(busy)return;
@@ -64,21 +68,35 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
       if(hasSignature){
         const canvas=padRef.current;
         const blob=await new Promise((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error("לא ניתן להפיק קובץ חתימה")),"image/png"));
-        signaturePath=prefix+crypto.randomUUID()+".png";
-        const {error}=await supabase.storage.from("delivery-proof-private").upload(signaturePath,blob,{contentType:"image/png",upsert:false});
-        if(error)throw error;
-        uploaded.push(signaturePath);
+        const attempt=proofAttempt.current;
+        if(!attempt.signaturePath)attempt.signaturePath=prefix+crypto.randomUUID()+".png";
+        signaturePath=attempt.signaturePath;
+        if(!attempt.signatureUploaded){
+          const {error}=await supabase.storage.from("delivery-proof-private").upload(signaturePath,blob,{contentType:"image/png",upsert:false});
+          if(error)throw error;
+          attempt.signatureUploaded=true;uploaded.push(signaturePath);
+        }
       }
+      const attempt=proofAttempt.current;
       const photoPaths=[];
-      for(const file of photos){
-        const ext=file.type==="image/png"?"png":file.type==="image/webp"?"webp":"jpg";
-        const path=prefix+crypto.randomUUID()+"."+ext;
-        const {error}=await supabase.storage.from("delivery-proof-private").upload(path,file,{contentType:file.type,upsert:false});
-        if(error)throw error;
-        uploaded.push(path);photoPaths.push(path);
+      for(let i=0;i<photos.length;i++){
+        const file=photos[i];
+        const fingerprint=[file.name,file.size,file.lastModified,file.type].join(":");
+        let entry=attempt.photoEntries.find(item=>item.fingerprint===fingerprint);
+        if(!entry){
+          const ext=file.type==="image/png"?"png":file.type==="image/webp"?"webp":"jpg";
+          entry={fingerprint,path:prefix+crypto.randomUUID()+"."+ext,uploaded:false};
+          attempt.photoEntries.push(entry);
+        }
+        if(!entry.uploaded){
+          const {error}=await supabase.storage.from("delivery-proof-private").upload(entry.path,file,{contentType:file.type,upsert:false});
+          if(error)throw error;
+          entry.uploaded=true;uploaded.push(entry.path);
+        }
+        photoPaths.push(entry.path);
       }
       const {data,error}=await supabase.rpc("complete_delivery_document",{
-        p_fleet_id:fleetId,p_shipment_id:shipment.id,p_stop_id:stop.id,p_event_key:eventKey(),
+        p_fleet_id:fleetId,p_shipment_id:shipment.id,p_stop_id:stop.id,p_event_key:proofAttempt.current.eventKey,
         p_recipient_name:hasSignature?recipient.trim():null,p_signature_object_path:signaturePath,
         p_photo_object_paths:photoPaths,p_gps_latitude:null,p_gps_longitude:null,
         p_recipient_note:note.trim()||null,p_exception_reason:hasSignature?null:exception.trim(),
