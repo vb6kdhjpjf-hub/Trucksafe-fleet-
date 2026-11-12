@@ -107,3 +107,15 @@ test("Ministry road-tunnel GIS is national candidate-asset discovery only and ha
   assert.match(source.limitations, /אין בו.*גובה מעבר מדוד/);
   assert.equal(isSourceCandidateOnly(source), true);
 });
+
+test("OpenStreetMap truck restriction tags remain community-only leads and never approve routing", () => {
+  const source = getRoadRestrictionSource("openstreetmap-community-truck-restrictions");
+  assert.ok(source);
+  assert.equal(source.publisher, "OpenStreetMap contributors");
+  assert.equal(source.candidateOnly, true);
+  assert.equal(source.routingEligible, false);
+  assert.equal(source.dataTypes.includes("community_maxheight"), true);
+  assert.match(source.limitations, /נתוני מיפוי קהילתיים ולא מקור רשמי/);
+  assert.match(source.limitations, /היעדר תגית אינו מוכיח שאין מגבלה/);
+  assert.equal(isSourceCandidateOnly(source), true);
+});
