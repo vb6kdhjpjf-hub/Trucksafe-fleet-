@@ -474,8 +474,40 @@ async function main() {
     await assertActualRouteAuthorization({ url, anonKey, token: managerSession.token, role: "driver" });
     await assertActualHttpAuthorization({ baseUrl: httpServer.baseUrl, token: managerSession.token, role: "driver" });
 
+    // User-editable profile metadata must never grant fleet privileges.
+    // Simulate a malicious profile claiming owner/admin while the authoritative
+    // fleet_members row remains driver; keep using the same signed session.
+    const { data: forgedProfile, error: forgedProfileError } = await admin.auth.admin.updateUserById(
+      manager.user.id,
+      { user_metadata: { role: "owner", fleet_role: "owner", is_admin: true } }
+    );
+    if (forgedProfileError || forgedProfile?.user?.id !== manager.user.id) {
+      throw new Error("Test-only user_metadata privilege-forgery fixture could not update the disposable profile.");
+    }
+    const { data: authoritativeMembership, error: authoritativeMembershipError } = await managerSession.client
+      .from("fleet_members")
+      .select("role")
+      .eq("fleet_id", createdFleet.id)
+      .eq("user_id", manager.user.id)
+      .maybeSingle();
+    if (authoritativeMembershipError || authoritativeMembership?.role !== "driver") {
+      throw new Error("User-editable profile metadata changed the authoritative fleet membership role.");
+    }
+    const forgedGeneral = await resolveFleetApiAccess(managerSession.client, managerSession.token);
+    assert.equal(forgedGeneral.status, 200);
+    assert.equal(forgedGeneral.data.membership.role, "driver",
+      "user_metadata role claims must not override the database fleet_members role");
+    const forgedManagerOnly = await resolveFleetApiAccess(managerSession.client, managerSession.token, {
+      allowedRoles: ["owner", "fleet_manager"]
+    });
+    assert.equal(forgedManagerOnly.status, 403,
+      "a user_metadata owner/admin claim must not grant manager-only access");
+    assert.equal(forgedManagerOnly.reason, "fleet_manager_required");
+    await assertActualRouteAuthorization({ url, anonKey, token: managerSession.token, role: "driver" });
+    await assertActualHttpAuthorization({ baseUrl: httpServer.baseUrl, token: managerSession.token, role: "driver" });
+
     process.stdout.write(
-      "Live Test Auth passed: seven signed Test identities, RLS visibility, actual route and HTTP authorization, invalid-token denial, immediate membership revocation, and immediate manager-role demotion all matched expectations.\\n"
+      "Live Test Auth passed: seven signed Test identities, RLS visibility, actual route and HTTP authorization, invalid-token denial, immediate membership revocation, immediate manager-role demotion, and resistance to forged user_metadata privilege claims all matched expectations.\\n"
     );
   } catch (error) {
     testError = error;
