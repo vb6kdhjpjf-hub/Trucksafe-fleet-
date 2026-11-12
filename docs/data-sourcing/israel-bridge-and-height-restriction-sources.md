@@ -1,7 +1,7 @@
 # Israel Bridge and Height-Restriction Data Sources
 
 Status: source discovery / acquisition plan  
-Last reviewed: 2026-11-10  
+Last reviewed: 2026-11-12  
 Safety rule: **none of the sources listed here is currently approved as a verified, routing-blocking restriction feed.**
 
 ## 1. What we know
@@ -17,6 +17,14 @@ Safety rule: **none of the sources listed here is currently approved as a verifi
 - The page says Netivei Israel can provide infrastructure information for interurban roads, including company inventory such as roads and bridges, and information related to cargo movements / abnormal loads.
 - Contact published on that page: MeyJ@iroads.co.il.
 - Interpretation: this is the strongest acquisition lead for a national-road bridge inventory and potential heavy/abnormal-load constraints. Access, coverage, fields, freshness, licence, and operational suitability still need written confirmation.
+
+### Ministry of Transport – road tunnels GIS dataset
+- Official dataset: https://data.gov.il/he/datasets/ministry_of_transport/tunnels
+- Publisher: Ministry of Transport; the dataset is tagged as national road-tunnel GIS.
+- The catalogue page lists files updated on 1 June 2026. However, the linked metadata record identifies the layer as created on 1 November 2022, last updated on 15 November 2022, temporal coverage 2022, and update frequency “variable”; contact is Hazav at `geo@mot.gov.il`.
+- The currently documented layer describes road tunnels, not truck restrictions. The reviewed metadata does not establish measured vertical clearance, signed height limit, weight/axle limits, lane/direction applicability, operating time windows, current validity, or a live closure/change feed.
+- Interpretation: useful nationwide candidate-asset discovery and a strong lead for identifying tunnel records whose restriction evidence should be requested. The catalogue's June 2026 file date does not resolve the older metadata's temporal coverage; this discrepancy must be clarified with Hazav before relying on freshness. A tunnel feature or missing feature never proves a safe passage.
+- Registry key: `mot-road-tunnels-gis`; `candidateOnly: true`; `routingEligible: false`.
 
 ### Ministry of Transport – height-obstacle guidelines, second edition (April 2026)
 - Official PDF: https://www.gov.il/BlobFolder/policy/traffic_height_obstacle/he/Guidelines-for-height-obstacles-2026.pdf

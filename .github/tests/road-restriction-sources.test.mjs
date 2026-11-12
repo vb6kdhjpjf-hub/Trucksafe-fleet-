@@ -92,3 +92,18 @@ test("Ministry geospatial planning portal is discovery-only and explicitly non-a
   assert.match(source.limitations, /אינו נוסח מחייב או מידע מחייב/);
   assert.equal(isSourceCandidateOnly(source), true);
 });
+
+
+test("Ministry road-tunnel GIS is national candidate-asset discovery only and has a metadata freshness discrepancy", () => {
+  const source = getRoadRestrictionSource("mot-road-tunnels-gis");
+  assert.ok(source);
+  assert.equal(source.publisher, "משרד התחבורה והבטיחות בדרכים");
+  assert.equal(source.contact, "geo@mot.gov.il");
+  assert.equal(source.lastPublished, "2026-06-01");
+  assert.equal(source.candidateOnly, true);
+  assert.equal(source.routingEligible, false);
+  assert.equal(source.dataTypes.includes("road_tunnel_geometry"), true);
+  assert.match(source.limitations, /נובמבר 2022/);
+  assert.match(source.limitations, /אין בו.*גובה מעבר מדוד/);
+  assert.equal(isSourceCandidateOnly(source), true);
+});
