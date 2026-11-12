@@ -22,6 +22,7 @@ declare
   result jsonb;
   msg text;
   rejected boolean;
+  event_count integer;
 begin
   insert into auth.users(id,aud,role,email,created_at,updated_at)
   values

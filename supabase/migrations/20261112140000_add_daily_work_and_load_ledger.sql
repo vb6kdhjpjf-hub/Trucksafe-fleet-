@@ -1,4 +1,12 @@
 -- Daily truck work plans and an append-only, measured load ledger.
+-- The earlier fleet-scoped migration defines these composite keys. Keep this
+-- migration independently safe on Test environments where that migration has
+-- not yet been applied, without changing row data.
+create unique index if not exists vehicles_fleet_id_id_daily_work_key
+  on public.vehicles(fleet_id,id);
+create unique index if not exists drivers_fleet_id_id_daily_work_key
+  on public.drivers(fleet_id,id);
+
 -- Production rollout is intentionally not performed by this repository workflow.
 
 create table public.daily_work_plans (
