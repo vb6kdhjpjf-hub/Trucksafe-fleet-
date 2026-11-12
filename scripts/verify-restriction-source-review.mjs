@@ -33,8 +33,8 @@ export async function verifyHumanReviewEvent({ candidateFile, assessmentReportFi
     throw new Error("Candidate is malformed or not explicitly unapproved");
   }
   if (hashRestrictionPayload(candidate.payload) !== candidate.payload_sha256) throw new Error("Candidate payload hash does not match stored payload");
-  if (!report || typeof report !== "object" || Array.isArray(report) || report.approved_for_routing !== false || typeof report.valid !== "boolean" || !report.dimensions || typeof report.dimensions !== "object" || Array.isArray(report.dimensions)) {
-    throw new Error("Assessment report is malformed or not explicitly unapproved");
+  if (!report || typeof report !== "object" || Array.isArray(report) || report.approved_for_routing !== false || typeof report.valid !== "boolean" || !report.dimensions || typeof report.dimensions !== "object" || Array.isArray(report.dimensions) || report.candidate_payload_sha256 !== candidate.payload_sha256) {
+    throw new Error("Assessment report is malformed, linked to a different candidate, or not explicitly unapproved");
   }
   if (!event || typeof event !== "object" || Array.isArray(event) || Object.keys(event).length !== eventKeys.length || eventKeys.some(key => !Object.hasOwn(event, key))) {
     throw new Error("Review event has missing or unexpected fields");

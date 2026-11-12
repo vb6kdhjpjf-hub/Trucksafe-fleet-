@@ -3,6 +3,7 @@ import { lstat, open, realpath } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { assessRestrictionSource } from "../lib/restriction-source-assessment.mjs";
+import { hashRestrictionPayload } from "../lib/restriction-source-envelope.mjs";
 
 async function readJson(file) {
   const handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
@@ -20,8 +21,12 @@ export async function createAssessmentReport({ candidateFile, assessmentFile, ou
       !candidate.review || candidate.review.approved_for_routing !== false) {
     throw new Error("Candidate envelope is malformed or not explicitly unapproved");
   }
+  let candidatePayloadHash;
+  try { candidatePayloadHash = hashRestrictionPayload(candidate.payload); }
+  catch { throw new Error("Candidate payload is malformed or its checksum cannot be verified"); }
+  if (candidatePayloadHash !== candidate.payload_sha256) throw new Error("Candidate payload hash does not match stored payload");
   const assessment = await readJson(assessmentFile);
-  const report = assessRestrictionSource(assessment);
+  const report = { ...assessRestrictionSource(assessment), candidate_payload_sha256: candidate.payload_sha256 };
   const requestedDir = path.resolve(outputDir);
   const info = await lstat(requestedDir);
   if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("Output path must be an existing, non-symlink directory");

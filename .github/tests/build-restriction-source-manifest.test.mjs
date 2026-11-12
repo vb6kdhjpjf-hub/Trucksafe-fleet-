@@ -9,7 +9,8 @@ import { buildRestrictionSourceManifest, verifyRestrictionSourceManifest } from 
 
 const hash = value => createHash("sha256").update(value).digest("hex");
 const dimensionNames = ["authority", "geographic_coverage", "truck_constraints", "measurement_quality", "temporal_validity", "update_mechanism", "licensing", "reliability", "independent_validation"];
-const validAssessment = (overrides = {}) => ({
+const validAssessment = (candidatePayloadHash, overrides = {}) => ({
+  candidate_payload_sha256: candidatePayloadHash,
   valid: true,
   errors: [],
   dimensions: Object.fromEntries(dimensionNames.map(name => [name, { status: "missing", evidence_refs: [] }])),
@@ -33,7 +34,7 @@ async function fixture(t) {
     payload, payload_sha256: payloadHash,
     review: { status: "unreviewed", approved_for_routing: false }
   }));
-  await writeFile(assessmentFile, JSON.stringify(validAssessment()));
+  await writeFile(assessmentFile, JSON.stringify(validAssessment(payloadHash)));
   return { root, candidateFile, assessmentFile, payloadHash };
 }
 
@@ -59,7 +60,7 @@ test("detects repeated reviews for the same candidate and report", async t => {
 test("detects stale assessment linkage and rejects manifest tampering", async t => {
   const f = await fixture(t);
   await createHumanReviewEvent({ candidateFile: f.candidateFile, assessmentReportFile: f.assessmentFile, outputDir: f.root, reviewer: "reviewer-a", decision: "needs_more_evidence", reviewedAt: "2026-11-10T18:10:00Z" });
-  await writeFile(f.assessmentFile, JSON.stringify(validAssessment({ valid: false, errors: ["synthetic change"] })));
+  await writeFile(f.assessmentFile, JSON.stringify(validAssessment(f.payloadHash, { valid: false, errors: ["synthetic change"] })));
   const result = await buildRestrictionSourceManifest({ quarantineDir: f.root, createdAt: "2026-11-10T18:30:00Z" });
   assert.equal(result.manifest.candidates[0].status, "stale_review");
   const tampered = structuredClone(result.manifest); tampered.candidate_count = 99;
@@ -80,4 +81,13 @@ test("flags malformed assessment reports instead of treating them as pending rev
   assert.equal(result.manifest.candidates[0].status, "assessment_invalid");
   assert.equal(result.manifest.candidates[0].approved_for_routing, false);
   assert.match(result.manifest.candidates[0].assessment_report_sha256, /^[a-f0-9]{64}$/);
+});
+
+
+test("marks an assessment linked to a different candidate as invalid", async t => {
+  const f = await fixture(t);
+  await writeFile(f.assessmentFile, JSON.stringify(validAssessment("f".repeat(64))));
+  const result = await buildRestrictionSourceManifest({ quarantineDir: f.root, createdAt: "2026-11-10T18:45:00Z" });
+  assert.equal(result.manifest.candidates[0].status, "assessment_invalid");
+  assert.equal(result.manifest.candidates[0].approved_for_routing, false);
 });

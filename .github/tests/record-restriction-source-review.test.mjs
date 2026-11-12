@@ -21,7 +21,7 @@ async function fixture(t, report = { valid: true, approved_for_routing: false, d
     },
     retrieved_at: "2026-11-10T17:00:00Z",
     schema_version: "1.0", review: { approved_for_routing: false } }));
-  await writeFile(assessmentReportFile, JSON.stringify(report));
+  await writeFile(assessmentReportFile, JSON.stringify({ ...report, candidate_payload_sha256: report.candidate_payload_sha256 ?? hash(JSON.stringify(payload)) }));
   return { root, outputDir, candidateFile, assessmentReportFile };
 }
 const base = f => ({ ...f, reviewer: "human-reviewer-1", decision: "needs_more_evidence", reviewedAt: "2026-11-10T17:30:00Z" });
@@ -63,4 +63,15 @@ test("rejects assessment report carrying unknown decision fields", async t => {
 test("rejects array-shaped assessment dimensions", async t => {
   const f = await fixture(t, { valid: true, approved_for_routing: false, dimensions: [] });
   await assert.rejects(createHumanReviewEvent(base(f)), /malformed or not explicitly unapproved/);
+});
+
+
+test("rejects an assessment report that belongs to a different candidate", async t => {
+  const f = await fixture(t, {
+    valid: true,
+    approved_for_routing: false,
+    candidate_payload_sha256: "f".repeat(64),
+    dimensions: { authority: { status: "evidenced", evidence_refs: ["https://evidence.invalid/a"] } }
+  });
+  await assert.rejects(createHumanReviewEvent(base(f)), /linked to a different candidate/);
 });

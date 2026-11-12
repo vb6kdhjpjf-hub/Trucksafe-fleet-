@@ -22,7 +22,7 @@ async function fixture(t) {
     },
     retrieved_at: "2026-11-10T17:00:00Z",
     schema_version: "1.0", review: { approved_for_routing: false } }));
-  await writeFile(assessmentReportFile, JSON.stringify({ valid: true, approved_for_routing: false, dimensions: { authority: { status: "evidenced", evidence_refs: ["https://evidence.invalid/a"] } } }));
+  await writeFile(assessmentReportFile, JSON.stringify({ valid: true, approved_for_routing: false, candidate_payload_sha256: hash(JSON.stringify(payload)), dimensions: { authority: { status: "evidenced", evidence_refs: ["https://evidence.invalid/a"] } } }));
   const created = await createHumanReviewEvent({ candidateFile, assessmentReportFile, outputDir, reviewer: "reviewer-1", decision: "needs_more_evidence", reviewedAt: "2026-11-10T17:30:00Z" });
   return { root, candidateFile, assessmentReportFile, eventFile: created.output };
 }
@@ -65,4 +65,13 @@ test("invalidates review when source identity or dataset version changes", async
   candidate.source.dataset_version = "2026-12";
   await writeFile(f.candidateFile, JSON.stringify(candidate));
   await assert.rejects(verifyHumanReviewEvent(f), /source provenance does not match/);
+});
+
+
+test("rejects an assessment report whose candidate binding was changed", async t => {
+  const f = await fixture(t);
+  const report = JSON.parse(await readFile(f.assessmentReportFile, "utf8"));
+  report.candidate_payload_sha256 = "f".repeat(64);
+  await writeFile(f.assessmentReportFile, JSON.stringify(report));
+  await assert.rejects(verifyHumanReviewEvent(f), /linked to a different candidate/);
 });

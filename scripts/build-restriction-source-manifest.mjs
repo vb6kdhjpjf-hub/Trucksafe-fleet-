@@ -10,9 +10,9 @@ const sha256 = value => createHash("sha256").update(value).digest("hex");
 const isHash = value => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 const ASSESSMENT_DIMENSIONS = ["authority", "geographic_coverage", "truck_constraints", "measurement_quality", "temporal_validity", "update_mechanism", "licensing", "reliability", "independent_validation"];
 
-function isValidAssessmentReport(report) {
+function isValidAssessmentReport(report, candidatePayloadHash) {
   if (!report || typeof report !== "object" || Array.isArray(report) ||
-      report.approved_for_routing !== false || typeof report.valid !== "boolean" ||
+      report.approved_for_routing !== false || report.candidate_payload_sha256 !== candidatePayloadHash || !isHash(report.candidate_payload_sha256) || typeof report.valid !== "boolean" ||
       !Array.isArray(report.errors) || report.errors.some(item => typeof item !== "string") ||
       !report.dimensions || typeof report.dimensions !== "object" || Array.isArray(report.dimensions) ||
       !Array.isArray(report.blocking_gaps) || typeof report.evidence_dossier_complete !== "boolean" ||
@@ -122,7 +122,7 @@ export async function buildRestrictionSourceManifest({ quarantineDir, outputDir 
         const assessmentBytes = await readBounded(assessmentFile, 1024 * 1024);
         const assessment = parseJson(assessmentBytes, "Assessment report");
         assessmentHash = sha256(assessmentBytes);
-        assessmentValid = isValidAssessmentReport(assessment);
+        assessmentValid = isValidAssessmentReport(assessment, candidate.payload_sha256);
       } catch (error) {
         if (error.code === "ELOOP" || error.code === "EACCES") throw error;
         assessmentValid = false;
