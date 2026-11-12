@@ -116,3 +116,14 @@ Do not add import tables or routes until the server trust boundary is explicit. 
 For durable staging, prefer a dedicated staging store whose tables are inaccessible to anon/authenticated roles and whose server-side access is narrowly scoped. If a server-only service credential is used, it must remain outside all `NEXT_PUBLIC_` variables and browser bundles; the route must complete signed-user and current-role checks before every privileged operation, including commit. Never expose the staging schema through the Data API merely to make it convenient for the browser. An alternative dedicated database role with narrowly scoped grants may be evaluated before choosing the final storage path.
 
 Before implementation, inspect the exact Supabase Data API Exposed Schemas setting and available server-only environment configuration names (never print secret values). Then add the route, staged-job tables, and tests as additive files/migrations on the Draft branch only. Validate the migration and real signed-user route against the isolated Test project; do not apply it to Test until the migration and rollback/test plan have been reviewed. Production remains out of scope.
+
+
+## Test migration parity and index-advisor follow-up (2026-11-12)
+
+A read-only migration-history comparison was performed after the security/performance advisor review.
+
+- The Draft branch already contains `supabase/migrations/20261111160000_add_verified_by_fk_indexes.sql`. It creates `idx_road_restrictions_verified_by` on `public.road_restrictions(verified_by)` and `idx_vehicles_registration_verified_by` on `public.vehicles(registration_verified_by)`.
+- The dedicated Test project's migration history currently ends at `20261110145233`; it does not contain migration version `20261111160000`. A catalog check also found neither index in Test. This explains the two unindexed-FK advisor findings; it is migration drift, not a missing migration file in the Draft branch.
+- Do not create the indexes manually or insert a migration-history row. Once explicitly authorized, apply the existing reviewed migration through the migration workflow to the dedicated Test project, then verify both index definitions, the migration history, and the advisor output. Production remains out of scope.
+- The 17 unused-index notices are not grounds for index removal in a low-activity Test project. Retain them pending workload evidence.
+- The dashboard's Data API Exposed Schemas setting is still unverified. Database runtime settings did not expose a usable `pgrst.db_schemas` value; verify the dashboard setting directly before relying on schema invisibility.
