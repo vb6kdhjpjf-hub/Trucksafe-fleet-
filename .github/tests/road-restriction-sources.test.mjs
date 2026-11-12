@@ -119,3 +119,17 @@ test("OpenStreetMap truck restriction tags remain community-only leads and never
   assert.match(source.limitations, /היעדר תגית אינו מוכיח שאין מגבלה/);
   assert.equal(isSourceCandidateOnly(source), true);
 });
+
+
+test("Ministry GIS layer catalogue and specification guidance is discovery-only, not a truck restriction feed", () => {
+  const source = getRoadRestrictionSource("mot-gis-layer-catalogue-and-spec-guidance-2026");
+  assert.ok(source);
+  assert.equal(source.publisher, "משרד התחבורה והבטיחות בדרכים");
+  assert.equal(source.contact, "geo@mot.gov.il");
+  assert.equal(source.lastPublished, "2026-11-11");
+  assert.equal(source.candidateOnly, true);
+  assert.equal(source.routingEligible, false);
+  assert.equal(source.dataTypes.includes("geospatial_layer_catalogue_discovery"), true);
+  assert.match(source.limitations, /לא מאגר גשרים או מגבלות משאיות/);
+  assert.equal(isSourceCandidateOnly(source), true);
+});

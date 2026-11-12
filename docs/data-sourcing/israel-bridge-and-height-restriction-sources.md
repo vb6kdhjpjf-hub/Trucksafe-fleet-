@@ -169,3 +169,12 @@ Accordingly:
 ## 10. Actual axle load versus registered axle limit
 
 HERE Routing API v8 defines `vehicle[weightPerAxle]` as the actual total load on an axle, including payload. A registration maximum or generic permitted axle limit is not an actual loaded axle measurement. TruckSafe therefore keeps any saved registration axle limit separate from the trip-specific measured load. The routing form must collect the actual load on the heaviest axle for the current trip, based on a recent weighbridge / axle-scale measurement, and send that trip value to HERE. It must not infer axle load by dividing total vehicle weight by axle count. The app does not have a sensor connection and cannot independently verify the measurement; the driver/operator remains responsible for entering a reliable current measurement. If the actual axle load is unavailable, routing must be rejected rather than sending the registered limit as if it were actual load.
+
+
+## 11. Ministry GIS layer catalogue and specification guidance (reviewed 12 November 2026)
+
+The Ministry's GIS catalogue and its layer-specification guidance were listed as updated on 11 November 2026. The catalogue is a discovery and standardisation aid, not evidence that a complete bridge-clearance or truck-restriction layer is already available. The Ministry's own Hazav portal says source layers come from multiple organisations, update at varying frequencies, and are not legally binding.
+
+For every discovered layer, record and independently validate the actual data publisher, geographic coverage, dataset-level update date (not merely the catalogue page date), field definitions, measurement method and accuracy, direction/lane semantics, temporal validity, update cadence, and licence / commercial-use permissions. Until those checks are complete, catalogue entries remain discovery-only and must never approve a route.
+
+The Ministry's 2025 road-safety infrastructure specification explicitly describes a comprehensive bridge geographic database as a critical information need and describes the ongoing work to collect and standardise information from multiple infrastructure companies and local authorities. This is evidence of an effort to build/standardise the information base, not evidence that a complete national truck restriction dataset is already published.
