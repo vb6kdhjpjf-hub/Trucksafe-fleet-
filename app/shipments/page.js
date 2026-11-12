@@ -51,7 +51,17 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
   // Keep one idempotency key and stable private object paths for this mounted
   // proof attempt. If the server commits but the response is lost, retrying
   // must return the original note rather than issue a second document.
-  const proofAttempt=useRef({eventKey:eventKey(),signaturePath:null,signatureUploaded:false,photoEntries:[]});
+  const proofAttempt=useRef({eventKey:eventKey(),signaturePath:null,signatureBlob:null,signatureUploaded:false,photoEntries:[]});
+  async function uploadOrConfirmExisting(objectPath,body,contentType){
+    const storage=supabase.storage.from("delivery-proof-private");
+    const {error}=await storage.upload(objectPath,body,{contentType,upsert:false});
+    if(!error)return;
+    const parts=objectPath.split("/");
+    const fileName=parts.pop();
+    const {data,error:listError}=await storage.list(parts.join("/"),{search:fileName,limit:20});
+    if(!listError&&(data||[]).some(item=>item.name===fileName))return;
+    throw error;
+  }
   async function submit(event){
     event.preventDefault();
     if(busy)return;
@@ -62,19 +72,19 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
     if(photos.some(f=>!["image/png","image/jpeg","image/webp"].includes(f.type)||f.size>10*1024*1024)){notify("אפשר לצרף עד 10MB לכל תמונה בפורמט PNG, JPG או WEBP.","error");return;}
     setBusy(true);
     const prefix=fleetId+"/"+shipment.id+"/"+stop.id+"/";
-    const uploaded=[];
     try{
       let signaturePath=null;
       if(hasSignature){
-        const canvas=padRef.current;
-        const blob=await new Promise((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error("לא ניתן להפיק קובץ חתימה")),"image/png"));
         const attempt=proofAttempt.current;
+        if(!attempt.signatureBlob){
+          const canvas=padRef.current;
+          attempt.signatureBlob=await new Promise((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error("לא ניתן להפיק קובץ חתימה")),"image/png"));
+        }
         if(!attempt.signaturePath)attempt.signaturePath=prefix+crypto.randomUUID()+".png";
         signaturePath=attempt.signaturePath;
         if(!attempt.signatureUploaded){
-          const {error}=await supabase.storage.from("delivery-proof-private").upload(signaturePath,blob,{contentType:"image/png",upsert:false});
-          if(error)throw error;
-          attempt.signatureUploaded=true;uploaded.push(signaturePath);
+          await uploadOrConfirmExisting(signaturePath,attempt.signatureBlob,"image/png");
+          attempt.signatureUploaded=true;
         }
       }
       const attempt=proofAttempt.current;
@@ -85,13 +95,12 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
         let entry=attempt.photoEntries.find(item=>item.fingerprint===fingerprint);
         if(!entry){
           const ext=file.type==="image/png"?"png":file.type==="image/webp"?"webp":"jpg";
-          entry={fingerprint,path:prefix+crypto.randomUUID()+"."+ext,uploaded:false};
+          entry={fingerprint,file,path:prefix+crypto.randomUUID()+"."+ext,uploaded:false};
           attempt.photoEntries.push(entry);
         }
         if(!entry.uploaded){
-          const {error}=await supabase.storage.from("delivery-proof-private").upload(entry.path,file,{contentType:file.type,upsert:false});
-          if(error)throw error;
-          entry.uploaded=true;uploaded.push(entry.path);
+          await uploadOrConfirmExisting(entry.path,entry.file,entry.file.type);
+          entry.uploaded=true;
         }
         photoPaths.push(entry.path);
       }
