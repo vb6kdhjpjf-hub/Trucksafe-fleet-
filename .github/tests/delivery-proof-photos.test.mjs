@@ -16,6 +16,7 @@ test("rejects more than eight photos instead of silently dropping selected files
 test("rejects unsupported formats and files larger than ten megabytes", () => {
   assert.equal(validateDeliveryPhotoFiles([photo("script.svg", 1, "image/svg+xml")]), "invalid_file");
   assert.equal(validateDeliveryPhotoFiles([photo("large.jpg", 10 * 1024 * 1024 + 1)]), "invalid_file");
+  assert.equal(validateDeliveryPhotoFiles([photo("empty.jpg", 0)]), "invalid_file");
 });
 
 test("rejects aggregate photo payloads larger than forty megabytes", () => {
