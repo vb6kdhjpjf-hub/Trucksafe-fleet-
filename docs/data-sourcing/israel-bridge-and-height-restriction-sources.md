@@ -63,6 +63,15 @@ Safety rule: **none of the sources listed here is currently approved as a verifi
 - It identifies bridge features and type within the municipal GIS.
 - Permitted use: local candidate discovery only unless the authority supplies current, authoritative clearance/restriction records and a clear update process. A bridge geometry alone is not a restriction.
 
+### OpenStreetMap – community truck-restriction tags (lead only)
+- Project: https://www.openstreetmap.org/
+- The OpenStreetMap tagging documentation describes `maxheight` as a vehicle height limit and distinguishes it from `maxheight:physical`, which describes a physical height limit. It also documents direction-specific tags such as `maxheight:forward` and `maxheight:backward`, and recommends attaching a bridge clearance limit to the road segment passing beneath the bridge.
+- The documentation explicitly warns that a missing `maxheight` tag may mean either that no restriction exists or that nobody has mapped it. Therefore, absence of a tag must never be interpreted as a verified-clear road.
+- OpenStreetMap is community-maintained, not a government or road-owner restriction register. Tags can be incomplete, incorrectly valued, stale, or associated with the wrong segment/direction/lane. A mapped value is not a signed measurement record or proof of current legal applicability.
+- Licensing: any use must be reviewed against the Open Database License (ODbL), attribution and share-alike obligations before ingestion or commercial display.
+- Permitted use: candidate lead for human verification only; not a verified restriction feed, not proof of nationwide coverage, and never a basis to approve a route.
+- Registry key: `openstreetmap-community-truck-restrictions`; `candidateOnly: true`; `routingEligible: false`.
+
 ## 2. Data acceptance hierarchy
 
 1. **Verified restriction:** current written record from the road owner / competent traffic authority, or a signed measurement record from a qualified responsible body, with exact location/direction/lane, restriction value, effective date, and a retrievable HTTPS source document.
