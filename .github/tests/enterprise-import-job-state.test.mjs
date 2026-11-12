@@ -38,6 +38,15 @@ test("allows explicit expiry transition at expiry time", () => {
   assert.equal(result.job.status, "expired");
 });
 
+test("rejects early expiry transitions", () => {
+  assert.deepEqual(evaluateEnterpriseImportJobTransition(baseJob, "expired", { expectedRevision: 4, now: "2026-11-13T11:59:59.999Z" }), { ok: false, code: "expiry_not_reached" });
+});
+
+test("requires an expiry timestamp before marking a job expired", () => {
+  const { expires_at, ...jobWithoutExpiry } = baseJob;
+  assert.deepEqual(evaluateEnterpriseImportJobTransition(jobWithoutExpiry, "expired", { expectedRevision: 4, now: "2026-11-14T12:00:00Z" }), { ok: false, code: "expiry_required" });
+});
+
 test("does not reopen terminal states", () => {
   assert.deepEqual(evaluateEnterpriseImportJobTransition({ ...baseJob, status: "completed" }, "committing", { expectedRevision: 4, now: "2026-11-12T12:00:00Z" }), { ok: false, code: "terminal_state" });
 });
@@ -50,5 +59,6 @@ test("binds idempotency identity to fleet, source checksum and mapping fingerpri
 
 test("rejects malformed identity components", () => {
   assert.deepEqual(enterpriseImportJobIdentity({ fleetId: "bad", sourceSha256: "a".repeat(64), mappingFingerprint: "b".repeat(64) }), { ok: false, code: "invalid_fleet_id" });
+  assert.deepEqual(enterpriseImportJobIdentity({ fleetId: "00000000-0000-4000-8000-00000000000g", sourceSha256: "a".repeat(64), mappingFingerprint: "b".repeat(64) }), { ok: false, code: "invalid_fleet_id" });
   assert.deepEqual(enterpriseImportJobIdentity({ fleetId: baseJob.fleet_id, sourceSha256: "bad", mappingFingerprint: "b".repeat(64) }), { ok: false, code: "invalid_source_checksum" });
 });
