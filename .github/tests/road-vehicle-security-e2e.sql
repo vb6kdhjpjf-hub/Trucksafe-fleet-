@@ -191,6 +191,8 @@ do $behavior_tests$
 declare
   owner_id uuid := 'f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf51';
   dispatcher_id uuid := 'f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf52';
+  fleet_manager_id uuid := 'f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf53';
+  safety_manager_id uuid := 'f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf56';
   driver_user_id uuid := 'f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf54';
   other_owner_id uuid := 'f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf55';
   fleet_id uuid := 'b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d51';
@@ -213,6 +215,10 @@ begin
       '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb),
     (dispatcher_id,'authenticated','authenticated','ci-road-dispatcher@example.invalid','test-only-no-login',now(),
       '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb),
+    (fleet_manager_id,'authenticated','authenticated','ci-road-manager@example.invalid','test-only-no-login',now(),
+      '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb),
+    (safety_manager_id,'authenticated','authenticated','ci-road-safety@example.invalid','test-only-no-login',now(),
+      '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb),
     (driver_user_id,'authenticated','authenticated','ci-road-driver@example.invalid','test-only-no-login',now(),
       '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb),
     (other_owner_id,'authenticated','authenticated','ci-other-owner@example.invalid','test-only-no-login',now(),
@@ -229,6 +235,8 @@ begin
   insert into public.fleet_members(fleet_id,user_id,role)
   values
     (fleet_id,dispatcher_id,'dispatcher'),
+    (fleet_id,fleet_manager_id,'fleet_manager'),
+    (fleet_id,safety_manager_id,'safety_manager'),
     (fleet_id,driver_user_id,'driver');
 
   insert into public.fleets(id,name,owner_user_id)
@@ -567,6 +575,57 @@ $rls_dispatcher_checks$;
 reset role;
 insert into pg_temp.road_vehicle_security_results
 values('dispatcher cannot mutate vehicles','PASS','Dispatcher can read fleet vehicles but cannot update or insert vehicles');
+
+-- A fleet manager can manage vehicles and maintenance, but a safety manager has a narrower remit.
+select set_config('request.jwt.claim.sub','f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf53',true);
+set local role authenticated;
+do $rls_fleet_manager_checks$
+declare changed_rows integer;
+begin
+  update public.vehicles set notes='fleet manager authorized update'
+    where id='e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51';
+  get diagnostics changed_rows = row_count;
+  if changed_rows <> 1 then raise exception 'Fleet manager should update fleet vehicles'; end if;
+  update public.maintenance_records set description='fleet manager authorized update'
+    where id='33000000-0000-4000-8000-000000000051';
+  get diagnostics changed_rows = row_count;
+  if changed_rows <> 1 then raise exception 'Fleet manager should update fleet maintenance'; end if;
+  update public.incidents set description='fleet manager authorized update'
+    where id='11000000-0000-4000-8000-000000000051';
+  get diagnostics changed_rows = row_count;
+  if changed_rows <> 1 then raise exception 'Fleet manager should update fleet incidents'; end if;
+end
+$rls_fleet_manager_checks$;
+reset role;
+insert into pg_temp.road_vehicle_security_results
+values('fleet manager manages fleet operations','PASS','Fleet manager can update vehicles, maintenance records, and incidents');
+
+select set_config('request.jwt.claim.sub','f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf56',true);
+set local role authenticated;
+do $rls_safety_manager_checks$
+declare changed_rows integer;
+begin
+  update public.incidents set description='safety manager authorized review'
+    where id='11000000-0000-4000-8000-000000000051';
+  get diagnostics changed_rows = row_count;
+  if changed_rows <> 1 then raise exception 'Safety manager should update incident safety records'; end if;
+  update public.vehicles set notes='unauthorized safety manager edit'
+    where id='e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf51';
+  get diagnostics changed_rows = row_count;
+  if changed_rows <> 0 then raise exception 'Safety manager unexpectedly updated a vehicle'; end if;
+  update public.maintenance_records set description='unauthorized safety manager edit'
+    where id='33000000-0000-4000-8000-000000000051';
+  get diagnostics changed_rows = row_count;
+  if changed_rows <> 0 then raise exception 'Safety manager unexpectedly updated maintenance'; end if;
+  update public.road_restrictions set road_name='unauthorized safety manager edit'
+    where id='00000000-0000-0000-0000-000000000000';
+  get diagnostics changed_rows = row_count;
+  if changed_rows <> 0 then raise exception 'Safety manager unexpectedly updated road restrictions'; end if;
+end
+$rls_safety_manager_checks$;
+reset role;
+insert into pg_temp.road_vehicle_security_results
+values('safety manager has scoped incident permissions','PASS','Safety manager can update incidents but cannot update vehicles or maintenance records');
 
 select set_config('request.jwt.claim.sub','f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf54',true);
 set local role authenticated;
