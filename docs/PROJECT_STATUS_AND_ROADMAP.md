@@ -32,23 +32,20 @@ TruckSafe has a substantial fleet-management application and an isolated validat
 
 ## Verified engineering baseline
 
-The latest verified isolated validation run is [GitHub Actions run 43069899681](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43069899681), on commit `1bf89f389886bf0a782095ec36bd7c52e417d868`. This run includes local production-mode HTTP authorization checks using five signed Test identities, including an ambiguous multi-fleet user.
+The latest verified isolated validation run is [GitHub Actions run 43185916978](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43185916978), on commit `21fbceebfe1c980cb6c4fb911c1ae1b14aae404f`. All three jobs passed: application validation, rollback-only database integration on the dedicated Test project, and live Test Auth integration.
 
 Recorded results:
-- Application and safety unit-test step passed (161 tests), including streamed request-body limit and routing-profile validation tests.
-- Vehicle-registration and RLS integration tests passed: direct vehicle INSERT cannot forge a verified status or inject document/approval metadata; technical-profile edits and registration-identity changes invalidate prior approval and clear reviewer metadata. Fourteen rollback-only security scenarios passed, including owner/other-fleet row isolation, dispatcher vehicle write denial, driver assignment-scoped vehicle reads, private registration-document access limited to fleet owners/managers, and authenticated driver trip start/finish with cross-fleet rejection. Fleet dashboard code also rejects ambiguous multi-fleet selection rather than silently choosing a workspace.
-- Isolated database integration job passed; its connection was verified to target only the dedicated test project.
-- Next.js production build passed.
-- Production dependency audit reported 0 vulnerabilities.
-- Synthetic database fixtures are rollback-only.
-- Cross-fleet integrity CI applied the candidate composite-FK migration in a transaction, validated same-fleet positives, 15 cross-fleet rejection cases, trip-location driver matching, and delete actions, then rolled back.
-- The dedicated Test project was independently checked after CI: all fixture tables, including fleets, memberships and drivers, remained empty; the five disposable Auth identities and their two marked fleets were cleaned successfully.
-- The two nullable reviewer foreign-key columns have an additive index migration. CI applies it only inside a transaction on the dedicated Test project, verifies both indexes, and rolls it back; no persistent Test or Production schema change was made.
+- Application and safety tests passed (210 tests); delivery quantity, photo and GPS tests passed (17); fleet API access tests passed (40); workflow safety tests passed (8).
+- Dependency audit reported 0 vulnerabilities. The Next.js production build and 20 concurrent application smoke requests passed.
+- Database integration passed, including delivery-proof storage policy assertions, rejection of incomplete GPS coordinate pairs, six-decimal GPS snapshot normalization, and idempotent replay of a delivery event with GPS evidence. SQL fixtures and migration checks are rollback-only on the dedicated Test database.
+- Live Auth integration passed with seven disposable signed Test identities: owner, fleet manager, dispatcher, safety manager, driver, ambiguous multi-fleet user and unassigned user. It exercised real signed JWT validation, PostgREST membership reads, RLS visibility, actual route and local production-mode HTTP authorization, invalid-token denial, immediate membership revocation, manager-role demotion and rejection of forged `user_metadata` privilege claims.
+- Auth fixture cleanup removed all seven marked Test identities and their fleets through the Supabase Auth Admin API; the follow-up cleanup found zero remaining fixtures.
+- Delivery proof now supports optional GPS capture only after an explicit driver action; no background location tracking is performed. Coordinates are range-checked and normalized to the database's six-decimal precision before idempotency comparison.
+- The two nullable reviewer foreign-key columns have an additive index migration. CI applies it only inside a transaction on the dedicated Test project, verifies both indexes, and rolls it back; no persistent Production schema change was made.
 
-Supabase Security Advisor review on the isolated test project reported two warnings for the authenticated RPC functions `start_trip_with_inspection` and `finish_trip`, which are intentionally SECURITY DEFINER so they can perform controlled trip lifecycle writes. Their bodies enforce authenticated membership, fleet/task/driver/vehicle matching and driver-or-manager authorization; CI now exercises the assigned-driver path and rejects a cross-fleet start. These warnings remain visible and should be re-reviewed if the RPC authorization logic changes.
+Supabase Security Advisor review on the isolated test project reported two warnings for the authenticated RPC functions `start_trip_with_inspection` and `finish_trip`, which are intentionally SECURITY DEFINER so they can perform controlled trip lifecycle writes. Their bodies enforce authenticated membership, fleet/task/driver/vehicle matching and driver-or-manager authorization; live Auth and SQL integration tests cover relevant positive and negative paths. These warnings remain visible and should be re-reviewed if the RPC authorization logic changes.
 
 These results establish that the tested code passed those checks. They do not establish live provider correctness, source-data coverage, production readiness, or road safety.
-
 ## Critical release blockers
 
 1. **Authoritative Israeli restriction data:** obtain current records from the competent road owners/authorities, with stable IDs, exact geometry, direction/lane, height/weight/dimension/time constraints, measurement evidence, effective dates and withdrawal/update process.
