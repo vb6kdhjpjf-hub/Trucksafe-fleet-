@@ -225,3 +225,13 @@ The municipal ArcGIS layer 891 exposes point reports for minor crashes, stopped 
 These are Waze reports exposed through a municipal GIS service, not an official road-authority closure register. Confidence/reliability fields describe report metadata; they do not establish confirmation by a traffic authority. Reports can be missing, duplicated, incorrect or stale. The layer contains no truck-specific height, weight, width or axle restrictions, and absence of a report cannot be interpreted as an open road.
 
 **Implementation consequence:** keep it as a city-scoped, secondary awareness candidate only. Any future use must be subject to licensing, update-latency and map-matching review, and should surface as an unverified alert that requires corroboration. It must never independently close a road, clear a route, or establish national coverage.
+
+
+## 17. Road-signing authority datasets — authority discovery, not restriction data (reviewed 12 November 2026)
+
+Two additional Ministry catalogues help identify which body may need to validate a road restriction:
+
+- The **delegated area-signing-authority GIS** catalogue is listed as updated on 22 July 2026. It maps areas where local traffic-signing authority has been delegated to a body other than the municipal authority.
+- The **traffic-authority directory** lists authority names, types and codes, including national infrastructure companies. Its indexed CSV was last updated on 28 February 2023 and is therefore a stale starting list, not a current responsibility register.
+
+These are useful for building an authority-contact matrix, but neither dataset describes bridge clearance, weight limits, truck access, operating hours or temporary closures. A delegated signing authority is not necessarily the bridge asset owner, maintenance operator or data custodian. Every assignment must be confirmed with the relevant body for the exact road segment/asset and current date. Neither dataset may create a restriction, clear a road, or approve a route.

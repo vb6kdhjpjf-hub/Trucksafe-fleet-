@@ -210,3 +210,27 @@ test("Tel Aviv Waze event layer is secondary situational awareness only", () => 
   assert.match(source.limitations, /אין להסיק מאי-הופעת אירוע שהדרך פתוחה/);
   assert.equal(isSourceCandidateOnly(source), true);
 });
+
+
+test("Ministry delegated area-signing-authority GIS is authority discovery only, not a restriction feed", () => {
+  const source = getRoadRestrictionSource("mot-area-signing-authority");
+  assert.ok(source);
+  assert.equal(source.publisher, "משרד התחבורה והבטיחות בדרכים");
+  assert.equal(source.lastPublished, "2026-07-22");
+  assert.equal(source.candidateOnly, true);
+  assert.equal(source.routingEligible, false);
+  assert.equal(source.dataTypes.includes("delegated_signing_authority_area"), true);
+  assert.match(source.limitations, /לא מקור מגבלות ולא אישור מסלול/);
+  assert.equal(isSourceCandidateOnly(source), true);
+});
+
+test("Ministry traffic-authority directory is stale contact discovery only and never proves current road responsibility", () => {
+  const source = getRoadRestrictionSource("mot-traffic-authority-directory");
+  assert.ok(source);
+  assert.equal(source.lastPublished, "2023-02-28");
+  assert.equal(source.candidateOnly, true);
+  assert.equal(source.routingEligible, false);
+  assert.equal(source.dataTypes.includes("traffic_authority_code"), true);
+  assert.match(source.limitations, /אינה ממפה סמכות לנכס או למקטע מסוים/);
+  assert.equal(isSourceCandidateOnly(source), true);
+});
