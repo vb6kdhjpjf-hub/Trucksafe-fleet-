@@ -7,6 +7,7 @@ import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 import { parseEnterpriseCsv } from "../../lib/enterprise-import-csv.mjs";
 import { suggestImportColumnMappings, validateEnterpriseImportRows } from "../../lib/enterprise-import-mapping.mjs";
+import { serializeEnterpriseCsv } from "../../lib/enterprise-import-export.mjs";
 
 const FIELD_LABELS = {
   drivers: {
@@ -52,11 +53,7 @@ const ERROR_LABELS = {
 };
 
 function downloadCsv(filename, rows) {
-  const escape = value => {
-    const text = String(value ?? "");
-    return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
-  };
-  const csv = "\uFEFF" + rows.map(row => row.map(escape).join(",")).join("\r\n");
+  const csv = serializeEnterpriseCsv(rows);
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   const anchor = document.createElement("a");
   anchor.href = url;
