@@ -188,5 +188,40 @@ begin
 end
 $delivery_document_test$;
 
+
+do $storage_policy_test$
+begin
+ if not exists(
+  select 1 from storage.buckets
+  where id='delivery-proof-private'
+   and public=false
+   and file_size_limit=10485760
+   and allowed_mime_types @> array['image/png','image/jpeg','image/webp']::text[]
+ ) then
+  raise exception 'Delivery proof bucket must remain private and restricted to approved image types and size';
+ end if;
+ if not exists(
+  select 1 from pg_policies
+  where schemaname='storage' and tablename='objects'
+   and policyname='delivery_proof_objects_upload_scoped'
+   and cmd='INSERT' and roles @> array['authenticated']::name[]
+   and with_check like '%delivery-proof-private%'
+ ) then
+  raise exception 'Scoped authenticated delivery proof upload policy is missing';
+ end if;
+ if not exists(
+  select 1 from pg_policies
+  where schemaname='storage' and tablename='objects'
+   and policyname='delivery_proof_objects_read_scoped'
+   and cmd='SELECT' and roles @> array['authenticated']::name[]
+   and qual like '%delivery-proof-private%'
+ ) then
+  raise exception 'Scoped authenticated delivery proof read policy is missing';
+ end if;
+ insert into pg_temp.shipment_test_results
+ values('delivery proof storage is private, type-limited and protected by scoped fleet policies','PASS');
+end
+$storage_policy_test$;
+
 select scenario,outcome from pg_temp.shipment_test_results order by scenario;
 rollback;
