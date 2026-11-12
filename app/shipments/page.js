@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
-import { validateDeliveryPhotoFiles, findDeliveryPhotoEntry } from "../../lib/delivery-proof-photos.mjs";
+import { validateDeliveryPhotoFiles, findDeliveryPhotoEntry, isMatchingDeliveryProofObject } from "../../lib/delivery-proof-photos.mjs";
 import { normalizeDeliveryGpsCoordinates } from "../../lib/delivery-gps.mjs";
 import { ArrowRight, ClipboardList, Plus, Truck, UserRound, MapPin, FileText, Package, CheckCircle2, Printer, PenLine, RefreshCw, X, ShieldCheck, Scale } from "lucide-react";
 
@@ -64,7 +64,8 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
     const parts=objectPath.split("/");
     const fileName=parts.pop();
     const {data,error:listError}=await storage.list(parts.join("/"),{search:fileName,limit:20});
-    if(!listError&&(data||[]).some(item=>item.name===fileName))return;
+    const confirmed=(data||[]).some(item=>item.name===fileName&&isMatchingDeliveryProofObject(item,body.size,contentType));
+    if(!listError&&confirmed)return;
     throw error;
   }
   function captureGps(){

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateDeliveryPhotoFiles, findDeliveryPhotoEntry } from "../../lib/delivery-proof-photos.mjs";
+import { validateDeliveryPhotoFiles, findDeliveryPhotoEntry, isMatchingDeliveryProofObject } from "../../lib/delivery-proof-photos.mjs";
 
 const photo = (name, size, type = "image/jpeg", lastModified = 1) =>
   ({ name, size, type, lastModified });
@@ -34,4 +34,17 @@ test("does not reuse a storage path for different files with identical metadata"
 test("rejects invalid selection containers and missing file metadata", () => {
   assert.equal(validateDeliveryPhotoFiles(null), "invalid_selection");
   assert.equal(validateDeliveryPhotoFiles([{}]), "invalid_file");
+});
+
+test("confirms an ambiguous Storage upload only for an exact file, size, and MIME match", () => {
+  const valid = { id: "object-id", name: "proof.jpg", metadata: { size: 1024, mimetype: "image/jpeg" } };
+  assert.equal(isMatchingDeliveryProofObject(valid, 1024, "image/jpeg"), true);
+  assert.equal(isMatchingDeliveryProofObject(valid, 2048, "image/jpeg"), false);
+  assert.equal(isMatchingDeliveryProofObject(valid, 1024, "image/png"), false);
+});
+
+test("does not treat folders or incomplete Storage metadata as uploaded proof files", () => {
+  assert.equal(isMatchingDeliveryProofObject({ id: null, name: "proof.jpg" }, 1024, "image/jpeg"), false);
+  assert.equal(isMatchingDeliveryProofObject({ id: "object-id", name: "proof.jpg" }, 1024, "image/jpeg"), false);
+  assert.equal(isMatchingDeliveryProofObject({ id: "object-id", name: "proof.jpg", metadata: { size: 1024 } }, 1024, "image/jpeg"), false);
 });
