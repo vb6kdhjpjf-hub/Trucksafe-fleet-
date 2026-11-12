@@ -230,6 +230,7 @@ declare
  v_lines jsonb;
  v_snapshot jsonb;
  v_existing jsonb;
+ v_existing_matches boolean;
  v_photos text[]:=coalesce(p_photo_object_paths,'{}'::text[]);
 begin
  if v_actor is null then raise exception 'Authentication required'; end if;
@@ -244,10 +245,27 @@ begin
  if not v_is_manager and not exists(
   select 1 from public.drivers d where d.id=v_shipment.assigned_driver_id and d.fleet_id=p_fleet_id and d.user_id=v_actor
  ) then raise exception 'Only the assigned driver or an authorized dispatcher may record delivery proof'; end if;
- select jsonb_build_object('note_id',n.id,'note_number',n.note_number,'proof_status',p.proof_status)
- into v_existing from public.delivery_notes n join public.delivery_proofs p on p.id=n.proof_id and p.fleet_id=n.fleet_id
+ select jsonb_build_object('note_id',n.id,'note_number',n.note_number,'proof_status',p.proof_status),
+  p.performed_by=v_actor
+  and p.recipient_name is not distinct from nullif(btrim(coalesce(p_recipient_name,'')),'')
+  and p.signature_object_path is not distinct from p_signature_object_path
+  and p.photo_object_paths is not distinct from v_photos
+  and p.gps_latitude is not distinct from p_gps_latitude
+  and p.gps_longitude is not distinct from p_gps_longitude
+  and p.recipient_note is not distinct from nullif(btrim(coalesce(p_recipient_note,'')),'')
+  and p.exception_reason is not distinct from nullif(btrim(coalesce(p_exception_reason,'')),'')
+  and p.pallets_delivered=coalesce(p_pallets_delivered,0)
+  and p.pallets_received=coalesce(p_pallets_received,0)
+  and p.pallets_damaged=coalesce(p_pallets_damaged,0)
+ into v_existing,v_existing_matches
+ from public.delivery_notes n join public.delivery_proofs p on p.id=n.proof_id and p.fleet_id=n.fleet_id
  where n.shipment_id=p_shipment_id and p.event_key=p_event_key;
- if v_existing is not null then return v_existing; end if;
+ if v_existing is not null then
+  if not coalesce(v_existing_matches,false) then
+   raise exception 'Idempotency key was already used with different delivery data';
+  end if;
+  return v_existing;
+ end if;
  select st.* into v_stop from public.shipment_stops st
  where st.id=p_stop_id and st.shipment_id=p_shipment_id and st.fleet_id=p_fleet_id for update;
  if not found or v_stop.status not in ('completed','partially_completed') then
