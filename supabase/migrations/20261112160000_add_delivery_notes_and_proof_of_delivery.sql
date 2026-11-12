@@ -374,7 +374,7 @@ create or replace function public.add_delivery_note_adjustment(
 )
 returns uuid language plpgsql security definer set search_path=''
 as $function$
-declare v_actor uuid:=auth.uid(); v_id uuid;
+declare v_actor uuid:=auth.uid(); v_id uuid; v_existing_matches boolean;
 begin
  if v_actor is null then raise exception 'Authentication required'; end if;
  if not private.has_fleet_role(p_fleet_id,array['owner','fleet_manager']::text[]) then
@@ -397,10 +397,18 @@ begin
  values(p_fleet_id,p_delivery_note_id,p_event_key,p_adjustment_type,btrim(p_reason),p_payload,v_actor)
  on conflict(delivery_note_id,event_key) do nothing returning id into v_id;
  if v_id is null then
-  select a.id into v_id from public.delivery_note_adjustments a
+  select a.id,
+   a.fleet_id=p_fleet_id and a.created_by=v_actor
+   and a.adjustment_type=p_adjustment_type
+   and a.reason=btrim(p_reason) and a.payload=p_payload
+  into v_id,v_existing_matches
+  from public.delivery_note_adjustments a
   where a.delivery_note_id=p_delivery_note_id and a.event_key=p_event_key;
+  if v_id is null then raise exception 'Delivery note not found in this fleet'; end if;
+  if not coalesce(v_existing_matches,false) then
+   raise exception 'Adjustment idempotency key was already used with different data';
+  end if;
  end if;
- if v_id is null then raise exception 'Delivery note not found in this fleet'; end if;
  return v_id;
 end;
 $function$;
