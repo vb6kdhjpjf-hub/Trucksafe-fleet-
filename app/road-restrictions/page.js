@@ -9,7 +9,7 @@ import { ArrowRight, AlertTriangle, Plus, RefreshCw, ShieldAlert } from "lucide-
 const blank = { road_name: "", restriction_type: "height", direction: "", max_height_m: "", max_weight_t: "", max_width_m: "", max_length_m: "", valid_from: "", valid_until: "", active_from: "", active_until: "", latitude: "", longitude: "", start_latitude: "", start_longitude: "", end_latitude: "", end_longitude: "", location_accuracy_m: "", measured_clearance_m: "", measurement_date: "", measurement_accuracy_cm: "", measurement_method: "", measurement_location_note: "", measurement_document_url: "", structure_id: "", road_segment_id: "", lane_id: "", passage_length_m: "", surveyor: "", posted_clearance_status: "unknown", posted_clearance_m: "", measurement_coverage: { both_sides_measured: false, lane_center_measured: false, left_edge_measured: false, right_edge_measured: false, hanging_installations_checked: false, passage_center_measured: false }, source_type: "user_report", source_name: "", source_url: "", source_reference: "", source_updated_at: "", expires_at: "", notes: "" };
 const labels = { height: "גובה מרבי", weight: "משקל מרבי", width: "רוחב מרבי", length: "אורך מרבי", hazmat: "חומרים מסוכנים", time_window: "הגבלת שעות", closed: "כביש סגור", other: "אחר" };
 const isValidMeasurementDate = value => {
-  if (typeof value !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+  if (typeof value !== "string" || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00.000Z`);
   return Number.isFinite(parsed.getTime()) &&
     parsed.toISOString().slice(0, 10) === value &&
