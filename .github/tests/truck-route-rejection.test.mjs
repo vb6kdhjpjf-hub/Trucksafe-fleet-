@@ -49,3 +49,20 @@ test("caps candidate and message counts", () => {
   assert.equal(summarizeRejectedRouteCandidates(candidates).length, 5);
   assert.equal(formatRejectedRouteMessages(candidates).length, 12);
 });
+
+test("explains fail-closed catalogue, stale verification, and invalid route evidence in Hebrew", () => {
+  const messages = formatRejectedRouteMessages([{
+    reason: "unresolved_fleet_restrictions",
+    conflicts: [],
+    unresolved: [
+      { roadName: "כביש 77", reason: "restriction_catalog_unavailable" },
+      { roadName: "כביש 6", reason: "restriction_verification_stale_or_invalid" },
+      { roadName: "מעבר צפון", reason: "route_geometry_outside_supported_israel_bounds" },
+      { roadName: "כביש 65", reason: "vehicle_profile_incomplete" }
+    ]
+  }]);
+  assert.ok(messages.some(message => message.includes("מאגר מגבלות הדרך אינו זמין")));
+  assert.ok(messages.some(message => message.includes("אימות מגבלת הדרך אינו עדכני")));
+  assert.ok(messages.some(message => message.includes("חורג מאזור הפעילות המאומת")));
+  assert.ok(messages.some(message => message.includes("נתוני מידות או משקל הרכב אינם מלאים")));
+});
