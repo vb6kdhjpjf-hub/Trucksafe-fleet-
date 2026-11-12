@@ -120,7 +120,7 @@ function DeliveryNotePrint({ note, onClose }) {
       <div className="delivery-print-customer"><div><small>לקוח</small><b>{customer.name||"—"}</b><span>אסמכתת לקוח: {customer.reference||"—"}</span><span>הזמנת משלוח: {customer.delivery_reference||"—"}</span></div><div><small>כתובת מסירה</small><b>{stop.address||"—"}</b><span>תחנה {stop.sequence_no||"—"}</span></div></div>
       <table className="delivery-print-table"><thead><tr><th>#</th><th>תיאור פריט</th><th>יחידה</th><th>מתוכנן</th><th>נמסר</th><th>פגום</th><th>נדחה</th><th>הוחזר</th></tr></thead><tbody>{(s.cargo_lines||[]).map((line,i)=><tr key={i}><td>{i+1}</td><td>{line.description}</td><td>{units.find(u=>u[0]===line.unit)?.[1]||line.unit}</td><td>{line.planned_quantity}</td><td>{line.delivered_quantity}</td><td>{line.damaged_quantity}</td><td>{line.rejected_quantity}</td><td>{line.returned_quantity}</td></tr>)}</tbody></table>
       <div className="delivery-pallet-summary"><b>החלפת משטחים</b><span>נמסרו: {pallet.delivered||0}</span><span>התקבלו: {pallet.received||0}</span><span>פגומים: {pallet.damaged||0}</span><span>יתרה: {pallet.outstanding||0}</span></div>
-      <div className="delivery-print-proof"><div><b>אישור מקבל</b><p>{proof.recipient_name||"לא התקבלה חתימה"}</p><small>{proof.status==="signed"?"חתימה נשמרה באופן מאובטח":"חריגת חתימה באישור מנהל"}</small></div><div><b>הערות</b><p>{proof.recipient_note||proof.exception_reason||"—"}</p></div></div>
+      <div className="delivery-print-proof"><div><b>אישור מקבל</b><p>{proof.recipient_name||"לא התקבלה חתימה"}</p>{note.signatureUrl&&<img className="delivery-signature-image" src={note.signatureUrl} alt="חתימת מקבל הסחורה"/>}<small>{proof.status==="signed"?"חתימה נשמרה באופן מאובטח":"חריגת חתימה באישור מנהל"}</small></div><div><b>הערות</b><p>{proof.recipient_note||proof.exception_reason||"—"}</p></div></div>
       <footer>מסמך זה הוא תעודת משלוח ואינו חשבונית מס.</footer>
     </article>
   </div>;
@@ -248,6 +248,11 @@ export default function ShipmentsPage(){
     }catch(error){notify("לא ניתן לשמור פרטי מנפיק: "+error.message,"error");}
     finally{setBusy(false);}
   }
+  async function openNote(note){
+    const path=note.document_snapshot?.proof?.signature_object_path;
+    if(path){const {data,error}=await supabase.storage.from("delivery-proof-private").createSignedUrl(path,300);if(error){notify("לא ניתן לטעון חתימה לתצוגת התעודה: "+error.message,"error");return;}setSelectedNote({...note,signatureUrl:data.signedUrl});}
+    else setSelectedNote(note);
+  }
   async function adjustNote(note,type){
     const reason=window.prompt(type==="cancellation"?"סיבת ביטול תעודת המשלוח:":"סיבת תיקון לתעודת המשלוח:");
     if(!reason||reason.trim().length<3)return;
@@ -314,7 +319,7 @@ export default function ShipmentsPage(){
         <div className="fleet-panel-head"><div><h3>{shipment.customer_name}</h3><p>אסמכתה: {shipment.delivery_reference||shipment.customer_reference||"—"} · {shipment.scheduled_at?new Date(shipment.scheduled_at).toLocaleString("he-IL"):"ללא מועד"}</p></div><span className="task-status">{({planned:"מתוכנן",assigned:"שויך לנהג",in_transit:"בדרך",partially_delivered:"נמסר חלקית",delivered:"נמסר",delivery_exception:"חריגת מסירה",cancelled:"בוטל"})[shipment.status]||shipment.status}</span></div>
         <div className="shipment-cargo-summary">{shipment.lines.map(line=><span key={line.id}><Package size={14}/>{line.description}: {Number(line.planned_quantity).toLocaleString("he-IL")} {units.find(u=>u[0]===line.unit)?.[1]||line.unit}</span>)}</div>
         {shipment.stops.map(stop=><section className="shipment-stop-card" key={stop.id}>
-          <div className="shipment-stop-title"><div><b><MapPin size={15}/> {stop.sequence_no}. {stop.address}</b><small>{stop.status==="pending"?"ממתינה":stop.status==="in_progress"?"בתהליך":stop.status==="completed"?"הושלמה":stop.status==="partially_completed"?"הושלמה חלקית":stop.status}</small></div>{stop.deliveryNote&&<button className="secondary-btn" onClick={()=>setSelectedNote(stop.deliveryNote)}><FileText size={14}/> {stop.deliveryNote.note_number}</button>}</div>
+          <div className="shipment-stop-title"><div><b><MapPin size={15}/> {stop.sequence_no}. {stop.address}</b><small>{stop.status==="pending"?"ממתינה":stop.status==="in_progress"?"בתהליך":stop.status==="completed"?"הושלמה":stop.status==="partially_completed"?"הושלמה חלקית":stop.status}</small></div>{stop.deliveryNote&&<button className="secondary-btn" onClick={()=>openNote(stop.deliveryNote)}><FileText size={14}/> {stop.deliveryNote.note_number}</button>}</div>
           {stop.items.map(item=>{
             const draft=results[stop.id]?.[item.id]||{};
             return <div className="shipment-result-row" key={item.id}><div><b>{item.line?.description||"פריט"}</b><small>מתוכנן: {Number(item.planned_quantity).toLocaleString("he-IL")} {units.find(u=>u[0]===item.line?.unit)?.[1]||item.line?.unit}</small></div>
@@ -332,7 +337,7 @@ export default function ShipmentsPage(){
         </section>)}
       </article>)}
       {notes.length>0&&<section className="fleet-panel"><div className="shipments-section-head"><div><h3>תעודות משלוח שהונפקו</h3><p>המסמכים נשמרים בצילום מצב מקורי וניתנים להדפסה.</p></div></div>
-        {notes.map(note=><div className="delivery-note-row" key={note.id}><div><b>{note.note_number}</b><small>{note.document_snapshot?.customer?.name||"לקוח"} · {new Date(note.issued_at).toLocaleString("he-IL")}</small></div><button className="secondary-btn" onClick={()=>setSelectedNote(note)}><Printer size={14}/> הצגה / PDF</button>{canOverride&&<><button className="secondary-btn" disabled={busy} onClick={()=>adjustNote(note,"correction")}>תיעוד תיקון</button><button className="secondary-btn" disabled={busy} onClick={()=>adjustNote(note,"cancellation")}>תיעוד ביטול</button></>}</div>)}
+        {notes.map(note=><div className="delivery-note-row" key={note.id}><div><b>{note.note_number}</b><small>{note.document_snapshot?.customer?.name||"לקוח"} · {new Date(note.issued_at).toLocaleString("he-IL")}</small></div><button className="secondary-btn" onClick={()=>openNote(note)}><Printer size={14}/> הצגה / PDF</button>{canOverride&&<><button className="secondary-btn" disabled={busy} onClick={()=>adjustNote(note,"correction")}>תיעוד תיקון</button><button className="secondary-btn" disabled={busy} onClick={()=>adjustNote(note,"cancellation")}>תיעוד ביטול</button></>}</div>)}
       </section>}
       <p className="fleet-foot">TruckSafe Fleet V1 · מסמכים חתומים ובלתי־ניתנים לשינוי · תעודת משלוח אינה חשבונית מס</p>
     </section>
