@@ -30,3 +30,12 @@ The routing page must state clearly that current trip weight is entered manually
 5. Keep routing blocked unless the relevant input is verified to the required standard and independent road restriction coverage is approved.
 
 A user-entered weight that passes the numeric range check is not a verified measurement and must never be described as one.
+
+
+## Official heavy-vehicle registry candidate (reviewed 12 November 2026)
+
+The Ministry of Transport's public catalogue lists a technical dataset for vehicles above 3.5 tonnes and vehicles without a model code. Its visible schema includes gross weight, tare/self weight, trailer/load-related weight, axle count, axle/tire configuration, plus registration and chassis identifiers. The catalogue listing was observed as updated on 10 November 2026.
+
+This is a possible review aid for static vehicle specifications only. It is not a weighbridge reading, onboard scale, cargo manifest, or source of actual axle-load distribution. Registration and chassis identifiers are sensitive identifiers and must not be bulk-copied into the application or logs. The catalogue's "Other (Open)" licence label is not sufficient evidence of commercial reuse or redistribution rights.
+
+See [the source review](../data-sourcing/israel-heavy-vehicle-registry-review.md). No registry data has been imported. Human-reviewed registration documents remain the current approval basis for saved vehicle profiles.
