@@ -344,3 +344,14 @@ Latest verified workflow: [GitHub Actions run 43157429358](https://github.com/vb
 - Signed Test Auth / local HTTP integration and cleanup; cleanup reported zero marked disposable Test Auth users remaining.
 
 PR #15 remains open and Draft. No merge, deployment, Production database writes, provider activation, or external authority outreach occurred. Truck routing remains blocked until authoritative, current, licensed, independently validated restriction records and coverage are established.
+
+
+## Heavy-vehicle registry discovery and axle-load boundary — 12 November 2026
+
+The Ministry's public catalogue also lists a technical registry for active vehicles above 3.5 tonnes and vehicles without a model code, with catalogue metadata observed as updated 10 November 2026. Its visible schema includes gross weight, tare/self weight, trailer/load-related weight, axle count and axle/tire configuration, but also registration and chassis identifiers. The catalogue labels the licence "Other (Open)", which is not sufficient evidence of commercial reuse or redistribution permission.
+
+The registry is classified as a candidate reference for human review of static vehicle specifications only. No data was downloaded or imported; registration/chassis identifiers must not be bulk-copied into the app, logs or analytics. Human-reviewed registration documents remain the current vehicle-profile approval basis. Static registry fields cannot establish actual trip weight or per-axle load distribution.
+
+The current route API requires both user-entered current trip weight and a measured heaviest-axle load, validates their numeric bounds, and sends the two values to HERE as distinct vehicle parameters. The fleet restriction evaluator compares gross weight against verified `weight` restrictions; an axle-specific restriction type is currently unsupported and intentionally fails closed as `restriction_type_requires_manual_review`. Do not represent an axle-load limit as a gross-weight limit. Add explicit schema and evaluator support only after an independently verified authoritative axle-limit source and a separately tested migration are available.
+
+The source review is documented in `docs/data-sourcing/israel-heavy-vehicle-registry-review.md`, and the weight limitation document now links to it. No production or Test database was changed, no provider was enabled, no authority was contacted, and no merge/deployment occurred.
