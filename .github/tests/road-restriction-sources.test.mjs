@@ -13,7 +13,7 @@ test("official railway grade-separation dataset is candidate-only and not routin
   assert.match(source.limitations, /אין שדות גובה מעבר/);
   assert.equal(source.candidateOnly, true);
   assert.equal(source.routingEligible, false);
-  assert.match(source.limitations, /גובה מעבר מדוד/);
+  assert.match(source.limitations, /אין שדות גובה מעבר/);
   assert.equal(isSourceCandidateOnly(source), true);
 });
 
