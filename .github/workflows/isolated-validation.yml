@@ -29,9 +29,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: Generate lockfile without running install scripts
@@ -56,7 +56,7 @@ jobs:
       SUPABASE_TEST_DB_URL: ${{ secrets.SUPABASE_TEST_DB_URL }}
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Check for isolated test database secret
         id: test-db
         shell: bash
@@ -90,7 +90,7 @@ jobs:
           PY
       - name: Set up Node.js for database test runner
         if: steps.test-db.outputs.available == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: Install PostgreSQL driver
@@ -120,7 +120,7 @@ jobs:
       SUPABASE_TEST_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Check for dedicated Test Auth secrets
         id: auth-secrets
         shell: bash
@@ -135,7 +135,7 @@ jobs:
       - name: Set up Node.js
         id: setup-node
         if: steps.auth-secrets.outputs.available == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: Generate lockfile without running install scripts

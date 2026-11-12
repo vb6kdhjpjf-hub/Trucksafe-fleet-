@@ -37,7 +37,7 @@ jobs:
       SCHEMA_BACKUP_RUN_ID: ${{ inputs.schema_backup_run_id }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Validate isolated test credentials
         shell: bash
@@ -86,7 +86,7 @@ jobs:
           python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("status") == "completed" and d.get("conclusion") == "success" and d.get("workflowName") == "Supabase schema-only backup", "Run ID must belong to a successful Supabase schema-only backup workflow"' <<< "$run_info"
 
       - name: Download previously verified schema-only snapshot
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: trucksafe-schema-only
           path: schema-artifact
