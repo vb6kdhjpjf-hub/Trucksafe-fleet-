@@ -180,12 +180,28 @@ export default function RoadRestrictionsPage() {
         const measured = Number(row.measured_clearance_m);
         const posted = Number(row.max_height_m);
         const margin = measured - posted;
+        const coverage = row.measurement_coverage;
+        const completeCoverage = coverage && typeof coverage === "object" &&
+          coverage.both_sides_measured === true &&
+          coverage.lane_center_measured === true &&
+          coverage.left_edge_measured === true &&
+          coverage.right_edge_measured === true &&
+          coverage.hanging_installations_checked === true &&
+          typeof coverage.passage_center_measured === "boolean" &&
+          (Number(row.passage_length_m) <= 20 || coverage.passage_center_measured === true);
+        const postedEvidenceValid = row.posted_clearance_status === "posted"
+          ? Number.isFinite(Number(row.posted_clearance_m)) && Number(row.posted_clearance_m) >= 0.5 && Number(row.posted_clearance_m) <= 20
+          : ["not_posted", "unknown"].includes(row.posted_clearance_status) && row.posted_clearance_m == null;
         if (!Number.isFinite(measured) || !row.measurement_date ||
-            !Number.isFinite(Number(row.measurement_accuracy_cm)) || Number(row.measurement_accuracy_cm) > 1 ||
+            !Number.isFinite(Number(row.measurement_accuracy_cm)) || Number(row.measurement_accuracy_cm) <= 0 || Number(row.measurement_accuracy_cm) > 1 ||
             !row.measurement_method?.trim() || String(row.measurement_location_note || "").trim().length < 12 ||
             !/^https:\/\//i.test(String(row.measurement_document_url || "")) ||
+            !row.structure_id?.trim() || !row.road_segment_id?.trim() || !row.lane_id?.trim() ||
+            !["forward", "backward"].includes(row.direction) ||
+            !Number.isFinite(Number(row.passage_length_m)) || Number(row.passage_length_m) <= 0 ||
+            !row.surveyor?.trim() || !completeCoverage || !postedEvidenceValid ||
             !Number.isFinite(margin) || margin < 0.20 || margin > 0.29) {
-          setMessage("לאימות הגבלת גובה נדרשים מדידה מתועדת, דיוק של עד 1 ס״מ, תאריך, שיטת מדידה, תיאור הנתיבים/המיקומים והפרש בטיחות של 20–29 ס״מ מהגובה הרשום.");
+          setMessage("לאימות גובה נדרשים מזהי מבנה, מקטע ונתיב, כיוון, אורך מעבר, מודד, תיעוד מדידה וכיסוי מלא של הנתיב, סטטוס שילוט והפרש בטיחות של 20–29 ס״מ.");
           return;
         }
       }
