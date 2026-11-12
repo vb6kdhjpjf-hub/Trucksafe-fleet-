@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
-import { ArrowRight, ClipboardList, Plus, Truck, UserRound, MapPin, FileText, Package, CheckCircle2, Printer, PenLine, RefreshCw, X, ShieldCheck } from "lucide-react";
+import { ArrowRight, ClipboardList, Plus, Truck, UserRound, MapPin, FileText, Package, CheckCircle2, Printer, PenLine, RefreshCw, X, ShieldCheck, Scale } from "lucide-react";
 
 const units = [
   ["pallet","משטחים"],["carton","קרטונים"],["package","חבילות"],["piece","יחידות"],
@@ -15,8 +15,7 @@ const emptyStop = (count=1) => ({ address:"", allocations:Array.from({length:cou
 const emptyForm = () => ({ customer_name:"", customer_reference:"", delivery_reference:"", scheduled_at:"", assigned_driver_id:"", assigned_vehicle_id:"", notes:"", lines:[emptyLine()], stops:[emptyStop()] });
 const eventKey = () => crypto.randomUUID();
 
-function SignaturePad({ onClear, onChange }) {
-  const canvasRef = useRef(null);
+function SignaturePad({ canvasRef, onClear, onChange }) {
   const drawing = useRef(false);
   const last = useRef(null);
   function point(event) {
@@ -48,7 +47,6 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
   const [palletsDamaged,setPalletsDamaged]=useState("0");
   const [photos,setPhotos]=useState([]);
   const [hasSignature,setHasSignature]=useState(false);
-  const canvasRef=useRef(null);
   const padRef=useRef(null);
   async function submit(event){
     event.preventDefault();
@@ -96,7 +94,7 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
     <h4><PenLine size={17}/> אישור מסירה ותעודת משלוח</h4>
     <p>השלם את פרטי המסירה. חתימת המקבל נדרשת; חריגה מחייבת אישור מנהל ותיעוד סיבה.</p>
     <label>שם מקבל הסחורה<input maxLength={160} value={recipient} onChange={e=>setRecipient(e.target.value)} placeholder="שם מלא"/></label>
-    <SignaturePad onChange={setHasSignature} onClear={()=>setHasSignature(false)}/>
+    <SignaturePad canvasRef={padRef} onChange={setHasSignature} onClear={()=>setHasSignature(false)}/>
     {canOverride&&!hasSignature&&<label>סיבת חריגה — מדוע לא התקבלה חתימה?<textarea rows={2} maxLength={1000} value={exception} onChange={e=>setException(e.target.value)} placeholder="הסבר ותיעוד אישור מנהל"/></label>}
     <div className="proof-grid">
       <label>משטחים שנמסרו<input type="number" min="0" step="0.001" value={palletsDelivered} onChange={e=>setPalletsDelivered(e.target.value)}/></label>
@@ -269,7 +267,7 @@ export default function ShipmentsPage(){
   if(loading)return <main className="fleet-home"><div className="fleet-content"><p>טוען משלוחים...</p></div></main>;
   return <main className="fleet-home">
     <header className="fleet-header"><a href="/" className="auth-brand"><span><Truck size={23}/></span><div><h1>TruckSafe</h1><small>ניהול צי חכם</small></div></a><div className="drivers-header-actions">
-      <a className="nav-link" href="/"><ArrowRight size={15}/> ראשי</a><a className="nav-link" href="/daily-work"><ScaleIcon/> תוכניות עבודה</a>
+      <a className="nav-link" href="/"><ArrowRight size={15}/> ראשי</a><a className="nav-link" href="/daily-work"><Scale size={15}/> תוכניות עבודה</a>
       <a className="nav-link" href="/drivers"><UserRound size={15}/> נהגים</a><a className="nav-link" href="/tasks"><ClipboardList size={15}/> משימות</a>
     </div></header>
     <section className="fleet-content shipments-page">
