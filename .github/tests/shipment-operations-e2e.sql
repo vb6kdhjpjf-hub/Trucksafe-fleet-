@@ -149,6 +149,22 @@ begin
  end if;
  insert into pg_temp.shipment_test_results values('corrections are appended separately without changing the issued snapshot','PASS');
 
+ if public.add_delivery_note_adjustment(f.fleet_id,note_id,
+  '13000000-0000-4000-8000-000000000003'::uuid,'correction','תיקון פרטי מקבל',
+  '{"recipient_name":"מקבל מתוקן"}'::jsonb)<>adjustment_id then
+  raise exception 'Idempotent correction retry returned a different record';
+ end if;
+ rejected:=false;
+ begin
+  perform public.add_delivery_note_adjustment(f.fleet_id,note_id,
+   '13000000-0000-4000-8000-000000000003'::uuid,'correction','תיקון אחר',
+   '{"recipient_name":"מישהו אחר"}'::jsonb);
+ exception when others then get stacked diagnostics msg=message_text;
+  rejected:=msg ilike '%Adjustment idempotency key was already used with different data%';
+ end;
+ if not rejected then raise exception 'Reusing an adjustment event key with changed data was not rejected'; end if;
+ insert into pg_temp.shipment_test_results values('adjustment retries are idempotent and reject changed payloads','PASS');
+
  adjustment_id:=public.add_delivery_note_adjustment(f.fleet_id,note_id,
   '13000000-0000-4000-8000-000000000004'::uuid,'cancellation','ביטול עקב טעות בהזמנה','{}'::jsonb);
  rejected:=false;
