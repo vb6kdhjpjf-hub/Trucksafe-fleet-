@@ -15,6 +15,8 @@ TruckSafe has a substantial fleet-management application and an isolated validat
 
 ## Workstreams
 
+| Enterprise onboarding and data migration | Product requirement captured; implementation not started | Guided Excel/CSV migration and later approved connectors, with mapping, validation, dry-run, duplicate review, audit and reconciliation. No one-by-one re-entry for established fleets. |
+
 | Workstream | Current status | Evidence / remaining gate |
 |---|---|---|
 | Fleet workspace and dashboard | Implemented in the application | Login, fleet membership, fleet dashboard and operational modules exist; dashboard loading now fails closed when an account has multiple fleet memberships or multiple owned fleets instead of selecting one arbitrarily. Complete user-acceptance testing is still required. |
@@ -352,3 +354,18 @@ The registry is classified as a candidate reference for human review of static v
 The current route API requires both user-entered current trip weight and a measured heaviest-axle load, validates their numeric bounds, and sends the two values to HERE as distinct vehicle parameters. The fleet restriction evaluator compares gross weight against verified `weight` restrictions; an axle-specific restriction type is currently unsupported and intentionally fails closed as `restriction_type_requires_manual_review`. Do not represent an axle-load limit as a gross-weight limit. Add explicit schema and evaluator support only after an independently verified authoritative axle-limit source and a separately tested migration are available.
 
 The source review is documented in `docs/data-sourcing/israel-heavy-vehicle-registry-review.md`, and the weight limitation document now links to it. No production or Test database was changed, no provider was enabled, no authority was contacted, and no merge/deployment occurred.
+
+
+## Enterprise adoption and migration — 12 November 2026
+
+Established fleets must be able to adopt TruckSafe without manually re-entering drivers, vehicles, customers and operating records one at a time. This is a core product capability.
+
+The target Migration Center will upload Excel/CSV or select a named supported connector; inspect sheets/columns; suggest and edit mappings; validate rows, duplicates and relationships; preview exact create/update/skip/reject counts; run a no-write dry run; require authorized approval; import bounded, dependency-ordered, idempotent batches; reconcile source/target totals; and provide a downloadable row-level report with safe retry/recovery.
+
+Sequence: **Phase A** vehicles, drivers, customers and delivery locations with fleet-scoped source IDs; **Phase B** open/future tasks, schedules, stops and shipments after master data is resolved; **Phase C** selected maintenance, incident, trip and delivery history with provenance; **later** named ERP/TMS/API connectors only after API access, customer authorization, field semantics, licensing, security and support ownership are verified.
+
+Security: one verified fleet per import; authorized roles only; ambiguous matches require human review; no silent overwrites; dry run writes nothing; retries are idempotent; cross-fleet references are rejected; files/staging/reports are private; logs exclude raw personal data. Never execute spreadsheet formulas/macros. Never infer truck dimensions, weights, licence eligibility, GPS, delivery proof or safety facts from missing/ambiguous spreadsheet data. Imported safety-critical values require the same verification as native values.
+
+Enterprise adoption also needs a labelled synthetic demo fleet, role-based onboarding, customer-approved migration rehearsal, reconciliation report, data ownership/export/retention documentation, security/access-control evidence, support/escalation expectations and measurable pilot outcomes.
+
+**Status:** product plan only. Migration Center, parsers, import APIs and connectors are not implemented. No customer data or Production schema/data has been changed.
