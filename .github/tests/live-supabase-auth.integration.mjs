@@ -174,7 +174,7 @@ async function assertMembershipAccess({ client, token, userId, fleetId, role }) 
   if (visibilityError || !Array.isArray(visibleMembers)) {
     throw new Error(`Live RLS membership visibility query failed for role ${role}.`);
   }
-  const expectedVisible = role === "owner" || role === "fleet_manager" ? 4 : 1;
+  const expectedVisible = role === "owner" || role === "fleet_manager" ? 6 : 1;
   assert.equal(visibleMembers.length, expectedVisible,
     `${role} should see ${expectedVisible} fleet membership row(s) under RLS`);
 }
@@ -206,7 +206,7 @@ async function assertActualRouteAuthorization({ url, anonKey, token, role }) {
     if (role === "owner" || role === "fleet_manager") {
       assert.equal(result.status, 503, `${role} should pass manager authorization and stop at the disabled PTV key gate`);
       assert.equal(result.body.reason, "ptv_key_not_configured");
-    } else if (role === "driver") {
+    } else if (role === "driver" || role === "dispatcher" || role === "safety_manager") {
       assert.equal(result.status, 403, "driver must be denied by the actual PTV route handler");
       assert.equal(result.body.reason, "fleet_manager_required");
     } else if (role === "unassigned" || role === "ambiguous") {
@@ -218,7 +218,7 @@ async function assertActualRouteAuthorization({ url, anonKey, token, role }) {
   }
 
   const truckResult = await call(truckRoutePost);
-  if (role === "owner" || role === "fleet_manager" || role === "driver") {
+  if (role === "owner" || role === "fleet_manager" || role === "driver" || role === "dispatcher" || role === "safety_manager") {
     assert.equal(truckResult.status, 503, `${role} should pass ordinary membership authorization and stop at the disabled coverage gate`);
     assert.match(truckResult.body.error, /כיסוי ארצי ועדכני/);
   } else {
@@ -297,7 +297,7 @@ async function assertActualHttpAuthorization({ baseUrl, token, role }) {
     if (role === "owner" || role === "fleet_manager") {
       assert.equal(result.status, 503);
       assert.equal(result.body.reason, "ptv_key_not_configured");
-    } else if (role === "driver") {
+    } else if (role === "driver" || role === "dispatcher" || role === "safety_manager") {
       assert.equal(result.status, 403);
       assert.equal(result.body.reason, "fleet_manager_required");
     } else if (role === "unassigned" || role === "ambiguous") {
@@ -308,7 +308,7 @@ async function assertActualHttpAuthorization({ baseUrl, token, role }) {
     }
   }
   const truck = await request("/api/truck-route");
-  if (role === "owner" || role === "fleet_manager" || role === "driver") {
+  if (role === "owner" || role === "fleet_manager" || role === "driver" || role === "dispatcher" || role === "safety_manager") {
     assert.equal(truck.status, 503);
     assert.match(truck.body.error, /כיסוי ארצי ועדכני/);
   } else {
@@ -330,7 +330,7 @@ async function main() {
   const staleRemoved = await cleanupMarkedFixtureUsers(admin);
   const runId = randomUUID();
   const fleetName = `${FIXTURE_FLEET_PREFIX}${runId}`;
-  const roles = ["owner", "fleet_manager", "driver", "ambiguous", "unassigned"];
+  const roles = ["owner", "fleet_manager", "dispatcher", "safety_manager", "driver", "ambiguous", "unassigned"];
   const fixtures = [];
   const signedIn = [];
   let testError;
@@ -382,7 +382,7 @@ async function main() {
     }
 
     const additionalMembers = fixtures
-      .filter(item => item.role === "fleet_manager" || item.role === "driver" || item.role === "ambiguous")
+      .filter(item => item.role === "fleet_manager" || item.role === "dispatcher" || item.role === "safety_manager" || item.role === "driver" || item.role === "ambiguous")
       .map(item => ({ fleet_id: createdFleet.id, user_id: item.user.id, role: item.role === "ambiguous" ? "driver" : item.role }));
     const { error: memberInsertError } = await admin.from("fleet_members").insert(additionalMembers);
     if (memberInsertError) {
@@ -432,7 +432,7 @@ async function main() {
     await assertActualHttpAuthorization({ baseUrl: httpServer.baseUrl, token: "invalid-signed-token", role: "invalid" });
 
     process.stdout.write(
-      "Live Test Auth passed: five signed Test identities (owner, fleet_manager, driver, ambiguous multi-fleet, unassigned), " +
+      "Live Test Auth passed: seven signed Test identities (owner, fleet_manager, dispatcher, safety_manager, driver, ambiguous multi-fleet, unassigned), " +
       "PostgREST membership reads, RLS visibility, actual route-handler authorization, and invalid-token denial all matched expectations.\n"
     );
   } catch (error) {
