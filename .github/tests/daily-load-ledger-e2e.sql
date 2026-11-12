@@ -263,10 +263,12 @@ begin
   if not rejected then raise exception 'Load update continued after vehicle registration approval was withdrawn'; end if;
   insert into pg_temp.daily_load_test_results values('active load operations fail closed when vehicle registration approval is withdrawn','PASS');
 
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
   perform set_config('request.jwt.claim.role','service_role',true);
   update public.vehicles set registration_verification_status='verified'
     where public.vehicles.id=vehicle_id and public.vehicles.fleet_id=test_block.fleet_id;
   perform set_config('request.jwt.claim.role','authenticated',true);
+  perform set_config('request.jwt.claim.sub',driver_user_id::text,true);
   result := public.record_daily_load_operation(
     fleet_id,created_plan_id,created_stop_id,'11000000-0000-4000-8000-000000000100'::uuid,
     'unload',2500,18500,7200,now(),'weighbridge_ticket','WB-PLAN-STOP-001',0
