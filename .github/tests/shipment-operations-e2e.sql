@@ -125,6 +125,17 @@ begin
  insert into pg_temp.shipment_test_results values('delivery document issuance is idempotent for repeated event keys','PASS');
 
  rejected:=false;
+ begin
+  perform public.complete_delivery_document(f.fleet_id,f.shipment_id,f.stop_id,
+   '13000000-0000-4000-8000-000000000002'::uuid,null,null,'{}'::text[],null,null,null,
+   'חתימת מקבל לא זמינה; אושר על ידי מנהל',11,8,1);
+ exception when others then get stacked diagnostics msg=message_text;
+  rejected:=msg ilike '%Idempotency key was already used with different delivery data%';
+ end;
+ if not rejected then raise exception 'Reusing a delivery event key with a changed pallet quantity was not rejected'; end if;
+ insert into pg_temp.shipment_test_results values('same delivery event key rejects changed payload instead of returning another result','PASS');
+
+ rejected:=false;
  begin update public.delivery_notes set document_snapshot='{}'::jsonb where id=note_id;
  exception when others then get stacked diagnostics msg=message_text; rejected:=msg ilike '%immutable%'; end;
  if not rejected then raise exception 'Issued delivery note snapshot was mutable'; end if;
