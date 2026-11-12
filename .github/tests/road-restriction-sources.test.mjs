@@ -194,3 +194,17 @@ test("Tel Aviv municipal bridge inventory is an asset-discovery layer, not a cle
   assert.match(source.limitations, /לא לאישור מסלול/);
   assert.equal(isSourceCandidateOnly(source), true);
 });
+
+
+test("Tel Aviv Waze event layer is secondary situational awareness only", () => {
+  const source = getRoadRestrictionSource("tel-aviv-waze-traffic-events-arcgis");
+  assert.ok(source);
+  assert.equal(source.publisher, "עיריית תל אביב-יפו (שכבת דיווחי Waze)");
+  assert.equal(source.candidateOnly, true);
+  assert.equal(source.routingEligible, false);
+  assert.equal(source.dataTypes.includes("reported_road_closure_event"), true);
+  assert.match(source.limitations, /מבוססת על דיווחי Waze/);
+  assert.match(source.limitations, /אינם אימות של רשות מוסמכת/);
+  assert.match(source.limitations, /אין להסיק מאי-הופעת אירוע שהדרך פתוחה/);
+  assert.equal(isSourceCandidateOnly(source), true);
+});

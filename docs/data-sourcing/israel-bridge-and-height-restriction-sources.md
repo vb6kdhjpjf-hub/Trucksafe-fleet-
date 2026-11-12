@@ -216,3 +216,12 @@ The Tel Aviv-Yafo municipal ArcGIS layer 550 contains line geometry for bridges,
 It is a useful municipal asset inventory lead, but it is limited to Tel Aviv-Yafo. Its published fields do not include vertical clearance, weight/width limits, measurement evidence, lane or travel direction. It therefore cannot establish whether a truck can safely pass beneath or across any structure. The absence of an asset from this municipal layer is not evidence that no bridge or restriction exists.
 
 **Implementation consequence:** keep this source city-scoped and discovery-only. It may help identify candidate structures for later authoritative survey matching, subject to coverage, freshness and licence checks; it must never create a verified restriction or approve a route.
+
+
+## 16. Tel Aviv Waze traffic-event layer — secondary situational awareness only (reviewed 12 November 2026)
+
+The municipal ArcGIS layer 891 exposes point reports for minor crashes, stopped vehicles, roadworks, hazards, traffic jams and `ROAD_CLOSED_EVENT`. Its fields include report confidence, reliability, report rating, publication time and update date. The layer extent is local to Tel Aviv-Yafo.
+
+These are Waze reports exposed through a municipal GIS service, not an official road-authority closure register. Confidence/reliability fields describe report metadata; they do not establish confirmation by a traffic authority. Reports can be missing, duplicated, incorrect or stale. The layer contains no truck-specific height, weight, width or axle restrictions, and absence of a report cannot be interpreted as an open road.
+
+**Implementation consequence:** keep it as a city-scoped, secondary awareness candidate only. Any future use must be subject to licensing, update-latency and map-matching review, and should surface as an unverified alert that requires corroboration. It must never independently close a road, clear a route, or establish national coverage.
