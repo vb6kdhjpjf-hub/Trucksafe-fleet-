@@ -178,3 +178,12 @@ The Ministry's GIS catalogue and its layer-specification guidance were listed as
 For every discovered layer, record and independently validate the actual data publisher, geographic coverage, dataset-level update date (not merely the catalogue page date), field definitions, measurement method and accuracy, direction/lane semantics, temporal validity, update cadence, and licence / commercial-use permissions. Until those checks are complete, catalogue entries remain discovery-only and must never approve a route.
 
 The Ministry's 2025 road-safety infrastructure specification explicitly describes a comprehensive bridge geographic database as a critical information need and describes the ongoing work to collect and standardise information from multiple infrastructure companies and local authorities. This is evidence of an effort to build/standardise the information base, not evidence that a complete national truck restriction dataset is already published.
+
+
+## 12. Ministry bridge GIS layer specification — important schema gap (reviewed 12 November 2026)
+
+The Ministry's version-1 bridge GIS specification (August/November 2025) is a valuable official schema lead. It defines a bridge polygon layer in Israel Transverse Mercator (EPSG:2039), a stated spatial accuracy of 1 metre, and an annual update frequency. It includes road/authority and bridge-location fields, plus `Gavrit_Min` and `Gavrit_Max` clearance fields. Those clearance fields are described as the minimum/maximum height shown on signage **or** obtained by measurement.
+
+That wording is not sufficient for safe automated routing. The specification does not require the record to distinguish posted clearance from a measured physical clearance, and does not require measurement method, measurement date, uncertainty/accuracy evidence, or a distinct clearance value for each direction/lane. A 1-metre spatial accuracy statement and annual update cadence also do not establish safe road-segment matching or timely updates for temporary changes.
+
+**Implementation consequence:** treat this specification as a candidate data model only. Before any import, obtain the actual dataset and metadata, inspect completeness and coverage, and require independent evidence for measured clearance, direction/lane mapping, current validity, and commercial-use rights. Never mark a record verified or allow routing based solely on the existence of these fields.

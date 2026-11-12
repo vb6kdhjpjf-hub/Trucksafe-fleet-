@@ -133,3 +133,18 @@ test("Ministry GIS layer catalogue and specification guidance is discovery-only,
   assert.match(source.limitations, /לא מאגר גשרים או מגבלות משאיות/);
   assert.equal(isSourceCandidateOnly(source), true);
 });
+
+
+test("Ministry bridge GIS specification is a useful schema lead but not an operational verified restriction dataset", () => {
+  const source = getRoadRestrictionSource("mot-bridge-gis-layer-spec-2025");
+  assert.ok(source);
+  assert.equal(source.publisher, "משרד התחבורה והבטיחות בדרכים");
+  assert.equal(source.contact, "geo@mot.gov.il");
+  assert.equal(source.lastPublished, "2025-11-25");
+  assert.equal(source.candidateOnly, true);
+  assert.equal(source.routingEligible, false);
+  assert.equal(source.dataTypes.includes("posted_or_measured_clearance_field"), true);
+  assert.match(source.limitations, /לא מאגר גשרים תפעולי/);
+  assert.match(source.limitations, /אינו דורש שיטת מדידה/);
+  assert.equal(isSourceCandidateOnly(source), true);
+});
