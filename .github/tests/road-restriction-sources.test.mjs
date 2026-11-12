@@ -272,7 +272,7 @@ test("every registered source remains routing-ineligible until a separate safety
   for (const source of ROAD_RESTRICTION_SOURCES) {
     assert.equal(typeof source.id, "string");
     assert.ok(source.id.length > 0);
-    assert.match(source.url, /^https:\\/\\//);
+    assert.equal(source.url.startsWith("https://"), true);
     assert.equal(source.routingEligible, false, `${source.id} must not enable routing from registry metadata`);
     assert.equal(isSourceCandidateOnly(source), true, `${source.id} must remain candidate-only for routing decisions`);
   }
