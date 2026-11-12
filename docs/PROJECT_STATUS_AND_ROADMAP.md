@@ -306,3 +306,17 @@ After the Auth run, five marked disposable Test Auth users and their fleets were
 The branch head and PR #15 head both equal the commit above. PR #15 remains open and Draft, not merged. No deployment, Production migration, provider activation, or external data-source outreach occurred.
 
 Remaining routing release blockers are unchanged: authoritative restriction records and geographic coverage, freshness/withdrawal guarantees, commercial rights, independent validation, and verified vehicle/axle-load semantics. The 5,000-row cap and paginated read must not be interpreted as nationwide coverage. Keep `TRUCK_RESTRICTION_COVERAGE_APPROVED` disabled.
+
+
+## Verified source research and CI follow-up — 12 November 2026
+
+The bridge-data review was extended against the Ministry's April 2026 height-obstacle guidelines and the live public data.gov.il grade-separation catalogue.
+
+- The Ministry's 2026 guidelines distinguish measured physical clearance from posted/proposed clearance. They prescribe lane-by-lane survey points at ±1 cm, measurements on both sides of the obstacle, additional centre measurements for underpasses longer than 20 m, inclusion of hanging equipment, use of the lowest measured value per lane, periodic remeasurement, and immediate updates after relevant roadworks. This is a measurement/maintenance standard, not a geospatial inventory.
+- The bridge GIS specification remains a candidate schema only. Its separate 1 m figure is spatial location accuracy, not clearance measurement accuracy. Its clearance fields can be populated from signage or measurement but do not by themselves establish which basis was used or provide the full survey evidence trail.
+- The public rail grade-separation dataset shows 618 records and a 30 June 2024 update date. It identifies a subset of rail/road crossings and related metadata but contains no height, weight, axle, width, length, lane, or direction restriction fields. It is not a national inventory of all road bridges. Its catalogue contact was corrected in the source registry to the currently published GOLDO@MOT.GOV.IL.
+- The acquisition request now explicitly asks for lane-level survey records following the 2026 guideline and for confirmation whether a newer/expanded version of the rail/road inventory or a wider bridge inventory exists. The request remains a draft; no external contact was made.
+
+The source-registry tests were updated for the new metadata. One CI run exposed a stale assertion after the rail dataset description was made more precise; the assertion was corrected. The subsequent run [43155283781](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43155283781) completed successfully: validation, Next.js build, dependency audit, isolated database tests, and signed Test Auth integration/cleanup all passed. The Auth cleanup reported zero remaining marked fixture users.
+
+PR #15 remains open and Draft. No merge, deployment, Production database change, provider activation, or external authority contact occurred. Truck routing remains blocked pending authoritative, current, licensed and independently validated restriction data with known geographic coverage.
