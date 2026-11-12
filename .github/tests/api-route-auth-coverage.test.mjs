@@ -10,7 +10,7 @@ async function collectRouteFiles(directory) {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) {
       found.push(...await collectRouteFiles(path));
-    } else if (/^route\\.(?:js|mjs|ts|tsx)$/.test(entry.name)) {
+    } else if (/^route\.(?:js|mjs|ts|tsx)$/.test(entry.name)) {
       found.push(path);
     }
   }
@@ -24,8 +24,8 @@ test("every API route explicitly resolves authenticated fleet membership", async
   const failures = [];
   for (const path of routeFiles) {
     const source = await readFile(path, "utf8");
-    const importsFleetGate = /from\\s+["'][^"']*lib\\/fleet-api-access\\.mjs["']/.test(source);
-    const invokesFleetGate = /\\bresolveFleetApiAccess\\s*\\(/.test(source);
+    const importsFleetGate = /from\s+["'][^"']*lib\/fleet-api-access\.mjs["']/.test(source);
+    const invokesFleetGate = /\bresolveFleetApiAccess\s*\(/.test(source);
     if (!importsFleetGate || !invokesFleetGate) {
       failures.push(relative(process.cwd(), path));
     }
