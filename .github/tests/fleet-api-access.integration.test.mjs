@@ -186,3 +186,25 @@ test("malformed fleet identifiers and unsupported roles fail closed", async t =>
     assert.equal(result.data, null);
   }
 });
+
+test("missing and oversized bearer tokens are rejected before any network request", async t => {
+  const { client, requests } = await startAuthFixture(t);
+  const missing = await resolveFleetApiAccess(client, "");
+  const oversized = await resolveFleetApiAccess(client, "x".repeat(8193));
+
+  assert.equal(missing.status, 401);
+  assert.equal(missing.reason, "invalid_session");
+  assert.equal(oversized.status, 401);
+  assert.equal(oversized.reason, "invalid_session");
+  assert.equal(requests.length, 0);
+});
+
+test("membership backend errors never leak backend details to API callers", async t => {
+  const { client } = await startAuthFixture(t, { membershipStatus: 500 });
+  const result = await resolveFleetApiAccess(client, TEST_TOKEN);
+
+  assert.equal(result.status, 403);
+  assert.equal(result.reason, "fleet_membership_required");
+  assert.equal(result.data, null);
+  assert.equal(JSON.stringify(result).includes("Membership lookup failed"), false);
+});
