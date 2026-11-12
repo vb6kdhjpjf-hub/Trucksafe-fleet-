@@ -44,6 +44,14 @@ begin
  exception when others then get stacked diagnostics msg=message_text; rejected:=msg ilike '%authorized dispatcher%'; end;
  if not rejected then raise exception 'Driver was allowed to create a shipment'; end if;
  insert into pg_temp.shipment_test_results values('driver cannot create or reassign shipments','PASS');
+ rejected:=false;
+ begin
+  perform public.record_shipment_stop_result(fleet_id,shipment_id,stop_id,'12000000-0000-4000-8000-000000000002'::uuid,
+   (select jsonb_agg(jsonb_build_object('stop_line_id',id,'delivered_quantity',planned_quantity+1))
+    from public.shipment_stop_lines sl where sl.shipment_id=shipment_test_block.shipment_id and sl.stop_id=shipment_test_block.stop_id),null);
+ exception when others then get stacked diagnostics msg=message_text; rejected:=msg ilike '%quantities are invalid%'; end;
+ if not rejected then raise exception 'Over-delivery was not rejected'; end if;
+ insert into pg_temp.shipment_test_results values('over-delivery beyond the stop allocation is rejected','PASS');
  result:=public.record_shipment_stop_result(
   fleet_id,shipment_id,stop_id,'12000000-0000-4000-8000-000000000001'::uuid,
   (select jsonb_agg(jsonb_build_object('stop_line_id',id,'delivered_quantity',planned_quantity,
@@ -55,14 +63,7 @@ begin
   raise exception 'Driver could not complete a full pallet/carton/weight stop';
  end if;
  insert into pg_temp.shipment_test_results values('assigned driver records quantities without a weight measurement','PASS');
- rejected:=false;
- begin
-  perform public.record_shipment_stop_result(fleet_id,shipment_id,stop_id,'12000000-0000-4000-8000-000000000002'::uuid,
-   (select jsonb_agg(jsonb_build_object('stop_line_id',id,'delivered_quantity',planned_quantity+1))
-    from public.shipment_stop_lines sl where sl.shipment_id=shipment_test_block.shipment_id and sl.stop_id=shipment_test_block.stop_id),null);
- exception when others then get stacked diagnostics msg=message_text; rejected:=msg ilike '%quantities are invalid%'; end;
- if not rejected then raise exception 'Over-delivery was not rejected'; end if;
- insert into pg_temp.shipment_test_results values('over-delivery beyond the stop allocation is rejected','PASS');
+
  if has_table_privilege('authenticated','public.shipments','INSERT')
   or has_table_privilege('authenticated','public.shipments','UPDATE')
   or has_table_privilege('authenticated','public.shipment_lines','INSERT')
