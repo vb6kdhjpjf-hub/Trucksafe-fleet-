@@ -176,6 +176,14 @@ export default function ImportsPage() {
 
     const table = entityType === "drivers" ? "drivers" : "vehicles";
     const identityField = entityType === "drivers" ? "license_number" : "registration_number";
+    if (mapping[identityField] === undefined || mapping[identityField] === "") {
+      setExistingIdentityValues([]);
+      setIdentityPreflight({
+        status: "skipped",
+        message: `לא נבחר שדה "${FIELD_LABELS[entityType][identityField]}"; בדיקת כפילויות מול הרשומות הקיימות לפי מזהה זה לא בוצעה.`
+      });
+      return () => { alive = false; };
+    }
     setIdentityPreflight({ status: "loading", message: "בודק מזהים מול הרשומות הקיימות בצי…" });
     setExistingIdentityValues([]);
 
@@ -211,10 +219,11 @@ export default function ImportsPage() {
     });
 
     return () => { alive = false; };
-  }, [parsed, entityType, fleet?.id, canManage]);
+  }, [parsed, entityType, fleet?.id, canManage, mapping.license_number, mapping.registration_number]);
 
   const displayPreview = useMemo(() => {
-    if (!preview || identityPreflight.status !== "ready") return preview;
+    if (!preview || identityPreflight.status === "skipped") return preview;
+    if (identityPreflight.status !== "ready") return preview;
     return flagExistingEnterpriseIdentityConflicts(preview, entityType, existingIdentityValues);
   }, [preview, entityType, existingIdentityValues, identityPreflight.status]);
 
@@ -232,7 +241,7 @@ export default function ImportsPage() {
   }, [mapping, parsed]);
 
   function exportRejected() {
-    if (!displayPreview || identityPreflight.status !== "ready") return;
+    if (!displayPreview || !["ready", "skipped"].includes(identityPreflight.status)) return;
     const rows = [["שורת מקור", "סוג נתונים", "שדות", "שגיאות", "אזהרות"]];
     displayPreview.rows.filter(row => row.errors.length || row.warnings.length).forEach(row => {
       rows.push([
@@ -303,7 +312,8 @@ export default function ImportsPage() {
           {identityPreflight.status === "loading" && <p role="status">{identityPreflight.message}</p>}
           {identityPreflight.status === "error" && <p className="status-late" role="alert">לא ניתן להשלים בדיקת כפילויות מול הצי הקיים. התוצאות אינן מלאות ולכן אין להסתמך עליהן: {identityPreflight.message}</p>}
           {identityPreflight.status === "ready" && <p style={{ color: "#718096", fontSize: 13 }} role="status">{identityPreflight.message} הבדיקה לקריאה בלבד.</p>}
-          {identityPreflight.status !== "ready" || !displayPreview ? <p className="status-late">לא ניתן להציג תוצאות מלאות עד להשלמת בדיקת הכפילויות מול הצי.</p> : <>
+          {identityPreflight.status === "skipped" && <p className="status-late" role="status">{identityPreflight.message} התצוגה מציגה בדיקת מבנה וערכים בלבד; יש לבחור ולמפות את שדה המזהה כדי לבדוק כפילויות בצי.</p>}
+          {!["ready", "skipped"].includes(identityPreflight.status) || !displayPreview ? <p className="status-late">לא ניתן להציג תוצאות מלאות עד להשלמת בדיקת הכפילויות מול הצי או להצגת אזהרה מפורשת על דילוג עליה.</p> : <>
             <div className="vehicle-list" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 12 }}>
               <div className="fleet-stat"><b>{displayPreview.summary.total}</b><span>סה״כ שורות</span></div>
               <div className="fleet-stat"><b>{displayPreview.summary.ready}</b><span>תקינות</span></div>
@@ -311,7 +321,7 @@ export default function ImportsPage() {
               <div className="fleet-stat"><b>{displayPreview.summary.rejected}</b><span>נדחו</span></div>
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "18px 0" }}>
-              <button className="secondary-btn" onClick={exportRejected} disabled={identityPreflight.status !== "ready" || !displayPreview?.rows.some(row => row.errors.length || row.warnings.length)}><Download size={15}/> הורדת דוח בדיקה</button>
+              <button className="secondary-btn" onClick={exportRejected} disabled={!["ready", "skipped"].includes(identityPreflight.status) || !displayPreview?.rows.some(row => row.errors.length || row.warnings.length)}><Download size={15}/> הורדת דוח בדיקה</button>
             </div>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 650 }}>
