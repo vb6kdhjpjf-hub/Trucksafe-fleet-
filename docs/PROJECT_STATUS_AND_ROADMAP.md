@@ -320,3 +320,22 @@ The bridge-data review was extended against the Ministry's April 2026 height-obs
 The source-registry tests were updated for the new metadata. One CI run exposed a stale assertion after the rail dataset description was made more precise; the assertion was corrected. The subsequent run [43155283781](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43155283781) completed successfully: validation, Next.js build, dependency audit, isolated database tests, and signed Test Auth integration/cleanup all passed. The Auth cleanup reported zero remaining marked fixture users.
 
 PR #15 remains open and Draft. No merge, deployment, Production database change, provider activation, or external authority contact occurred. Truck routing remains blocked pending authoritative, current, licensed and independently validated restriction data with known geographic coverage.
+
+
+## Additional source discovery and evidence-chain hardening — 12 November 2026
+
+The source inventory now contains 15 classified candidates/standards, with routing eligibility kept separate from discovery value:
+
+- Added Tel Aviv-Yafo municipal roadworks layer 852 as a city-scoped temporary-event discovery candidate. Its fields include work type, lane-reduction description, start/end dates and times, and import date; no real-time SLA or complete coverage is established.
+- Added Tel Aviv-Yafo municipal bridge/tunnel layer 550 as asset discovery only. It identifies structure type and street context but has no clearance, weight, width, lane, direction, or measurement evidence.
+- Added Tel Aviv-Yafo Waze report layer 891 as secondary situational-awareness only. It includes incidents, roadworks, hazards, traffic jams and reported closure events, plus report confidence/reliability and update fields. These remain community reports, not official road-authority confirmation; missing reports do not imply an open road.
+- All three layers are explicitly candidate-only and routing-ineligible. Their municipal coverage is not represented as national coverage, and none can independently approve a route.
+
+The quarantine evidence workflow was hardened so each assessment report carries the exact candidate payload SHA-256 it evaluates. Human-review creation, review verification, and manifest generation now reject reports linked to another candidate. Regression tests cover cross-candidate report substitution. The checksum specification was also corrected: the digest is calculated over UTF-8 bytes of `JSON.stringify(parsedPayload)`; whitespace is discarded, object-key enumeration follows JavaScript serialization order (not key-order-independent canonical sorting), and duplicate keys follow `JSON.parse` last-value semantics. This is an integrity checksum, not a signature or raw-file byte hash.
+
+Latest verified workflow: [GitHub Actions run 43156778478](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43156778478). All three jobs passed:
+- Validate, application tests, dependency audit, Next.js build and concurrent smoke tests.
+- Rollback-only Test database integration.
+- Signed Test Auth / local HTTP integration and cleanup; cleanup reported zero marked disposable Test Auth users remaining.
+
+PR #15 remains open and Draft. No merge, deployment, Production database writes, provider activation, or external authority outreach occurred. Truck routing remains blocked until authoritative, current, licensed, independently validated restriction records and coverage are established.
