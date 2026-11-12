@@ -35,7 +35,8 @@ test("flags driver license collision but does not use names or phone numbers as 
 test("keeps original validation immutable and leaves rows unchanged when no collision exists", () => {
   const result = validate("registration_number\n1234567", "vehicles");
   const checked = flagExistingEnterpriseIdentityConflicts(result, "vehicles", ["7654321"]);
-  assert.equal(checked, result);
+  assert.notEqual(checked, result);
+  assert.deepEqual(checked, result);
   assert.equal(result.summary.ready, 1);
   assert.equal(result.rows[0].warnings.length, 0);
 });

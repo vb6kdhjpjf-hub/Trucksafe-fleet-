@@ -240,7 +240,7 @@ export default function ImportsPage() {
         entityType === "drivers" ? "נהגים" : "רכבים",
         Object.keys(row.data).join("; "),
         row.errors.map(error => ERROR_LABELS[error.code] || error.code).join("; "),
-        row.warnings.map(warning => warning.code).join("; ")
+        row.warnings.map(warning => warning.code === "safety_document_review_required" ? "נתון בטיחותי מחייב אימות מול מסמכי הרכב" : warning.code === "duplicate_identity_in_file" ? "מזהה כפול בקובץ" : ERROR_LABELS[warning.code] || warning.code).join("; ")
       ]);
     });
     downloadCsv("trucksafe-import-review.csv", rows);
