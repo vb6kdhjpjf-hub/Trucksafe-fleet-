@@ -237,7 +237,7 @@ begin
  if p_event_key is null or p_fleet_id is null or p_shipment_id is null or p_stop_id is null then
   raise exception 'Missing delivery document identifiers';
  end if;
- if (p_gps_latitude is null) <> (p_gps_longitude is null)
+  if (p_gps_latitude is null) <> (p_gps_longitude is null)
   or (p_gps_latitude is not null and (p_gps_latitude not between -90 and 90 or p_gps_longitude not between -180 and 180)) then
   raise exception 'GPS coordinates must be supplied as a valid pair';
  end if;
