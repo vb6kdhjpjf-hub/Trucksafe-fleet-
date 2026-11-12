@@ -272,3 +272,12 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .delivery-cancelled-stamp{border:3px solid #b42318;color:#b42318;font-size:24px;font-weight:800;text-align:center;padding:12px;margin-bottom:22px;transform:rotate(-1deg)}
 .delivery-print-adjustments{margin-top:24px;padding:12px;border:1px solid #dfe5ed;border-radius:8px;font-size:10px}
 .delivery-print-adjustments p{margin:6px 0;color:#66758b}
+
+
+.delivery-print-photos{margin-top:20px;break-inside:avoid}
+.delivery-print-photos>div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:10px}
+.delivery-print-photos figure{margin:0;min-width:0;break-inside:avoid}
+.delivery-print-photos img{display:block;width:100%;height:150px;object-fit:contain;border:1px solid #dfe5ed;border-radius:6px;background:#f8fafc}
+.delivery-print-photos figcaption{font-size:10px;color:#66758b;margin-top:4px}
+@media(max-width:640px){.delivery-print-photos>div{grid-template-columns:repeat(2,minmax(0,1fr))}.delivery-print-photos img{height:120px}}
+@media print{.delivery-print-photos{break-inside:avoid}.delivery-print-photos img{max-height:125px}}
