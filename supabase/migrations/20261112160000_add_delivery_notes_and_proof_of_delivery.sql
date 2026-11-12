@@ -367,13 +367,13 @@ begin
   or p_payload is null or jsonb_typeof(p_payload)<>'object' then
   raise exception 'Invalid delivery note adjustment';
  end if;
- if exists(select 1 from public.delivery_note_adjustments a where a.delivery_note_id=p_delivery_note_id
-   and a.adjustment_type='cancellation' and a.event_key<>p_event_key) then
-  raise exception 'A cancelled delivery note cannot receive further adjustments';
- end if;
  if p_adjustment_type='cancellation' and exists(select 1 from public.delivery_note_adjustments a
    where a.delivery_note_id=p_delivery_note_id and a.adjustment_type='cancellation' and a.event_key<>p_event_key) then
   raise exception 'Delivery note is already cancelled';
+ end if;
+ if exists(select 1 from public.delivery_note_adjustments a where a.delivery_note_id=p_delivery_note_id
+   and a.adjustment_type='cancellation' and a.event_key<>p_event_key) then
+  raise exception 'A cancelled delivery note cannot receive further adjustments';
  end if;
  insert into public.delivery_note_adjustments(fleet_id,delivery_note_id,event_key,adjustment_type,reason,payload,created_by)
  values(p_fleet_id,p_delivery_note_id,p_event_key,p_adjustment_type,btrim(p_reason),p_payload,v_actor)
