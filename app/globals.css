@@ -268,3 +268,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 }
 
 .delivery-signature-image{display:block;max-width:240px;max-height:100px;object-fit:contain;margin:10px 0;border-bottom:1px solid #dfe5ed}
+
+.delivery-cancelled-stamp{border:3px solid #b42318;color:#b42318;font-size:24px;font-weight:800;text-align:center;padding:12px;margin-bottom:22px;transform:rotate(-1deg)}
+.delivery-print-adjustments{margin-top:24px;padding:12px;border:1px solid #dfe5ed;border-radius:8px;font-size:10px}
+.delivery-print-adjustments p{margin:6px 0;color:#66758b}

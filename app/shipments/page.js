@@ -110,15 +110,19 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
 
 function DeliveryNotePrint({ note, onClose }) {
   const s=note.document_snapshot||{}, issuer=s.issuer||{}, customer=s.customer||{}, stop=s.stop||{}, proof=s.proof||{}, pallet=s.pallet_exchange||{};
+  const cancelled=(note.adjustments||[]).some(a=>a.adjustment_type==="cancellation");
+  const corrections=(note.adjustments||[]).filter(a=>a.adjustment_type==="correction");
   return <div className="delivery-print-overlay">
     <div className="delivery-print-actions"><button className="secondary-btn" onClick={onClose}>חזרה</button><button className="primary-btn" onClick={()=>window.print()}><Printer size={16}/> הדפסה / שמירה כ־PDF</button></div>
     <article className="delivery-print-page" dir="rtl">
+      {cancelled&&<div className="delivery-cancelled-stamp">תעודת משלוח זו בוטלה</div>}
       <div className="delivery-print-top"><div><h1>{issuer.name||s.fleet_name||"תעודת משלוח"}</h1><p>{issuer.business_id&&"ח.פ./ע.מ.: "+issuer.business_id}{issuer.address&&" · "+issuer.address}</p><p>{issuer.phone||""} {issuer.email||""}</p></div><div className="delivery-note-number"><span>תעודת משלוח</span><b>{s.note_number||note.note_number}</b><small>{new Date(s.issued_at||note.issued_at).toLocaleString("he-IL")}</small></div></div>
       <hr/>
       <div className="delivery-print-customer"><div><small>לקוח</small><b>{customer.name||"—"}</b><span>אסמכתת לקוח: {customer.reference||"—"}</span><span>הזמנת משלוח: {customer.delivery_reference||"—"}</span></div><div><small>כתובת מסירה</small><b>{stop.address||"—"}</b><span>תחנה {stop.sequence_no||"—"}</span></div></div>
       <table className="delivery-print-table"><thead><tr><th>#</th><th>תיאור פריט</th><th>יחידה</th><th>מתוכנן</th><th>נמסר</th><th>פגום</th><th>נדחה</th><th>הוחזר</th></tr></thead><tbody>{(s.cargo_lines||[]).map((line,i)=><tr key={i}><td>{i+1}</td><td>{line.description}</td><td>{units.find(u=>u[0]===line.unit)?.[1]||line.unit}</td><td>{line.planned_quantity}</td><td>{line.delivered_quantity}</td><td>{line.damaged_quantity}</td><td>{line.rejected_quantity}</td><td>{line.returned_quantity}</td></tr>)}</tbody></table>
       <div className="delivery-pallet-summary"><b>החלפת משטחים</b><span>נמסרו: {pallet.delivered||0}</span><span>התקבלו: {pallet.received||0}</span><span>פגומים: {pallet.damaged||0}</span><span>יתרה: {pallet.outstanding||0}</span></div>
       <div className="delivery-print-proof"><div><b>אישור מקבל</b><p>{proof.recipient_name||"לא התקבלה חתימה"}</p>{note.signatureUrl&&<img className="delivery-signature-image" src={note.signatureUrl} alt="חתימת מקבל הסחורה"/>}<small>{proof.status==="signed"?"חתימה נשמרה באופן מאובטח":"חריגת חתימה באישור מנהל"}</small></div><div><b>הערות</b><p>{proof.recipient_note||proof.exception_reason||"—"}</p></div></div>
+      {corrections.length>0&&<div className="delivery-print-adjustments"><b>תיעוד תיקונים נלווים</b>{corrections.map(a=><p key={a.id}>{a.reason} · {new Date(a.created_at).toLocaleString("he-IL")}</p>)}</div>}
       <footer>מסמך זה הוא תעודת משלוח ואינו חשבונית מס.</footer>
     </article>
   </div>;
@@ -143,7 +147,7 @@ export default function ShipmentsPage(){
     const {data,error}=await resolveFleetWorkspace(supabase,currentUser.id);
     if(error){if(["AUTH_REQUIRED","NO_FLEET"].includes(error.code))router.replace("/");else notify("לא ניתן לאמת את סביבת הצי: "+error.message,"error");return;}
     const currentFleet=data.fleet;setFleet(currentFleet);
-    const [ship,drv,veh,lines,stops,stopLines,doc,config]=await Promise.all([
+    const [ship,drv,veh,lines,stops,stopLines,doc,config,adjustments]=await Promise.all([
       supabase.from("shipments").select("id,fleet_id,customer_name,customer_reference,delivery_reference,status,scheduled_at,assigned_driver_id,assigned_vehicle_id,notes,created_at").eq("fleet_id",currentFleet.id).order("created_at",{ascending:false}).limit(100),
       supabase.from("drivers").select("id,full_name,status").eq("fleet_id",currentFleet.id).order("full_name"),
       supabase.from("vehicles").select("id,registration_number,status").eq("fleet_id",currentFleet.id).order("registration_number"),
@@ -151,11 +155,15 @@ export default function ShipmentsPage(){
       supabase.from("shipment_stops").select("id,fleet_id,shipment_id,sequence_no,stop_type,address,scheduled_at,status,completed_at,exception_reason").eq("fleet_id",currentFleet.id).order("sequence_no"),
       supabase.from("shipment_stop_lines").select("id,fleet_id,shipment_id,stop_id,shipment_line_id,planned_quantity,delivered_quantity,damaged_quantity,rejected_quantity,returned_quantity").eq("fleet_id",currentFleet.id),
       supabase.from("delivery_notes").select("id,fleet_id,shipment_id,stop_id,note_number,document_snapshot,issued_at").eq("fleet_id",currentFleet.id).order("issued_at",{ascending:false}).limit(100),
-      supabase.from("delivery_note_settings").select("issuer_name,issuer_business_id,issuer_address,issuer_phone,issuer_email,number_prefix,next_number").eq("fleet_id",currentFleet.id).maybeSingle()
+      supabase.from("delivery_note_settings").select("issuer_name,issuer_business_id,issuer_address,issuer_phone,issuer_email,number_prefix,next_number").eq("fleet_id",currentFleet.id).maybeSingle(),
+      supabase.from("delivery_note_adjustments").select("id,delivery_note_id,adjustment_type,reason,payload,created_at").eq("fleet_id",currentFleet.id).order("created_at",{ascending:false})
     ]);
-    for(const r of [ship,drv,veh,lines,stops,stopLines,doc,config])if(r.error){notify("שגיאה בטעינת נתוני משלוחים: "+r.error.message,"error");return;}
+    for(const r of [ship,drv,veh,lines,stops,stopLines,doc,config,adjustments])if(r.error){notify("שגיאה בטעינת נתוני משלוחים: "+r.error.message,"error");return;}
     const lineMap=new Map((lines.data||[]).map(x=>[x.id,x]));
-    const noteMap=new Map((doc.data||[]).map(x=>[x.stop_id,x]));
+    const adjustmentMap=new Map();
+    for(const adjustment of adjustments.data||[])(adjustmentMap.get(adjustment.delivery_note_id)||adjustmentMap.set(adjustment.delivery_note_id,[]).get(adjustment.delivery_note_id)).push(adjustment);
+    const enrichedNotes=(doc.data||[]).map(note=>({...note,adjustments:adjustmentMap.get(note.id)||[]}));
+    const noteMap=new Map(enrichedNotes.map(x=>[x.stop_id,x]));
     const built=(ship.data||[]).map(s=>({
       ...s,lines:(lines.data||[]).filter(l=>l.shipment_id===s.id),
       stops:(stops.data||[]).filter(st=>st.shipment_id===s.id).map(st=>({
@@ -163,7 +171,7 @@ export default function ShipmentsPage(){
         deliveryNote:noteMap.get(st.id)||null
       }))
     }));
-    setShipments(built);setDrivers(drv.data||[]);setVehicles(veh.data||[]);setNotes(doc.data||[]);
+    setShipments(built);setDrivers(drv.data||[]);setVehicles(veh.data||[]);setNotes(enrichedNotes);
     setSettings(config.data||null);
     if(config.data)setSettingsForm({issuer_name:config.data.issuer_name||"",business_id:config.data.issuer_business_id||"",address:config.data.issuer_address||"",phone:config.data.issuer_phone||"",email:config.data.issuer_email||"",number_prefix:config.data.number_prefix||"DL"});
     else setSettingsForm({issuer_name:currentFleet.name||"",business_id:"",address:"",phone:"",email:"",number_prefix:"DL"});
@@ -335,7 +343,7 @@ export default function ShipmentsPage(){
         </section>)}
       </article>)}
       {notes.length>0&&<section className="fleet-panel"><div className="shipments-section-head"><div><h3>תעודות משלוח שהונפקו</h3><p>המסמכים נשמרים בצילום מצב מקורי וניתנים להדפסה.</p></div></div>
-        {notes.map(note=><div className="delivery-note-row" key={note.id}><div><b>{note.note_number}</b><small>{note.document_snapshot?.customer?.name||"לקוח"} · {new Date(note.issued_at).toLocaleString("he-IL")}</small></div><button className="secondary-btn" onClick={()=>openNote(note)}><Printer size={14}/> הצגה / PDF</button>{canOverride&&<><button className="secondary-btn" disabled={busy} onClick={()=>adjustNote(note,"correction")}>תיעוד תיקון</button><button className="secondary-btn" disabled={busy} onClick={()=>adjustNote(note,"cancellation")}>תיעוד ביטול</button></>}</div>)}
+        {notes.map(note=>{const cancelled=(note.adjustments||[]).some(a=>a.adjustment_type==="cancellation");const correctionCount=(note.adjustments||[]).filter(a=>a.adjustment_type==="correction").length;return <div className="delivery-note-row" key={note.id}><div><b>{note.note_number} · {cancelled?"בוטלה":correctionCount?"נרשם תיקון":"פעילה"}</b><small>{note.document_snapshot?.customer?.name||"לקוח"} · {new Date(note.issued_at).toLocaleString("he-IL")}</small></div><button className="secondary-btn" onClick={()=>openNote(note)}><Printer size={14}/> הצגה / PDF</button>{canOverride&&<><button className="secondary-btn" disabled={busy} onClick={()=>adjustNote(note,"correction")}>תיעוד הערת תיקון</button>{!cancelled&&<button className="secondary-btn" disabled={busy} onClick={()=>adjustNote(note,"cancellation")}>תיעוד ביטול</button>}</>}</div>})}
       </section>}
       <p className="fleet-foot">TruckSafe Fleet V1 · מסמכים חתומים ובלתי־ניתנים לשינוי · תעודת משלוח אינה חשבונית מס</p>
     </section>

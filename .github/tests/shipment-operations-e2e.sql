@@ -138,6 +138,16 @@ begin
  end if;
  insert into pg_temp.shipment_test_results values('corrections are appended separately without changing the issued snapshot','PASS');
 
+ adjustment_id:=public.add_delivery_note_adjustment(f.fleet_id,note_id,
+  '13000000-0000-4000-8000-000000000004'::uuid,'cancellation','ביטול עקב טעות בהזמנה','{}'::jsonb);
+ rejected:=false;
+ begin
+  perform public.add_delivery_note_adjustment(f.fleet_id,note_id,
+   '13000000-0000-4000-8000-000000000005'::uuid,'cancellation','ניסיון ביטול כפול','{}'::jsonb);
+ exception when others then get stacked diagnostics msg=message_text; rejected:=msg ilike '%already cancelled%'; end;
+ if not rejected then raise exception 'A delivery note was cancelled more than once'; end if;
+ insert into pg_temp.shipment_test_results values('cancellation is recorded once and the original document remains immutable','PASS');
+
  if has_table_privilege('authenticated','public.delivery_notes','INSERT')
   or has_table_privilege('authenticated','public.delivery_notes','UPDATE')
   or has_table_privilege('authenticated','public.delivery_proofs','INSERT')
