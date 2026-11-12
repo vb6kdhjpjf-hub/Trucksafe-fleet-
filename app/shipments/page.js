@@ -140,7 +140,7 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
       <label>משטחים פגומים<input disabled={attemptLocked} type="number" min="0" step="0.001" value={palletsDamaged} onChange={e=>setPalletsDamaged(e.target.value)}/></label>
     </div>
     <label>הערת מסירה (לא חובה)<textarea disabled={attemptLocked} rows={2} maxLength={1000} value={note} onChange={e=>setNote(e.target.value)} placeholder="הערה למשרד או ללקוח"/></label>
-    <label>תמונות מסירה (לא חובה)<input disabled={attemptLocked} type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={e=>setPhotos(Array.from(e.target.files||[]))}/></label>
+    <label>תמונות מסירה (לא חובה)<input disabled={attemptLocked} type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={e=>{const files=Array.from(e.target.files||[]);if(files.length>8){notify("אפשר לבחור עד 8 תמונות לאישור מסירה.","error");e.target.value="";return;}setPhotos(files);}}/></label>
     <small>עד 8 תמונות, 10MB לכל תמונה ועד 40MB בסך הכול. פורמטים: PNG, JPG או WEBP.</small>
     {photos.length>0&&<small>{photos.length} תמונות נבחרו · {(photos.reduce((total,file)=>total+file.size,0)/1024/1024).toFixed(1)}MB</small>}
     {attemptLocked&&<small>פרטי הניסיון נעולים כדי לאפשר ניסיון חוזר בטוח ללא שינוי נתוני המסירה.</small>}
