@@ -320,8 +320,12 @@ using (
 );
 
 revoke all on public.daily_work_plans, public.daily_work_stops, public.daily_load_events from anon, authenticated;
-grant select, insert, update on public.daily_work_plans, public.daily_work_stops to authenticated;
-grant select on public.daily_load_events to authenticated;
+grant select on public.daily_work_plans, public.daily_work_stops, public.daily_load_events to authenticated;
+
+drop policy if exists daily_work_plans_insert_managers on public.daily_work_plans;
+drop policy if exists daily_work_plans_update_managers on public.daily_work_plans;
+drop policy if exists daily_work_stops_insert_managers on public.daily_work_stops;
+drop policy if exists daily_work_stops_update_managers on public.daily_work_stops;
 
 create or replace function public.record_daily_load_operation(
   p_fleet_id uuid,

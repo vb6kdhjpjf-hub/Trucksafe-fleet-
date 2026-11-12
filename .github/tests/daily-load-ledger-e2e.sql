@@ -279,6 +279,18 @@ begin
   insert into pg_temp.daily_load_test_results values('driver completes first stop on a newly activated daily plan','PASS');
 
 
+  if has_table_privilege('authenticated','public.daily_work_plans','INSERT')
+     or has_table_privilege('authenticated','public.daily_work_plans','UPDATE')
+     or has_table_privilege('authenticated','public.daily_work_plans','DELETE')
+     or has_table_privilege('authenticated','public.daily_work_stops','INSERT')
+     or has_table_privilege('authenticated','public.daily_work_stops','UPDATE')
+     or has_table_privilege('authenticated','public.daily_work_stops','DELETE')
+     or not has_table_privilege('authenticated','public.daily_work_plans','SELECT')
+     or not has_table_privilege('authenticated','public.daily_work_stops','SELECT') then
+    raise exception 'Daily plan and stop tables must be read-only to authenticated clients';
+  end if;
+  insert into pg_temp.daily_load_test_results values('daily plans and stops are read-only to browser clients; writes require authorized RPCs','PASS');
+
   if has_table_privilege('authenticated','public.daily_load_events','INSERT')
      or has_table_privilege('authenticated','public.daily_load_events','UPDATE')
      or has_table_privilege('authenticated','public.daily_load_events','DELETE')
