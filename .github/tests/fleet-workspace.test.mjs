@@ -45,6 +45,20 @@ test("rejects missing or unverifiable users before querying fleet data", async (
   }
 });
 
+test("rejects unsupported or incomplete fleet membership before loading fleet data", async () => {
+  for (const membership of [
+    { fleet_id: "fleet-a", role: "superuser" },
+    { fleet_id: "fleet-a", role: null },
+    { fleet_id: "", role: "driver" }
+  ]) {
+    const { api, calls } = client({ memberships: [membership] });
+    const result = await resolveFleetWorkspace(api, "user-a");
+    assert.equal(result.data, null);
+    assert.equal(result.error.code, "INVALID_MEMBERSHIP");
+    assert.equal(calls.length, 1, "only membership may be queried before invalid role denial");
+  }
+});
+
 test("rejects accounts with no fleet membership", async () => {
   const { api } = client({ memberships: [] });
   const result = await resolveFleetWorkspace(api, "user-a");
@@ -203,6 +217,16 @@ test("single-fleet membership resolver fails closed for missing, ambiguous, or f
   const failed = makeClient({ error: new Error("lookup failed") });
   const lookupFailure = await resolveSingleFleetMembership(failed, "user-a");
   assert.equal(lookupFailure.error.code, "MEMBERSHIP_LOOKUP_FAILED");
+
+  for (const membership of [
+    { fleet_id: "fleet-a", role: "superuser" },
+    { fleet_id: "fleet-a", role: null },
+    { fleet_id: "", role: "driver" }
+  ]) {
+    const invalid = await resolveSingleFleetMembership(makeClient({ rows: [membership] }), "user-a");
+    assert.equal(invalid.data, null);
+    assert.equal(invalid.error.code, "INVALID_MEMBERSHIP");
+  }
 
   const single = makeClient({ rows: [{ fleet_id: "fleet-a", role: "dispatcher" }] });
   const valid = await resolveSingleFleetMembership(single, "user-a");
