@@ -62,3 +62,36 @@ Provide a labelled synthetic demo fleet, guided tour, role-based onboarding, cus
 
 ## Delivery order
 Inspect schema/policies; define canonical import model; implement/test CSV parser; review vetted XLSX dependency; build mapping/validation/dry-run; add job ledger/private staging; implement Phase A server-side import; add reconciliation/resume/audit; run synthetic E2E, security and performance tests; then plan a customer-specific migration rehearsal.
+
+## Server-side import implementation contract (design only)
+
+The next implementation step is a durable, private staging layer. This section records the security and recovery contract before any schema or operational write path is introduced; it does not mean staging or commit APIs exist today.
+
+### Trust boundary
+- The browser may upload a bounded source file and request preview/commit, but it never decides the actor, fleet, role, row outcome, or target record ID.
+- Every request must validate the Supabase session with `auth.getUser()` and resolve current fleet membership from database-backed membership records. Reject missing, revoked, ambiguous, or non-manager membership; never authorize from user-editable metadata or a client-supplied role.
+- Service-role credentials, if required for private staging, may exist only in server runtime configuration. They must never use a `NEXT_PUBLIC_` variable, enter browser bundles, logs, URLs, or error responses. A service-role write is permitted only after the route independently validates the signed user and current fleet role.
+- Staging payloads and source files must live in a private schema/bucket with no public or anonymous access. Do not expose raw staged rows through the public Data API. Revoke default grants explicitly and verify schema exposure settings; RLS is additional protection, not a substitute for a private trust boundary.
+- Keep the current preview read-only until the complete staging/authorization path and its tests are available.
+
+### Durable job and row model
+- Each job records an immutable source checksum, source filename (display-only), source size, fleet ID, initiating user ID, parser/mapping version, normalized mapping fingerprint, created/updated timestamps, revision, expiry, and aggregate counts.
+- Each staged row records job ID, source row number, a stable row key, normalized payload, validation outcome, warning/error codes, and eventual target ID. Raw personal data must not be copied into application logs.
+- Enforce fleet/job ownership with composite foreign keys or equivalent database constraints. Never accept a fleet ID, target ID, or actor ID as authoritative merely because it appears in a browser payload.
+- The first write-enabled phase is insert-only for drivers and vehicles. Updates, merges, customer records, and operational history remain disabled until field-level conflict rules and explicit approval are designed.
+- Imported vehicle measurements and driver licence details remain unverified evidence. They must not set registration verification, licence verification, or route-readiness flags.
+
+### State, idempotency, and recovery
+- Use a documented state machine: `uploaded → validating → ready → committing → completed`, with explicit `failed`, `partial_failed`, `cancelled`, and `expired` terminal/recovery states as appropriate. Reject invalid transitions and stale revisions.
+- A fleet-scoped idempotency key is bound to the source checksum and mapping fingerprint. Reusing it with different content is a conflict, not a second import.
+- Commit claims a job with a database lock/lease and processes bounded, dependency-ordered batches. Each batch has a stable idempotency key and persisted outcome before the next batch begins.
+- A retry must resume from persisted row/batch outcomes; it must not create duplicate drivers or vehicles. If a batch outcome is uncertain, reconcile by the stable source identity before retrying.
+- Never perform a blind compensating delete. Record row-level success, skip, conflict, and failure outcomes; preserve records that may already have been referenced or edited.
+- Re-check current membership and role at commit time, not only at upload/preview time. Revoked or demoted users cannot continue a staged job.
+
+### Required verification before enabling writes
+- Signed live Test Auth coverage for owner/manager success, dispatcher/driver denial, ambiguous membership denial, revoked membership, role demotion, forged metadata, and cross-fleet job access.
+- Test-only SQL coverage for RLS/grants, tenant-scoped foreign keys, state transitions, idempotency collisions, concurrent commit claims, batch retry, and expiry. All fixtures must roll back or be removed by guaranteed cleanup.
+- Fault-injection tests for interrupted upload, interrupted validation, process termination during a batch, duplicate retry, and uncertain commit response.
+- A reconciliation report must compare source rows with ready/review/rejected and committed/skipped/conflicted/failed outcomes. No green “complete” state unless counts reconcile.
+- No migration is applied to either Production or Test as part of this design note. Schema changes must first be reviewed as additive migration files on the Draft branch and validated only against the dedicated Test project.
