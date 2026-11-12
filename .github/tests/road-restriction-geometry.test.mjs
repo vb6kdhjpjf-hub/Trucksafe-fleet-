@@ -29,6 +29,28 @@ const verifiedRestriction = overrides => ({
   verification_note: "Verified test fixture",
   restriction_type: "height",
   max_height_m: 4,
+  structure_id: "bridge-123",
+  road_segment_id: "road-90-seg-2",
+  country_code: "IL",
+  direction: "forward",
+  lane_id: "lane-1",
+  passage_length_m: 18,
+  measured_clearance_m: 4.62,
+  posted_clearance_status: "posted",
+  posted_clearance_m: 4.4,
+  measurement_date: "2026-11-08",
+  measurement_accuracy_cm: 1,
+  measurement_method: "calibrated laser survey",
+  surveyor: "licensed survey team",
+  measurement_document_url: "https://example.org/survey/001",
+  measurement_coverage: {
+    both_sides_measured: true,
+    lane_center_measured: true,
+    left_edge_measured: true,
+    right_edge_measured: true,
+    hanging_installations_checked: true,
+    passage_center_measured: false
+  },
   ...overrides
 });
 
@@ -404,4 +426,40 @@ test("rejects provider-critical alternatives and selects the next validated rout
   });
   assert.equal(result.routeIndex, 1);
   assert.equal(result.rejected[0].reason, "provider_restriction_notice");
+});
+
+
+test("fails closed for a legacy verified height restriction without lane-level survey evidence", () => {
+  const legacy = verifiedRestriction({
+    lane_id: null,
+    measurement_coverage: null,
+    surveyor: null
+  });
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [legacy],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now
+  });
+  assert.equal(result.validated, false);
+  assert.equal(result.unresolved[0].reason, "height_clearance_evidence_incomplete");
+});
+
+test("requires posted sign data to remain separate from physical measured clearance", () => {
+  const invalid = verifiedRestriction({
+    posted_clearance_status: "unknown",
+    posted_clearance_m: 4.4
+  });
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [invalid],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now
+  });
+  assert.equal(result.validated, false);
+  assert.equal(result.unresolved[0].reason, "height_clearance_evidence_incomplete");
 });

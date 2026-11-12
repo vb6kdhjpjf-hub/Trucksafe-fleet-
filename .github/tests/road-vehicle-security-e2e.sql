@@ -4,6 +4,7 @@ begin;
 
 \ir ../../supabase/migrations/20261110170000_guard_vehicle_registration_insert.sql
 \ir ../../supabase/migrations/20261111180000_maintenance_incident_vehicle_match.sql
+\ir ../../supabase/migrations/20261112130000_add_lane_level_bridge_clearance_evidence.sql
 
 do $schema_check$
 declare
@@ -31,6 +32,14 @@ begin
     ('road_restrictions','measurement_method'),
     ('road_restrictions','measurement_location_note'),
     ('road_restrictions','measurement_document_url'),
+    ('road_restrictions','structure_id'),
+    ('road_restrictions','road_segment_id'),
+    ('road_restrictions','lane_id'),
+    ('road_restrictions','passage_length_m'),
+    ('road_restrictions','surveyor'),
+    ('road_restrictions','posted_clearance_status'),
+    ('road_restrictions','posted_clearance_m'),
+    ('road_restrictions','measurement_coverage'),
     ('vehicles','empty_weight_kg'),
     ('vehicles','registration_verification_status'),
     ('vehicles','registration_document_path'),
@@ -194,6 +203,7 @@ declare
   incident_id uuid := '11000000-0000-4000-8000-000000000051';
   maintenance_id uuid := '33000000-0000-4000-8000-000000000051';
   restriction_id uuid;
+  height_restriction_id uuid;
   message_text_value text;
   status_value text;
 begin
@@ -285,6 +295,42 @@ begin
   end if;
   insert into pg_temp.road_vehicle_security_results
   values('owner verifies official road restriction','PASS','Owner review accepted; verifier and timestamps were assigned by the database');
+
+  -- Height restrictions require per-lane, per-direction physical survey evidence.
+  insert into public.road_restrictions(
+    fleet_id,road_name,restriction_type,direction,max_height_m,latitude,longitude,country_code,
+    source_type,source_name,source_url,source_reference,source_updated_at,verification_status,
+    structure_id,road_segment_id,lane_id,passage_length_m,measured_clearance_m,
+    posted_clearance_status,posted_clearance_m,measurement_date,measurement_accuracy_cm,
+    measurement_method,measurement_location_note,measurement_document_url,surveyor,measurement_coverage
+  ) values (
+    fleet_id,'CI Height Bridge','height','forward',4.5,32.8,35.5,'IL',
+    'official_authority','CI Official Authority','https://example.invalid/authority','CI-HEIGHT-1',now(),'unverified',
+    'bridge-123','road-90-seg-2','lane-1',18,4.75,
+    'posted',4.5,current_date,0.5,'calibrated laser survey','Surveyed lane centre and both edges','https://example.invalid/survey/height-1',
+    'CI licensed survey team',
+    '{"both_sides_measured":true,"lane_center_measured":true,"left_edge_measured":true,"right_edge_measured":true,"hanging_installations_checked":true,"passage_center_measured":false}'::jsonb
+  ) returning id into height_restriction_id;
+
+  update public.road_restrictions
+  set verification_status='verified',
+      verification_note='Reviewed official height source and complete lane survey evidence',
+      source_last_checked_at=now()
+  where id=height_restriction_id;
+
+  select verification_status into status_value from public.road_restrictions where id=height_restriction_id;
+  if status_value <> 'verified' then
+    raise exception 'Complete lane-level height evidence was not accepted';
+  end if;
+
+  -- Changing any lane-level survey identity after approval invalidates the review.
+  update public.road_restrictions set lane_id='lane-2' where id=height_restriction_id;
+  select verification_status into status_value from public.road_restrictions where id=height_restriction_id;
+  if status_value <> 'unverified' then
+    raise exception 'Lane evidence edit did not invalidate height verification';
+  end if;
+  insert into pg_temp.road_vehicle_security_results
+  values('lane-specific height survey verification','PASS','Per-lane evidence required for verification; evidence edits invalidate review');
 
   -- A dispatcher cannot change facts on an already verified restriction.
   perform set_config('request.jwt.claim.sub',dispatcher_id::text,true);
