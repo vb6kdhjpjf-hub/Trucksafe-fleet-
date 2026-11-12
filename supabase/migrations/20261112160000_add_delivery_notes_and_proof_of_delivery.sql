@@ -279,6 +279,12 @@ begin
   or (p_gps_latitude is not null and (p_gps_latitude not between -90 and 90 or p_gps_longitude not between -180 and 180)) then
   raise exception 'GPS coordinates must be supplied as a valid pair';
  end if;
+ if p_gps_latitude is not null then
+  -- Match NUMERIC(9,6) storage precision before snapshotting and comparing
+  -- idempotent retries, even when a caller supplies higher precision.
+  p_gps_latitude:=round(p_gps_latitude,6);
+  p_gps_longitude:=round(p_gps_longitude,6);
+ end if;
  if least(coalesce(p_pallets_delivered,0),coalesce(p_pallets_received,0),coalesce(p_pallets_damaged,0))<0
   or coalesce(p_pallets_damaged,0)>coalesce(p_pallets_received,0) then
   raise exception 'Invalid pallet exchange quantities';

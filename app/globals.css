@@ -239,6 +239,9 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .proof-panel h4{display:flex;align-items:center;gap:7px;margin:0;font-size:13px}.proof-panel>p{margin:0;color:#778397;font-size:10px;line-height:1.7}
 .proof-panel .primary-btn{justify-self:start}
 .proof-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.proof-gps{display:grid;gap:7px;padding:10px;border:1px solid #e2eaf4;border-radius:9px;background:#fff}
+.proof-gps>div:first-child{display:grid;gap:4px}.proof-gps b{font-size:11px}.proof-gps small{font-size:9px;color:#8793a5;line-height:1.6}
+.proof-gps-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .proof-signature{display:grid;gap:6px}.proof-signature-head{display:flex;align-items:center;justify-content:space-between}.proof-signature-head b{font-size:11px}
 .proof-signature canvas{display:block;width:100%;height:130px;background:#fff;border:1px dashed #aebbd0;border-radius:9px;touch-action:none}
 .proof-signature small{font-size:9px;color:#8793a5}

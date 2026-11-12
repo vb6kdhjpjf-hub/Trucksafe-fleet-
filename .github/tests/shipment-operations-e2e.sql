@@ -100,8 +100,18 @@ begin
 
  perform set_config('request.jwt.claim.sub',f.owner_id::text,true);
  perform public.update_delivery_note_settings(f.fleet_id,'חברת בדיקה בע״מ','515000000','אזור תעשייה צפון','04-0000000','ops@example.invalid','TN');
+ rejected:=false;
+ begin
+  perform public.complete_delivery_document(f.fleet_id,f.shipment_id,f.stop_id,
+   '13000000-0000-4000-8000-000000000003'::uuid,null,null,'{}'::text[],32.8,null,null,
+   'חתימת מקבל לא זמינה; אושר על ידי מנהל',10,8,1);
+ exception when others then get stacked diagnostics msg=message_text;
+  rejected:=msg ilike '%GPS coordinates must be supplied as a valid pair%';
+ end;
+ if not rejected then raise exception 'A partial GPS coordinate pair was accepted'; end if;
+ insert into pg_temp.shipment_test_results values('delivery proof rejects incomplete GPS coordinate pairs','PASS');
  result:=public.complete_delivery_document(f.fleet_id,f.shipment_id,f.stop_id,
-  '13000000-0000-4000-8000-000000000002'::uuid,null,null,'{}'::text[],null,null,null,
+  '13000000-0000-4000-8000-000000000002'::uuid,null,null,'{}'::text[],32.8123456,35.5123456,null,
   'חתימת מקבל לא זמינה; אושר על ידי מנהל',10,8,1);
  note_id:=(result->>'note_id')::uuid; note_number:=result->>'note_number';
  if note_number<>'TN-0000001' or result->>'proof_status'<>'authorized_exception' then
@@ -109,6 +119,8 @@ begin
  end if;
  select document_snapshot into snapshot from public.delivery_notes where id=note_id;
  if snapshot->'issuer'->>'name'<>'חברת בדיקה בע״מ'
+  or snapshot->'proof'->>'gps_latitude'<>'32.812346'
+  or snapshot->'proof'->>'gps_longitude'<>'35.512346'
   or snapshot->'pallet_exchange'->>'outstanding'<>'2'
   or jsonb_array_length(snapshot->'cargo_lines')<>3
   or snapshot->>'legal_notice'<>'Delivery note; not a tax invoice.' then
@@ -117,7 +129,7 @@ begin
  insert into pg_temp.shipment_test_results values('immutable numbered delivery note snapshots include cargo and pallet exchange','PASS');
 
  result:=public.complete_delivery_document(f.fleet_id,f.shipment_id,f.stop_id,
-  '13000000-0000-4000-8000-000000000002'::uuid,null,null,'{}'::text[],null,null,null,
+  '13000000-0000-4000-8000-000000000002'::uuid,null,null,'{}'::text[],32.8123456,35.5123456,null,
   'חתימת מקבל לא זמינה; אושר על ידי מנהל',10,8,1);
  if result->>'note_id'<>note_id::text or result->>'note_number'<>note_number then
   raise exception 'Idempotent delivery note retry created a different document';

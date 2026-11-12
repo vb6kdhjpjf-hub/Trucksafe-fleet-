@@ -73,7 +73,7 @@ A delivery note is not automatically a tax invoice or receipt. Accounting docume
 POD is a structured record tied to a specific stop and delivery note:
 - recipient identity/name and optional role,
 - signature captured on device,
-- delivery time and optional GPS evidence,
+- delivery time and optional GPS evidence, captured only after an explicit driver action; no background location tracking,
 - delivered quantities and discrepancies,
 - photos and attachments,
 - driver identity and device/session audit metadata.

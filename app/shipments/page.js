@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 import { validateDeliveryPhotoFiles, findDeliveryPhotoEntry } from "../../lib/delivery-proof-photos.mjs";
+import { normalizeDeliveryGpsCoordinates } from "../../lib/delivery-gps.mjs";
 import { ArrowRight, ClipboardList, Plus, Truck, UserRound, MapPin, FileText, Package, CheckCircle2, Printer, PenLine, RefreshCw, X, ShieldCheck, Scale } from "lucide-react";
 
 const units = [
@@ -47,6 +48,8 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
   const [palletsReceived,setPalletsReceived]=useState("0");
   const [palletsDamaged,setPalletsDamaged]=useState("0");
   const [photos,setPhotos]=useState([]);
+  const [gps,setGps]=useState(null);
+  const [gpsBusy,setGpsBusy]=useState(false);
   const [hasSignature,setHasSignature]=useState(false);
   const [attemptLocked,setAttemptLocked]=useState(false);
   const padRef=useRef(null);
@@ -64,6 +67,33 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
     if(!listError&&(data||[]).some(item=>item.name===fileName))return;
     throw error;
   }
+  function captureGps(){
+    if(attemptLocked||busy||gpsBusy)return;
+    if(typeof navigator==="undefined"||!navigator.geolocation){
+      notify("המכשיר או הדפדפן אינם תומכים בתיעוד מיקום.","error");return;
+    }
+    setGpsBusy(true);
+    try{
+      navigator.geolocation.getCurrentPosition(position=>{
+        const coordinates=normalizeDeliveryGpsCoordinates(position.coords.latitude,position.coords.longitude);
+        setGpsBusy(false);
+        if(!coordinates){notify("המיקום שהתקבל אינו תקין. אפשר להמשיך ללא תיעוד GPS.","error");return;}
+        setGps({...coordinates,capturedAt:new Date().toISOString()});
+        notify("המיקום נקלט ויצורף לאישור המסירה.","success");
+      },error=>{
+        setGpsBusy(false);
+        const message=error.code===1
+          ?"הגישה למיקום נדחתה. אפשר לאשר הרשאת מיקום בהגדרות המכשיר או להמשיך בלעדיה."
+          :error.code===2
+            ?"לא ניתן לאתר מיקום כרגע. אפשר לנסות שוב או להמשיך בלעדיו."
+            :"איתור המיקום ארך יותר מדי. אפשר לנסות שוב או להמשיך בלעדיו.";
+        notify(message,"error");
+      },{enableHighAccuracy:true,timeout:12000,maximumAge:0});
+    }catch(error){
+      setGpsBusy(false);
+      notify("לא ניתן להפעיל תיעוד מיקום. אפשר להמשיך בלעדיו.","error");
+    }
+  }
   async function submit(event){
     event.preventDefault();
     if(busy)return;
@@ -71,6 +101,8 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
     if(!hasSignature&&(!canOverride||exception.trim().length<5)){notify("נדרשת חתימת מקבל. רק בעלים או מנהל צי יכולים לתעד חריגת חתימה מנומקת.","error");return;}
     const numbers=[palletsDelivered,palletsReceived,palletsDamaged].map(Number);
     if(numbers.some(n=>!Number.isFinite(n)||n<0)||numbers[2]>numbers[1]){notify("יש לבדוק את כמויות המשטחים שהוחזרו והפגומים.","error");return;}
+    const gpsCoordinates=gps?normalizeDeliveryGpsCoordinates(gps.latitude,gps.longitude):null;
+    if(gps&&!gpsCoordinates){notify("קואורדינטות המיקום אינן תקינות. הסר את המיקום או תעד אותו מחדש.","error");return;}
     const photoIssue=validateDeliveryPhotoFiles(photos);
     if(photoIssue){
       const messages={too_many:"אפשר לצרף עד 8 תמונות לאישור מסירה.",invalid_file:"אפשר לצרף רק PNG, JPG או WEBP, עד 10MB לכל תמונה.",total_too_large:"הנפח הכולל של התמונות לאישור אחד מוגבל ל־40MB. אפשר לבחור פחות תמונות או להקטין אותן.",invalid_selection:"בחירת התמונות אינה תקינה."};
@@ -118,7 +150,7 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
       const {data,error}=await supabase.rpc("complete_delivery_document",{
         p_fleet_id:fleetId,p_shipment_id:shipment.id,p_stop_id:stop.id,p_event_key:proofAttempt.current.eventKey,
         p_recipient_name:hasSignature?recipient.trim():null,p_signature_object_path:signaturePath,
-        p_photo_object_paths:photoPaths,p_gps_latitude:null,p_gps_longitude:null,
+        p_photo_object_paths:photoPaths,p_gps_latitude:gpsCoordinates?.latitude??null,p_gps_longitude:gpsCoordinates?.longitude??null,
         p_recipient_note:note.trim()||null,p_exception_reason:hasSignature?null:exception.trim(),
         p_pallets_delivered:numbers[0],p_pallets_received:numbers[1],p_pallets_damaged:numbers[2]
       });
@@ -140,7 +172,15 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
       <label>משטחים פגומים<input disabled={attemptLocked} type="number" min="0" step="0.001" value={palletsDamaged} onChange={e=>setPalletsDamaged(e.target.value)}/></label>
     </div>
     <label>הערת מסירה (לא חובה)<textarea disabled={attemptLocked} rows={2} maxLength={1000} value={note} onChange={e=>setNote(e.target.value)} placeholder="הערה למשרד או ללקוח"/></label>
-    <label>תמונות מסירה (לא חובה)<input disabled={attemptLocked} type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={e=>{const files=Array.from(e.target.files||[]);if(files.length>8){notify("אפשר לבחור עד 8 תמונות לאישור מסירה.","error");e.target.value="";return;}setPhotos(files);}}/></label>
+    <div className="proof-gps">
+      <div><b>תיעוד מיקום נוכחי (לא חובה)</b><small>המיקום נקלט רק לאחר לחיצה ונשמר באישור המסירה. אין מעקב מיקום ברקע.</small></div>
+      <div className="proof-gps-actions">
+        <button type="button" className="secondary-btn" disabled={attemptLocked||busy||gpsBusy} onClick={captureGps}><MapPin size={14}/>{gpsBusy?"מאתר מיקום...":gps?"עדכון מיקום":"תיעוד מיקום נוכחי"}</button>
+        {gps&&<button type="button" className="secondary-btn" disabled={attemptLocked||busy||gpsBusy} onClick={()=>setGps(null)}>הסרת מיקום</button>}
+      </div>
+      {gps&&<small>נשמר: {gps.latitude.toFixed(6)}, {gps.longitude.toFixed(6)} · {new Date(gps.capturedAt).toLocaleString("he-IL")}</small>}
+    </div>
+    <label>תמונות מסירה (לא חובה)<input disabled={attemptLocked} type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={e=>{const files=Array.from(e.target.files||[]);if(files.length>8){setPhotos([]);notify("אפשר לבחור עד 8 תמונות לאישור מסירה. הבחירה הקודמת נוקתה.","error");e.target.value="";return;}setPhotos(files);}}/></label>
     <small>עד 8 תמונות, 10MB לכל תמונה ועד 40MB בסך הכול. פורמטים: PNG, JPG או WEBP.</small>
     {photos.length>0&&<small>{photos.length} תמונות נבחרו · {(photos.reduce((total,file)=>total+file.size,0)/1024/1024).toFixed(1)}MB</small>}
     {attemptLocked&&<small>פרטי הניסיון נעולים כדי לאפשר ניסיון חוזר בטוח ללא שינוי נתוני המסירה.</small>}
