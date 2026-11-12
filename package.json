@@ -13,7 +13,8 @@
     "test:ptv": "node --test .github/tests/request-body-limits.test.mjs .github/tests/ptv-*.test.mjs .github/tests/truck-routing-profile.test.mjs .github/tests/truck-route-quota.test.mjs .github/tests/road-restriction-geometry.test.mjs .github/tests/truck-route-readiness.test.mjs .github/tests/road-restriction-sources.test.mjs .github/tests/bridge-clearance-evidence-schema.test.mjs .github/tests/bridge-clearance-evidence.test.mjs .github/tests/driver-eligibility.test.mjs .github/tests/pre-trip-checklist.test.mjs .github/tests/restriction-source-envelope.test.mjs .github/tests/stage-restriction-source.test.mjs .github/tests/restriction-source-assessment.test.mjs .github/tests/assess-staged-restriction-source.test.mjs .github/tests/record-restriction-source-review.test.mjs .github/tests/verify-restriction-source-review.test.mjs .github/tests/build-restriction-source-manifest.test.mjs .github/tests/fleet-road-restrictions.test.mjs .github/tests/truck-route-rejection.test.mjs .github/tests/daily-load-state.test.mjs",
     "test:smoke": "node scripts/smoke-app.mjs",
     "test:workflow-safety": "node --test .github/tests/workflow-safety.test.mjs",
-    "test:ci": "npm run test:ptv && node --test .github/tests/fleet-workspace.test.mjs .github/tests/fleet-api-access.integration.test.mjs .github/tests/live-auth-fixture-utils.test.mjs .github/tests/api-route-auth-coverage.test.mjs && npm run test:workflow-safety"
+    "test:ci": "npm run test:ptv && npm run test:cargo && node --test .github/tests/fleet-workspace.test.mjs .github/tests/fleet-api-access.integration.test.mjs .github/tests/live-auth-fixture-utils.test.mjs .github/tests/api-route-auth-coverage.test.mjs && npm run test:workflow-safety",
+    "test:cargo": "node --test .github/tests/shipment-quantities.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
