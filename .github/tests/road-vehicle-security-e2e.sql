@@ -620,8 +620,6 @@ begin
     where road_name='Owner corrected road name';
   get diagnostics changed_rows = row_count;
   if changed_rows <> 0 then raise exception 'Safety manager unexpectedly updated road restrictions'; end if;
-  get diagnostics changed_rows = row_count;
-  if changed_rows <> 0 then raise exception 'Safety manager unexpectedly updated road restrictions'; end if;
 end
 $rls_safety_manager_checks$;
 reset role;
