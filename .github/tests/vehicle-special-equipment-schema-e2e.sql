@@ -21,6 +21,7 @@ declare
   v_anon_exec boolean;
   v_auth_exec boolean;
   v_search_path text[];
+  v_review_def text;
 begin
   select c.relrowsecurity into v_rls
   from pg_class c join pg_namespace n on n.oid=c.relnamespace
@@ -64,6 +65,9 @@ begin
 
   select has_function_privilege('authenticated','private.review_vehicle_special_equipment(uuid,text,text)','EXECUTE') into v_private_exec;
   if not v_private_exec then raise exception 'Authenticated role must execute the private RPC only through the unexposed private schema'; end if;
+
+  select pg_get_functiondef('private.review_vehicle_special_equipment(uuid,text,text)'::regprocedure) into v_review_def;
+  if position('low_loader' in v_review_def)=0 then raise exception 'Low-loader review gate is missing from the database RPC'; end if;
 
   select p.prosecdef,p.proconfig into v_public_definer,v_wrapper_config
   from pg_proc p where p.oid='public.review_vehicle_special_equipment(uuid,text,text)'::regprocedure;

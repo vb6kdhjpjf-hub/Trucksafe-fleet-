@@ -35,7 +35,7 @@ export default function SpecialEquipmentPage(){
  useEffect(()=>{load();},[]);
  function chooseVehicle(id){
   const vehicle=vehicles.find(v=>v.id===id);
-  const expectedKind=vehicle?.body_type==="aerial_platform"?"aerial_platform":vehicle?.body_type==="concrete_pump"?"concrete_pump":vehicle?.body_type==="other_special"?"other_special":"crane";
+  const expectedKind=vehicle?.body_type==="aerial_platform"?"aerial_platform":vehicle?.body_type==="concrete_pump"?"concrete_pump":(vehicle?.body_type==="other_special"||vehicle?.body_type==="low_loader")?"other_special":"crane";
   const existing=rows.find(r=>r.vehicle_id===id);
   setForm(existing?{vehicle_id:id,equipment_kind:existing.equipment_kind,manufacturer:existing.manufacturer||"",model:existing.model||"",serial_number:existing.serial_number||"",travel_height_cm:String(existing.travel_height_cm??""),travel_width_cm:String(existing.travel_width_cm??""),travel_length_cm:String(existing.travel_length_cm??""),working_height_cm:String(existing.working_height_cm??""),working_width_cm:String(existing.working_width_cm??""),working_length_cm:String(existing.working_length_cm??""),max_outreach_cm:String(existing.max_outreach_cm??""),max_lifting_capacity_kg:String(existing.max_lifting_capacity_kg??""),axle_configuration:existing.axle_configuration||""}:{...empty,vehicle_id:id,equipment_kind:expectedKind});
   setChart(null);
@@ -50,6 +50,7 @@ export default function SpecialEquipmentPage(){
   const values={travel_height_cm:num(form.travel_height_cm),travel_width_cm:num(form.travel_width_cm),travel_length_cm:num(form.travel_length_cm),working_height_cm:num(form.working_height_cm),working_width_cm:num(form.working_width_cm),working_length_cm:num(form.working_length_cm),max_outreach_cm:num(form.max_outreach_cm),max_lifting_capacity_kg:num(form.max_lifting_capacity_kg)};
   if(!values.travel_height_cm||!values.travel_width_cm||!values.travel_length_cm||!form.axle_configuration.trim()){setMessage("חובה למלא מידות נסיעה ותצורת סרנים.");return;}
   if(["crane","aerial_platform","concrete_pump"].includes(form.equipment_kind)&&!chart&&!rows.some(r=>r.vehicle_id===vehicle.id&&r.lifting_chart_document_path)){setMessage("למנוף, סל או משאבת בטון נדרש תרשים יצרן.");return;}
+  if(["crane","aerial_platform","concrete_pump"].includes(form.equipment_kind)&&(!values.working_height_cm||!values.working_width_cm||!values.working_length_cm||values.max_outreach_cm===null||!values.max_lifting_capacity_kg)){setMessage("למנוף, סל או משאבת בטון חובה למלא גובה, רוחב ואורך עבודה, שלוחה וכושר הרמה לפי מסמך היצרן.");return;}
   setBusy(true);setMessage("");
   try{
    let chartPath=rows.find(r=>r.vehicle_id===vehicle.id)?.lifting_chart_document_path||null;
