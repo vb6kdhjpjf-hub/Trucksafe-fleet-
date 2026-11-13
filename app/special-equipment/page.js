@@ -83,7 +83,7 @@ export default function SpecialEquipmentPage(){
    <h2>הוספה / עדכון פרופיל ציוד</h2><p>עדכון נתונים מאפס את סטטוס האימות ודורש בדיקה חוזרת.</p>
    <form onSubmit={save} style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
     <label>רכב<select required value={form.vehicle_id} onChange={e=>chooseVehicle(e.target.value)}><option value="">בחר רכב</option>{vehicles.filter(v=>!v.is_demo).map(v=><option key={v.id} value={v.id}>{v.registration_number} · {v.body_type||"ללא סיווג"}</option>)}</select></label>
-    <label>סוג ציוד<select value={form.equipment_kind} onChange={e=>update("equipment_kind",e.target.value)}>{kinds.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
+    <label>סוג ציוד<select value={form.equipment_kind} onChange={e=>update("equipment_kind",e.target.value)}>{kinds.map(([id,label])=><option key={id} value={id}>{id==="other_special"&&vehicle?.body_type==="low_loader"?"מוביל חריג / low-loader":label}</option>)}</select></label>
     {field("יצרן","manufacturer")}{field("דגם","model")}{field("מספר סידורי","serial_number")}
     <div style={{gridColumn:"1 / -1",borderTop:"1px solid #eaecf0",paddingTop:10,fontWeight:700}}>תצורת נסיעה — כשהציוד מקופל ומוכן לנסיעה</div>
     {field("גובה נסיעה (ס״מ)","travel_height_cm",{type:"number",min:100,max:600,step:1,required:true})}
@@ -107,7 +107,7 @@ export default function SpecialEquipmentPage(){
     <p>יצרן: {row.manufacturer||"—"} · דגם: {row.model||"—"} · מספר סידורי: {row.serial_number||"—"} · סרנים: {row.axle_configuration||"—"}</p>
     {row.lifting_chart_document_path&&(row.chartUrl?<a href={row.chartUrl} target="_blank" rel="noopener noreferrer">פתיחת תרשים היצרן (קישור מאובטח ל־5 דקות)</a>:<small>לא ניתן ליצור קישור צפייה למסמך. בדוק הרשאת מנהל וגישה לאחסון הפרטי.</small>)}
     <strong>סטטוס: {row.evidence_status==="verified"?"מאומת פנימית":row.evidence_status==="rejected"?"נדחה":"ממתין לבדיקה"}</strong>
-    {row.evidence_status==="pending"&&<div style={{display:"grid",gap:8,maxWidth:420,marginTop:10}}><p>לפני אישור, פתח את תרשים היצרן המאובטח והשווה את הנתונים למסמכי הרכב. האישור הוא בדיקה פנימית בלבד.</p><textarea rows={2} maxLength={1000} placeholder="מה נבדק? הערה של לפחות 5 תווים" value={notes[row.id]||""} onChange={e=>setNotes(x=>({...x,[row.id]:e.target.value}))}/><div style={{display:"flex",gap:8}}><button disabled={busy} onClick={()=>review(row,"verified")}>אישור בדיקה פנימית</button><button disabled={busy} onClick={()=>review(row,"rejected")}>דחייה</button></div></div>}
+    {row.evidence_status==="pending"&&<div style={{display:"grid",gap:8,maxWidth:420,marginTop:10}}><p>לפני אישור, פתח את תרשים היצרן המאובטח והשווה את נתוני הנסיעה, שלושת ממדי העבודה, השלוחה וכושר ההרמה למסמכי הרכב. במוביל חריג, ודא שמידות התצורה הנגררת והסרנים תואמות למסמכים. האישור הוא בדיקה פנימית בלבד.</p><textarea rows={2} maxLength={1000} placeholder="מה נבדק? הערה של לפחות 5 תווים" value={notes[row.id]||""} onChange={e=>setNotes(x=>({...x,[row.id]:e.target.value}))}/><div style={{display:"flex",gap:8}}><button disabled={busy} onClick={()=>review(row,"verified")}>אישור בדיקה פנימית</button><button disabled={busy} onClick={()=>review(row,"rejected")}>דחייה</button></div></div>}
     <small style={{display:"block",marginTop:8,color:"#667085"}}>אימות פנימי בלבד — אינו אישור משרד התחבורה, היתר הרמה או אישור שמסלול מתאים לנסיעה.</small>
    </article>)}
   </section>

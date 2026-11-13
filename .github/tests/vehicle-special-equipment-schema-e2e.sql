@@ -68,6 +68,12 @@ begin
 
   select pg_get_functiondef('private.review_vehicle_special_equipment(uuid,text,text)'::regprocedure) into v_review_def;
   if position('low_loader' in v_review_def)=0 then raise exception 'Low-loader review gate is missing from the database RPC'; end if;
+  if position('working_width_cm' in v_review_def)=0 or position('working_length_cm' in v_review_def)=0 then
+    raise exception 'Review RPC must require all three working dimensions';
+  end if;
+  if position('not between 100 and 10000' in v_review_def)=0 then
+    raise exception 'Review RPC must enforce working dimension bounds';
+  end if;
 
   select p.prosecdef,p.proconfig into v_public_definer,v_wrapper_config
   from pg_proc p where p.oid='public.review_vehicle_special_equipment(uuid,text,text)'::regprocedure;
