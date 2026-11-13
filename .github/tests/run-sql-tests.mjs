@@ -37,6 +37,7 @@ const files = [
   ".github/tests/cross-fleet-integrity-e2e.sql",
   ".github/tests/cross-fleet-preflight-detects-anomalies.sql",
   ".github/tests/query-plan-performance-e2e.sql",
+  ".github/tests/vehicle-special-equipment-schema-e2e.sql",
 ];
 
 const client = new Client({

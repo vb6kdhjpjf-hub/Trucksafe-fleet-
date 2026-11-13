@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { selectSafeTruckRoute } from "../../../lib/road-restriction-geometry.mjs";
 import { isTruckRouteConfigured } from "../../../lib/truck-route-readiness.mjs";
 import { getSavedTruckRoutingProfile } from "../../../lib/truck-routing-profile.mjs";
+import { assessVehicleSpecialRouting } from "../../../lib/vehicle-capabilities.mjs";
 import { validateTruckTripWeights } from "../../../lib/truck-trip-weight.mjs";
 import { checkTruckRouteQuota } from "../../../lib/truck-route-quota.mjs";
 import { readJsonBodyLimited } from "../../../lib/request-body-limits.mjs";
@@ -110,7 +111,7 @@ export async function POST(request) {
 
     const { data: savedVehicle, error: vehicleError } = await db
       .from("vehicles")
-      .select("id,fleet_id,status,is_demo,registration_verification_status,registration_document_path,registration_verified_at,registration_verified_by,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,empty_weight_kg,axle_count,trailer_count,weight_per_axle_kg")
+      .select("id,fleet_id,status,is_demo,registration_verification_status,registration_document_path,registration_verified_at,registration_verified_by,body_type,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,empty_weight_kg,axle_count,trailer_count,weight_per_axle_kg")
       .eq("id", vehicleId)
       .eq("fleet_id", membership.fleet_id)
       .maybeSingle();
@@ -122,11 +123,20 @@ export async function POST(request) {
       return response({ error: "אפשר לתכנן מסלול רק לרכב זמין או משויך שאינו בטיפול או מושבת." }, 409);
     }
 
-    const vehicleProfile = getSavedTruckRoutingProfile(savedVehicle);
-    if (!vehicleProfile) {
-      return response({ error: "פרופיל הרכב השמור אינו מלא או מאומת, או שמדובר ברכב הדגמה. יש להשלים נתונים לפי רישיון הרכב." }, 409);
+    let specialEquipment = null;
+    const specialTypes = new Set(["articulated_crane","telescopic_crane","loader_crane","heavy_lift_crane","mobile_crane","aerial_platform","recovery_crane","concrete_pump","other_special"]);
+    if (specialTypes.has(savedVehicle.body_type)) {
+      const { data, error } = await db.from("vehicle_special_equipment")
+        .select("id,fleet_id,vehicle_id,travel_height_cm,travel_width_cm,travel_length_cm,working_height_cm,max_outreach_cm,max_lifting_capacity_kg,axle_configuration,lifting_chart_document_path,evidence_status,evidence_verified_at,evidence_verified_by")
+        .eq("fleet_id",membership.fleet_id).eq("vehicle_id",vehicleId).maybeSingle();
+      if(error||!data)return response({error:"חסר פרופיל ציוד מיוחד מאומת. אין לחשב מסלול למנוף או לרכב ייעודי עד להשלמת בדיקת הציוד."},409);
+      specialEquipment=data;
     }
-
+    const specialGate=assessVehicleSpecialRouting({vehicle:savedVehicle,equipment:specialEquipment});
+    if(!specialGate.ready)return response({error:"פרטי המרכב או הציוד המיוחד אינם מאומתים. לא ניתן לחשב מסלול לרכב זה.",diagnosticCode:specialGate.reason},409);
+    const vehicleProfile=getSavedTruckRoutingProfile(savedVehicle);
+    if(!vehicleProfile)return response({error:"פרופיל הרכב השמור אינו מלא או מאומת, או שמדובר ברכב הדגמה. יש להשלים נתונים לפי רישיון הרכב."},409);
+    if(specialGate.dimensions){vehicleProfile.heightCm=specialGate.dimensions.heightCm;vehicleProfile.widthCm=specialGate.dimensions.widthCm;vehicleProfile.lengthCm=specialGate.dimensions.lengthCm;}
     const { heightCm, widthCm, lengthCm, grossWeightKg, axleCount, trailerCount, vehicleType } = vehicleProfile;
     const currentWeightKg = Number(raw.currentWeightKg);
     const weightPerAxleKg = Number(raw.weightPerAxleKg);

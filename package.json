@@ -15,7 +15,8 @@
     "test:workflow-safety": "node --test .github/tests/workflow-safety.test.mjs",
     "test:ci": "npm run test:ptv && npm run test:cargo && node --test .github/tests/fleet-workspace.test.mjs .github/tests/fleet-api-access.integration.test.mjs .github/tests/live-auth-fixture-utils.test.mjs .github/tests/api-route-auth-coverage.test.mjs && npm run test:enterprise-import && npm run test:workflow-safety",
     "test:cargo": "node --test .github/tests/shipment-quantities.test.mjs .github/tests/delivery-proof-photos.test.mjs .github/tests/delivery-gps.test.mjs",
-    "test:enterprise-import": "node --test .github/tests/enterprise-import-csv.test.mjs .github/tests/enterprise-import-mapping.test.mjs .github/tests/enterprise-import-export.test.mjs .github/tests/enterprise-import-conflicts.test.mjs .github/tests/enterprise-import-job-state.test.mjs"
+    "test:enterprise-import": "node --test .github/tests/enterprise-import-csv.test.mjs .github/tests/enterprise-import-mapping.test.mjs .github/tests/enterprise-import-export.test.mjs .github/tests/enterprise-import-conflicts.test.mjs .github/tests/enterprise-import-job-state.test.mjs",
+    "test:vehicle-capabilities": "node --test .github/tests/vehicle-capabilities.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
