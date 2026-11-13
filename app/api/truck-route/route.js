@@ -124,7 +124,7 @@ export async function POST(request) {
     }
 
     let specialEquipment = null;
-    const specialTypes = new Set(["articulated_crane","telescopic_crane","loader_crane","heavy_lift_crane","mobile_crane","aerial_platform","recovery_crane","concrete_pump","other_special"]);
+    const specialTypes = new Set(["articulated_crane","telescopic_crane","loader_crane","heavy_lift_crane","mobile_crane","aerial_platform","recovery_crane","concrete_pump","other_special","low_loader"]);
     if (specialTypes.has(savedVehicle.body_type)) {
       const { data, error } = await db.from("vehicle_special_equipment")
         .select("id,fleet_id,vehicle_id,travel_height_cm,travel_width_cm,travel_length_cm,working_height_cm,max_outreach_cm,max_lifting_capacity_kg,axle_configuration,lifting_chart_document_path,evidence_status,evidence_verified_at,evidence_verified_by")

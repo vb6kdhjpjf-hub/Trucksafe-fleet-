@@ -17,3 +17,5 @@ test("ordinary body type does not need equipment row",()=>assert.equal(assessVeh
 
 test("special equipment kind must match classified body type",()=>assert.equal(assessVehicleSpecialRouting({vehicle,equipment:{...equipment,equipment_kind:"aerial_platform"}}).reason,"special_equipment_kind_mismatch"));
 test("other special body requires a verified profile but no crane chart",()=>{const v={...vehicle,body_type:"other_special"};const e={...equipment,equipment_kind:"other_special",lifting_chart_document_path:null,working_height_cm:null,max_outreach_cm:null,max_lifting_capacity_kg:null};assert.equal(assessVehicleSpecialRouting({vehicle:v,equipment:e}).ready,true);});
+
+test("low loader requires an internally verified special vehicle profile",()=>{const v={...vehicle,body_type:"low_loader"};assert.equal(assessVehicleSpecialRouting({vehicle:v,equipment:null}).reason,"special_equipment_profile_missing");const e={...equipment,equipment_kind:"other_special",lifting_chart_document_path:null,working_height_cm:null,max_outreach_cm:null,max_lifting_capacity_kg:null};assert.equal(assessVehicleSpecialRouting({vehicle:v,equipment:e}).ready,true);});

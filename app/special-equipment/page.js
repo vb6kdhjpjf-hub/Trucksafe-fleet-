@@ -24,7 +24,13 @@ export default function SpecialEquipmentPage(){
    supabase.from("vehicle_special_equipment").select("*").eq("fleet_id",f.id).order("updated_at",{ascending:false})
   ]);
   if(v.error||e.error){setMessage("לא ניתן לטעון כלי רכב או ציוד מיוחד. בדוק הרשאות ומסד נתונים.");return;}
-  setVehicles(v.data||[]);setRows(e.data||[]);
+  setVehicles(v.data||[]);
+  const rowsWithChartLinks=await Promise.all((e.data||[]).map(async row=>{
+   if(!row.lifting_chart_document_path)return {...row,chartUrl:null};
+   const {data:link,error:linkError}=await supabase.storage.from("vehicle-registrations").createSignedUrl(row.lifting_chart_document_path,300);
+   return {...row,chartUrl:linkError?null:link?.signedUrl||null};
+  }));
+  setRows(rowsWithChartLinks);
  }
  useEffect(()=>{load();},[]);
  function chooseVehicle(id){
@@ -97,8 +103,10 @@ export default function SpecialEquipmentPage(){
    {rows.length===0?<p>עדיין לא הוגדר ציוד מיוחד בצי.</p>:rows.map(row=><article key={row.id} style={{border:"1px solid #d0d5dd",borderRadius:10,padding:14,marginBottom:12}}>
     <h3>{vehicles.find(v=>v.id===row.vehicle_id)?.registration_number||"רכב לא ידוע"} · {kinds.find(k=>k[0]===row.equipment_kind)?.[1]||row.equipment_kind}</h3>
     <p>נסיעה: {row.travel_height_cm} × {row.travel_width_cm} × {row.travel_length_cm} ס״מ · עבודה: גובה {row.working_height_cm||"—"} ס״מ · שלוחה {row.max_outreach_cm||"—"} ס״מ · כושר הרמה {row.max_lifting_capacity_kg||"—"} ק״ג</p>
+    <p>יצרן: {row.manufacturer||"—"} · דגם: {row.model||"—"} · מספר סידורי: {row.serial_number||"—"} · סרנים: {row.axle_configuration||"—"}</p>
+    {row.lifting_chart_document_path&&(row.chartUrl?<a href={row.chartUrl} target="_blank" rel="noopener noreferrer">פתיחת תרשים היצרן (קישור מאובטח ל־5 דקות)</a>:<small>לא ניתן ליצור קישור צפייה למסמך. בדוק הרשאת מנהל וגישה לאחסון הפרטי.</small>)}
     <strong>סטטוס: {row.evidence_status==="verified"?"מאומת פנימית":row.evidence_status==="rejected"?"נדחה":"ממתין לבדיקה"}</strong>
-    {row.evidence_status==="pending"&&<div style={{display:"grid",gap:8,maxWidth:420,marginTop:10}}><textarea rows={2} maxLength={1000} placeholder="מה נבדק? הערה של לפחות 5 תווים" value={notes[row.id]||""} onChange={e=>setNotes(x=>({...x,[row.id]:e.target.value}))}/><div style={{display:"flex",gap:8}}><button disabled={busy} onClick={()=>review(row,"verified")}>אישור בדיקה פנימית</button><button disabled={busy} onClick={()=>review(row,"rejected")}>דחייה</button></div></div>}
+    {row.evidence_status==="pending"&&<div style={{display:"grid",gap:8,maxWidth:420,marginTop:10}}><p>לפני אישור, פתח את תרשים היצרן המאובטח והשווה את הנתונים למסמכי הרכב. האישור הוא בדיקה פנימית בלבד.</p><textarea rows={2} maxLength={1000} placeholder="מה נבדק? הערה של לפחות 5 תווים" value={notes[row.id]||""} onChange={e=>setNotes(x=>({...x,[row.id]:e.target.value}))}/><div style={{display:"flex",gap:8}}><button disabled={busy} onClick={()=>review(row,"verified")}>אישור בדיקה פנימית</button><button disabled={busy} onClick={()=>review(row,"rejected")}>דחייה</button></div></div>}
     <small style={{display:"block",marginTop:8,color:"#667085"}}>אימות פנימי בלבד — אינו אישור משרד התחבורה, היתר הרמה או אישור שמסלול מתאים לנסיעה.</small>
    </article>)}
   </section>
