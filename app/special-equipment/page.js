@@ -83,7 +83,7 @@ export default function SpecialEquipmentPage(){
    <h2>הוספה / עדכון פרופיל ציוד</h2><p>עדכון נתונים מאפס את סטטוס האימות ודורש בדיקה חוזרת.</p>
    <form onSubmit={save} style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
     <label>רכב<select required value={form.vehicle_id} onChange={e=>chooseVehicle(e.target.value)}><option value="">בחר רכב</option>{vehicles.filter(v=>!v.is_demo).map(v=><option key={v.id} value={v.id}>{v.registration_number} · {v.body_type||"ללא סיווג"}</option>)}</select></label>
-    <label>סוג ציוד<select value={form.equipment_kind} onChange={e=>update("equipment_kind",e.target.value)}>{kinds.map(([id,label])=><option key={id} value={id}>{id==="other_special"&&vehicle?.body_type==="low_loader"?"מוביל חריג / low-loader":label}</option>)}</select></label>
+    <label>סוג ציוד<select value={form.equipment_kind} onChange={e=>update("equipment_kind",e.target.value)}>{kinds.map(([id,label])=><option key={id} value={id}>{id==="other_special"&&vehicles.find(v=>v.id===form.vehicle_id)?.body_type==="low_loader"?"מוביל חריג / low-loader":label}</option>)}</select></label>
     {field("יצרן","manufacturer")}{field("דגם","model")}{field("מספר סידורי","serial_number")}
     <div style={{gridColumn:"1 / -1",borderTop:"1px solid #eaecf0",paddingTop:10,fontWeight:700}}>תצורת נסיעה — כשהציוד מקופל ומוכן לנסיעה</div>
     {field("גובה נסיעה (ס״מ)","travel_height_cm",{type:"number",min:100,max:600,step:1,required:true})}
