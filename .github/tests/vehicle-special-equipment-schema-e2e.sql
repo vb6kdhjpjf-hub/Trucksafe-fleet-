@@ -7,6 +7,8 @@ declare
   v_unique boolean;
   v_trigger boolean;
   v_body_trigger boolean;
+  v_body_trigger_definer boolean;
+  v_body_trigger_config text[];
   v_guard_trigger boolean;
   v_public_definer boolean;
   v_private_exec boolean;
@@ -45,6 +47,8 @@ begin
 
   select exists(select 1 from pg_trigger where tgrelid='public.vehicles'::regclass and tgname='trg_invalidate_special_equipment_on_body_change' and not tgisinternal) into v_body_trigger;
   if not v_body_trigger then raise exception 'Vehicle body-change invalidation trigger is missing'; end if;
+  select p.prosecdef,p.proconfig into v_body_trigger_definer,v_body_trigger_config from pg_proc p where p.oid='private.invalidate_special_equipment_on_body_change()'::regprocedure;
+  if not v_body_trigger_definer or not ('search_path=""' = any(coalesce(v_body_trigger_config,array[]::text[]))) then raise exception 'Vehicle body-change invalidation must be a locked-down SECURITY DEFINER trigger'; end if;
 
   select p.prosecdef,p.proconfig into v_public_rpc,v_search_path
   from pg_proc p where p.oid='private.review_vehicle_special_equipment(uuid,text,text)'::regprocedure;
