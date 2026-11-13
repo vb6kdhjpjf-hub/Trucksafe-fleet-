@@ -7,6 +7,7 @@ declare
   v_unique boolean;
   v_trigger boolean;
   v_body_trigger boolean;
+  v_guard_trigger boolean;
   v_public_definer boolean;
   v_public_rpc boolean;
   v_private_rpc boolean;
@@ -36,6 +37,8 @@ begin
   select exists(select 1 from pg_trigger where tgrelid='public.vehicle_special_equipment'::regclass
     and tgname='trg_invalidate_special_equipment_evidence' and not tgisinternal) into v_trigger;
   if not v_trigger then raise exception 'Evidence invalidation trigger is missing'; end if;
+  select exists(select 1 from pg_trigger where tgrelid='public.vehicle_special_equipment'::regclass and tgname='trg_guard_special_equipment_evidence_fields' and not tgisinternal) into v_guard_trigger;
+  if not v_guard_trigger then raise exception 'Evidence privilege guard trigger is missing'; end if;
 
   select exists(select 1 from pg_trigger where tgrelid='public.vehicles'::regclass and tgname='trg_invalidate_special_equipment_on_body_change' and not tgisinternal) into v_body_trigger;
   if not v_body_trigger then raise exception 'Vehicle body-change invalidation trigger is missing'; end if;
