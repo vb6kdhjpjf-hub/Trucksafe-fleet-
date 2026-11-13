@@ -9,6 +9,9 @@ declare
   v_body_trigger boolean;
   v_guard_trigger boolean;
   v_public_definer boolean;
+  v_private_exec boolean;
+  v_wrapper_anon_exec boolean;
+  v_wrapper_config text[];
   v_public_rpc boolean;
   v_private_rpc boolean;
   v_anon_exec boolean;
@@ -50,12 +53,17 @@ begin
     raise exception 'Private review function must use an empty search_path';
   end if;
 
-  select p.prosecdef into v_public_definer from pg_proc p where p.oid='public.review_vehicle_special_equipment(uuid,text,text)'::regprocedure;
-  if not v_public_definer then raise exception 'Public review wrapper must be SECURITY DEFINER'; end if;
+  select has_function_privilege('authenticated','private.review_vehicle_special_equipment(uuid,text,text)','EXECUTE') into v_private_exec;
+  if not v_private_exec then raise exception 'Authenticated role must execute the private RPC only through the unexposed private schema'; end if;
 
-  select has_function_privilege('anon','public.review_vehicle_special_equipment(uuid,text,text)','EXECUTE') into v_anon_exec;
+  select p.prosecdef,p.proconfig into v_public_definer,v_wrapper_config
+  from pg_proc p where p.oid='public.review_vehicle_special_equipment(uuid,text,text)'::regprocedure;
+  if v_public_definer then raise exception 'Public wrapper must remain SECURITY INVOKER'; end if;
+  if not ('search_path=""' = any(coalesce(v_wrapper_config,array[]::text[]))) then raise exception 'Public wrapper must use an empty search_path'; end if;
+
+  select has_function_privilege('anon','public.review_vehicle_special_equipment(uuid,text,text)','EXECUTE') into v_wrapper_anon_exec;
   select has_function_privilege('authenticated','public.review_vehicle_special_equipment(uuid,text,text)','EXECUTE') into v_auth_exec;
-  if v_anon_exec or not v_auth_exec then raise exception 'Review RPC execute grants are not least-privilege'; end if;
+  if v_wrapper_anon_exec or not v_auth_exec then raise exception 'Review RPC execute grants are not least-privilege'; end if;
 
   raise notice 'PASS: special equipment schema, RLS, composite ownership, evidence invalidation, and review RPC security';
 end $$;
