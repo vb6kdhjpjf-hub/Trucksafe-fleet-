@@ -9,6 +9,8 @@ declare
   v_body_trigger boolean;
   v_body_trigger_definer boolean;
   v_body_trigger_config text[];
+  v_body_trigger_anon_exec boolean;
+  v_body_trigger_auth_exec boolean;
   v_guard_trigger boolean;
   v_public_definer boolean;
   v_private_exec boolean;
@@ -49,6 +51,9 @@ begin
   if not v_body_trigger then raise exception 'Vehicle body-change invalidation trigger is missing'; end if;
   select p.prosecdef,p.proconfig into v_body_trigger_definer,v_body_trigger_config from pg_proc p where p.oid='private.invalidate_special_equipment_on_body_change()'::regprocedure;
   if not v_body_trigger_definer or not ('search_path=""' = any(coalesce(v_body_trigger_config,array[]::text[]))) then raise exception 'Vehicle body-change invalidation must be a locked-down SECURITY DEFINER trigger'; end if;
+  select has_function_privilege('anon','private.invalidate_special_equipment_on_body_change()','EXECUTE') into v_body_trigger_anon_exec;
+  select has_function_privilege('authenticated','private.invalidate_special_equipment_on_body_change()','EXECUTE') into v_body_trigger_auth_exec;
+  if v_body_trigger_anon_exec or v_body_trigger_auth_exec then raise exception 'Trigger-only SECURITY DEFINER function must not be directly executable'; end if;
 
   select p.prosecdef,p.proconfig into v_public_rpc,v_search_path
   from pg_proc p where p.oid='private.review_vehicle_special_equipment(uuid,text,text)'::regprocedure;
