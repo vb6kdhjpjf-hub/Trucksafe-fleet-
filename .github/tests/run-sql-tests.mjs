@@ -29,6 +29,7 @@ if (!databaseUrl) throw new Error("SUPABASE_TEST_DB_URL is required");
 
 const files = [
   ".github/tests/fk-index-migration-e2e.sql",
+  ".github/tests/active-trip-uniqueness-e2e.sql",
   ".github/tests/lifecycle-e2e.sql",
   ".github/tests/daily-load-ledger-e2e.sql",
   ".github/tests/shipment-operations-e2e.sql",
