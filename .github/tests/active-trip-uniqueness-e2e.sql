@@ -1,7 +1,18 @@
 -- Rollback-only verification of active-trip uniqueness protections.
+-- Keep the DDL inline: this runner executes SQL through node-postgres, not psql.
 begin;
 
-\ir ../../supabase/migrations/20261114130000_enforce_single_active_trip_assignments.sql
+create unique index if not exists trips_one_active_per_driver
+  on public.trips (driver_id)
+  where status = 'active';
+
+create unique index if not exists trips_one_active_per_vehicle
+  on public.trips (vehicle_id)
+  where status = 'active';
+
+create unique index if not exists trips_one_active_per_task
+  on public.trips (task_id)
+  where status = 'active' and task_id is not null;
 
 do $$
 declare
