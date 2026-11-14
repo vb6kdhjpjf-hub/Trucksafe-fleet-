@@ -1,6 +1,6 @@
 begin;
 \ir ../../supabase/migrations/20261114150000_index_vehicle_special_equipment_evidence_verifier.sql
-do $
+do $$
 declare
   v_rls boolean;
   v_policies integer;
