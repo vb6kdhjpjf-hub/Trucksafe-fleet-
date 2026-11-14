@@ -19,6 +19,7 @@ declare
   v1b uuid := 'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf15';
   t1 uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf11';
   v_trip_id uuid;
+  affected_rows integer;
 
   -- Safety-block fixtures
   u2 uuid := 'f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf12';
@@ -113,6 +114,29 @@ begin
     insert into pg_temp.trucksafe_e2e_results values
       ('one active trip per task', 'PASS', 'Second active trip for the same task was rejected');
   end;
+
+  -- Verify the authenticated fleet owner cannot cancel or reassign an in-progress task.
+  execute 'set local role authenticated';
+  update public.tasks set status = 'cancelled' where id = t1;
+  get diagnostics affected_rows = row_count;
+  if affected_rows <> 0 then
+    raise exception 'Active-trip task cancellation unexpectedly changed a row';
+  end if;
+  update public.tasks set assigned_driver_id = d1b, assigned_vehicle_id = v1b where id = t1;
+  get diagnostics affected_rows = row_count;
+  if affected_rows <> 0 then
+    raise exception 'Active-trip task reassignment unexpectedly changed a row';
+  end if;
+  execute 'reset role';
+
+  if (select status from public.tasks where id = t1) <> 'in_progress'
+     or (select assigned_driver_id from public.tasks where id = t1) <> d1
+     or (select assigned_vehicle_id from public.tasks where id = t1) <> v1 then
+    raise exception 'Active-trip task mutation protection did not preserve the assignment';
+  end if;
+  insert into pg_temp.trucksafe_e2e_results values
+    ('active task cannot be cancelled or reassigned', 'PASS',
+     'RLS blocks cancellation and reassignment while a trip is active');
 
   perform public.finish_trip(f1, v_trip_id);
 
