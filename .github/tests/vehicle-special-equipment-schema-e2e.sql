@@ -1,9 +1,11 @@
 begin;
-do $$
+\ir ../../supabase/migrations/20261114150000_index_vehicle_special_equipment_evidence_verifier.sql
+do $
 declare
   v_rls boolean;
   v_policies integer;
   v_fk boolean;
+  v_verifier_index boolean;
   v_unique boolean;
   v_trigger boolean;
   v_body_trigger boolean;
@@ -37,6 +39,16 @@ begin
   select exists(select 1 from pg_constraint where conrelid='public.vehicle_special_equipment'::regclass
     and conname='vehicle_special_equipment_vehicle_fleet_fkey' and contype='f') into v_fk;
   if not v_fk then raise exception 'Fleet-scoped composite vehicle foreign key is missing'; end if;
+
+  select exists(
+    select 1 from pg_indexes
+    where schemaname='public' and tablename='vehicle_special_equipment'
+      and indexname='idx_vehicle_special_equipment_evidence_verified_by'
+      and indexdef ilike '%(evidence_verified_by)%'
+  ) into v_verifier_index;
+  if not v_verifier_index then
+    raise exception 'Foreign-key index for evidence_verified_by is missing';
+  end if;
 
   select exists(select 1 from pg_constraint where conrelid='public.vehicle_special_equipment'::regclass
     and conname='vehicle_special_equipment_vehicle_unique' and contype='u') into v_unique;
