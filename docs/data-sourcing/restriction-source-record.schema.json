@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trucksafe.invalid/schemas/restriction-source-record.schema.json",
+  "title": "TruckSafe candidate road restriction source record",
+  "description": "Raw, unapproved source record envelope for isolated staging only. Passing this schema does not verify the truth, authority, freshness, or safety of a restriction.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source",
+    "retrieved_at",
+    "payload",
+    "review",
+    "payload_sha256"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_id",
+        "publisher",
+        "dataset_name",
+        "dataset_version",
+        "licence_reference"
+      ],
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "publisher": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "dataset_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "dataset_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "licence_reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "coverage_description": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "contact_reference": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      }
+    },
+    "retrieved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "type": [
+        "object",
+        "array"
+      ]
+    },
+    "payload_sha256": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{64}$",
+      "description": "SHA-256 of the UTF-8 bytes of JSON.stringify(envelope.payload) after JSON.parse. Original whitespace is discarded. Object keys are serialized using JavaScript JSON.stringify property-enumeration semantics, not sorted into a key-order-independent canonical form. Duplicate JSON object keys are collapsed by JSON.parse, with the last value retained. This hash is an integrity checksum of the parsed payload, not a signature and not a byte-for-byte hash of the original source file."
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "approved_for_routing"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "unreviewed",
+            "rejected",
+            "needs_clarification",
+            "pilot_candidate",
+            "independently_verified"
+          ]
+        },
+        "approved_for_routing": {
+          "const": false
+        },
+        "reviewer": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "reviewed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 4000
+        }
+      }
+    }
+  }
+}

@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
-import { Truck, ShieldCheck, LogOut, Plus, Users, Navigation, AlertTriangle, ClipboardList, BarChart3, Wrench, Route } from "lucide-react";
+import { Truck, ShieldCheck, LogOut, Plus, Users, Navigation, AlertTriangle, ClipboardList, BarChart3, Wrench, Route, Scale, FileText } from "lucide-react";
+import { isDriverEligibleForVehicleAssignment } from "../lib/driver-eligibility.mjs";
+import { isSupportedFleetRole } from "../lib/fleet-membership.mjs";
 
 export default function Home() {
   const [session,setSession]=useState(null);
@@ -36,6 +38,7 @@ export default function Home() {
   const [showVehicle,setShowVehicle]=useState(false);
   const [registration,setRegistration]=useState("");
   const [vehicleType,setVehicleType]=useState("משאית");
+  const [bodyType,setBodyType]=useState("rigid_truck");
   const [vehicleMake,setVehicleMake]=useState("");
   const [assignedDriverId,setAssignedDriverId]=useState("");
   const [routingVehicleType,setRoutingVehicleType]=useState("StraightTruck");
@@ -54,30 +57,32 @@ export default function Home() {
     setWorkspaceChecked(false);
     setWorkspaceError("");
     const isCurrent=()=>requestId===fleetLoadRef.current;
-    let membership=null;
-    const membershipResult=await supabase.from("fleet_members").select("fleet_id,role").eq("user_id",user.id).limit(1).maybeSingle();
+    const membershipResult=await supabase.from("fleet_members").select("fleet_id,role").eq("user_id",user.id).limit(2);
     if(!isCurrent())return;
-    membership=membershipResult.data;
+    if(membershipResult.error){
+      setFleet(null);
+      setWorkspaceError("לא הצלחנו לאמת את החברות בצי. לא נבחר צי באופן אוטומטי ולא ניצור ארגון חדש. פרטים: "+membershipResult.error.message);
+      setWorkspaceChecked(true);
+      return;
+    }
+    const memberships=membershipResult.data||[];
+    if(memberships.length>1){
+      setFleet(null);
+      setWorkspaceError("לחשבון משויכים כמה ציים. כדי למנוע הצגת נתונים או ביצוע פעולות בצי הלא נכון, נדרש לבחור צי במפורש לפני המשך העבודה.");
+      setWorkspaceChecked(true);
+      return;
+    }
     let current=null;
-    let role=membership?.role||"owner";
-    if(membershipResult.error||!membership){
-      // Recover an existing owner's workspace before ever offering to create a new one.
-      const ownedResult=await supabase.from("fleets").select("id,name").eq("owner_user_id",user.id).limit(1).maybeSingle();
-      if(!isCurrent())return;
-      if(ownedResult.error){
+    let role="owner";
+    if(memberships.length===1){
+      const membership=memberships[0];
+      if(!isSupportedFleetRole(membership.role)){
         setFleet(null);
-        setWorkspaceError("לא הצלחנו לבדוק את הארגון הקיים. לא ניצור ארגון חדש כדי למנוע כפילות. פרטים: "+ownedResult.error.message);
+        setWorkspaceError("תפקיד החברות בצי אינו תקין. הגישה נחסמה עד שבעל הצי יתקן את ההרשאה.");
         setWorkspaceChecked(true);
         return;
       }
-      current=ownedResult.data;
-      if(!current&&membershipResult.error){
-        setFleet(null);
-        setWorkspaceError("לא הצלחנו לטעון את החברות בארגון. נסה לטעון מחדש. פרטים: "+membershipResult.error.message);
-        setWorkspaceChecked(true);
-        return;
-      }
-    } else {
+      role=membership.role;
       const fleetResult=await supabase.from("fleets").select("id,name").eq("id",membership.fleet_id).single();
       if(!isCurrent())return;
       if(fleetResult.error){
@@ -87,6 +92,24 @@ export default function Home() {
         return;
       }
       current=fleetResult.data;
+    }else{
+      // Recover an existing owner's workspace before ever offering to create a new one.
+      const ownedResult=await supabase.from("fleets").select("id,name").eq("owner_user_id",user.id).limit(2);
+      if(!isCurrent())return;
+      if(ownedResult.error){
+        setFleet(null);
+        setWorkspaceError("לא הצלחנו לבדוק את הארגון הקיים. לא ניצור ארגון חדש כדי למנוע כפילות. פרטים: "+ownedResult.error.message);
+        setWorkspaceChecked(true);
+        return;
+      }
+      const ownedFleets=ownedResult.data||[];
+      if(ownedFleets.length>1){
+        setFleet(null);
+        setWorkspaceError("לחשבון יש כמה ציים בבעלותך. נדרשת בחירת צי מפורשת לפני המשך העבודה.");
+        setWorkspaceChecked(true);
+        return;
+      }
+      current=ownedFleets[0]||null;
     }
     if(!current){
       setFleet(null);
@@ -96,7 +119,7 @@ export default function Home() {
     setFleet({...current,role});
     setWorkspaceChecked(true);
     const [v,d,tr,inc,incRows,ta,active,maint]=await Promise.all([
-      supabase.from("vehicles").select("id,registration_number,make,model,vehicle_type,status,assigned_driver_id,test_due_at,insurance_due_at,registration_due_at,next_service_at,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,empty_weight_kg,axle_count,trailer_count,weight_per_axle_kg,is_demo").eq("fleet_id",current.id).order("created_at",{ascending:false}),
+      supabase.from("vehicles").select("id,registration_number,make,model,vehicle_type,body_type,status,assigned_driver_id,test_due_at,insurance_due_at,registration_due_at,next_service_at,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,empty_weight_kg,axle_count,trailer_count,weight_per_axle_kg,is_demo").eq("fleet_id",current.id).order("created_at",{ascending:false}),
       supabase.from("drivers").select("id,full_name,phone,status,license_number,license_class,license_expires_at").eq("fleet_id",current.id).order("created_at",{ascending:false}),
       supabase.from("trips").select("id",{count:"exact",head:true}).eq("fleet_id",current.id).eq("status","active"),
       supabase.from("incidents").select("id",{count:"exact",head:true}).eq("fleet_id",current.id).neq("status","resolved"),
@@ -272,8 +295,15 @@ export default function Home() {
     setBusy(false);
   }
 
+  function hasEligibleSelectedDriver(){
+    return !assignedDriverId || drivers.some(driver=>driver.id===assignedDriverId && isDriverEligibleForVehicleAssignment(driver));
+  }
+
   async function addVehicle(e){
-    e.preventDefault();setBusy(true);setMessage("");
+    e.preventDefault();
+    if(!fleet?.id||!isSupportedFleetRole(fleet.role)||!["owner","fleet_manager"].includes(fleet.role)){setMessage("רק בעלים או מנהל צי יכולים להוסיף רכב.");return;}
+    if(!hasEligibleSelectedDriver()){setMessage("הנהג שנבחר אינו פעיל או שרישיון הנהיגה שלו פג/לא הוגדר. יש לבחור נהג מתאים או להשאיר ללא שיוך.");return;}
+    setBusy(true);setMessage("");
     const optionalNumber=value=>value.trim()===""?null:Number(value);
     const routing={
       height_cm:optionalNumber(heightCm),
@@ -302,13 +332,13 @@ export default function Home() {
       setBusy(false);
       return;
     }
-    const payload={fleet_id:fleet.id,registration_number:registration.trim(),vehicle_type:vehicleType,make:vehicleMake.trim()||null,status:"available",assigned_driver_id:assignedDriverId||null,
+    const payload={fleet_id:fleet.id,registration_number:registration.trim(),vehicle_type:vehicleType,body_type:bodyType,make:vehicleMake.trim()||null,status:"available",assigned_driver_id:assignedDriverId||null,
       ...(supplied?routing:{height_cm:null,width_cm:null,length_cm:null,gross_weight_kg:null,empty_weight_kg:null,axle_count:null,trailer_count:0,weight_per_axle_kg:null,routing_vehicle_type:null})
     };
     const {error}=await supabase.from("vehicles").insert(payload);
     if(error)setMessage("לא הצלחנו להוסיף רכב: "+error.message);
     else {
-      setRegistration("");setVehicleMake("");setAssignedDriverId("");setShowVehicle(false);
+      setRegistration("");setVehicleMake("");setAssignedDriverId("");setBodyType("rigid_truck");setShowVehicle(false);
       setRoutingVehicleType("StraightTruck");setHeightCm("");setWidthCm("");setLengthCm("");setGrossWeightKg("");setEmptyWeightKg("");setAxleCount("");setTrailerCount("0");setWeightPerAxleKg("");
       await loadFleet(session.user);setMessage("הרכב נוסף לצי.");
     }
@@ -319,6 +349,7 @@ export default function Home() {
     setShowVehicle(false);
     setEditingVehicleId(vehicle.id);
     setVehicleType(vehicle.vehicle_type || "משאית");
+    setBodyType(vehicle.body_type || "rigid_truck");
     setVehicleMake(vehicle.make || "");
     setAssignedDriverId(vehicle.assigned_driver_id || "");
     setRoutingVehicleType(vehicle.routing_vehicle_type || "StraightTruck");
@@ -336,6 +367,7 @@ export default function Home() {
   async function saveVehicleEdits(e) {
     e.preventDefault();
     if (!editingVehicleId || !fleet?.id || !["owner","fleet_manager"].includes(fleet.role)) return;
+    if(!hasEligibleSelectedDriver()){setMessage("הנהג המשויך אינו פעיל או שרישיון הנהיגה שלו פג/לא הוגדר. יש לבחור נהג מתאים או להסיר את השיוך.");return;}
     setBusy(true);setMessage("");
     const optionalNumber=value=>value.trim()===""?null:Number(value);
     const routing={
@@ -367,6 +399,7 @@ export default function Home() {
     }
     const payload={
       vehicle_type:vehicleType,
+      body_type:bodyType,
       make:vehicleMake.trim()||null,
       assigned_driver_id:assignedDriverId||null,
       ...(supplied?routing:{height_cm:null,width_cm:null,length_cm:null,gross_weight_kg:null,empty_weight_kg:null,axle_count:null,trailer_count:0,weight_per_axle_kg:null,routing_vehicle_type:null})
@@ -375,13 +408,13 @@ export default function Home() {
     if(error||!data){
       setMessage("לא הצלחנו לעדכן את פרטי הרכב: "+(error?.message||"הרכב לא נמצא או שאין הרשאה."));
     } else {
-      const changedRoutingFields=["height_cm","width_cm","length_cm","gross_weight_kg","empty_weight_kg","axle_count","trailer_count","weight_per_axle_kg","routing_vehicle_type"];
+      const changedVerificationFields=["vehicle_type","body_type","make","height_cm","width_cm","length_cm","gross_weight_kg","empty_weight_kg","axle_count","trailer_count","weight_per_axle_kg","routing_vehicle_type"];
       const previous=vehicles.find(vehicle=>vehicle.id===editingVehicleId);
-      const routingChanged=previous&&changedRoutingFields.some(key=>String(previous[key]??"")!==String(payload[key]??""));
+      const verificationRelevantChanged=previous&&changedVerificationFields.some(key=>String(previous[key]??"")!==String(payload[key]??""));
       setEditingVehicleId("");
       await loadFleet(session.user);
-      setMessage(routingChanged
-        ?"פרטי הרכב עודכנו. מכיוון שנתוני הניתוב השתנו, אימות הרישיון חזר לבדיקה."
+      setMessage(verificationRelevantChanged
+        ?"פרטי הרכב עודכנו. שינוי בפרטי הזיהוי או המפרט מחייב בדיקה מחדש של הרישיון."
         :"פרטי הרכב עודכנו בהצלחה.");
     }
     setBusy(false);
@@ -574,7 +607,7 @@ export default function Home() {
   </section></main>;
 
   return <main className="fleet-home" dir="rtl">
-    <header className="fleet-header"><div className="auth-brand"><span><Truck size={24}/></span><div><h1>TruckSafe</h1><small>ניהול צי חכם</small></div></div><div className="drivers-header-actions"><a className="nav-link" href="/drivers"><Users size={16}/> ניהול נהגים</a><a className="nav-link" href="/tasks"><ClipboardList size={16}/> משימות ונסיעות</a><a className="nav-link" href="/map"><Navigation size={16}/> מפת נהגים</a><a className="nav-link" href="/routing"><Route size={16}/> ניווט משאיות</a><a className="nav-link" href="/road-restrictions"><AlertTriangle size={16}/> מגבלות דרך</a><a className="nav-link" href="/daily-report"><ClipboardList size={16}/> דוח יומי</a><a className="nav-link" href="/history"><ClipboardList size={16}/> היסטוריית נסיעות</a><a className="nav-link" href="/reports"><BarChart3 size={16}/> דוחות נסיעות</a><a className="nav-link" href="/maintenance"><Wrench size={16}/> תחזוקת רכבים</a><a className="nav-link" href="/incidents"><AlertTriangle size={16}/> אירועי בטיחות</a><button className="logout-btn" onClick={signOut}><LogOut size={16}/> יציאה</button></div></header>
+    <header className="fleet-header"><div className="auth-brand"><span><Truck size={24}/></span><div><h1>TruckSafe</h1><small>ניהול צי חכם</small></div></div><div className="drivers-header-actions"><a className="nav-link" href="/shipments"><FileText size={16}/> משלוחים ותעודות</a><a className="nav-link" href="/imports"><FileText size={16}/> קליטת נתונים</a><a className="nav-link" href="/daily-work"><Scale size={16}/> תוכניות עבודה</a><a className="nav-link" href="/drivers"><Users size={16}/> ניהול נהגים</a><a className="nav-link" href="/tasks"><ClipboardList size={16}/> משימות ונסיעות</a><a className="nav-link" href="/map"><Navigation size={16}/> מפת נהגים</a><a className="nav-link" href="/routing"><Route size={16}/> ניווט משאיות</a><a className="nav-link" href="/special-equipment">ציוד מיוחד ומנופים</a><a className="nav-link" href="/road-restrictions"><AlertTriangle size={16}/> מגבלות דרך</a><a className="nav-link" href="/daily-report"><ClipboardList size={16}/> דוח יומי</a><a className="nav-link" href="/history"><ClipboardList size={16}/> היסטוריית נסיעות</a><a className="nav-link" href="/reports"><BarChart3 size={16}/> דוחות נסיעות</a><a className="nav-link" href="/maintenance"><Wrench size={16}/> תחזוקת רכבים</a><a className="nav-link" href="/incidents"><AlertTriangle size={16}/> אירועי בטיחות</a><button className="logout-btn" onClick={signOut}><LogOut size={16}/> יציאה</button></div></header>
     <section className="fleet-content"><div className="fleet-welcome"><div><small>סביבת ניהול פעילה</small><h2>{fleet.name}</h2><p>שלום {session.user.user_metadata?.full_name||session.user.email}</p></div><span className="role-pill">{fleet.role==="owner"?"בעלים":fleet.role}</span></div>
       {message&&<div className="auth-message">{message}</div>}
       <div className="fleet-stats"><article><Truck/><strong>{vehicles.length}</strong><span>כלי רכב בצי</span></article><article><Users/><strong>{drivers.length}</strong><span>נהגים רשומים</span></article><article><ClipboardList/><strong>{activeTasks}</strong><span>משימות פתוחות</span></article><article><Navigation/><strong>{activeTrips}</strong><span>נסיעות פעילות</span></article><article><AlertTriangle/><strong>{openIncidents}</strong><span>אירועי בטיחות פתוחים</span></article></div>
@@ -589,8 +622,10 @@ export default function Home() {
       {showVehicle&&<form className="vehicle-form" onSubmit={addVehicle}>
         <label>מספר רישוי<input required value={registration} onChange={e=>setRegistration(e.target.value)} placeholder="12-345-67"/></label>
         <label>סוג רכב<select value={vehicleType} onChange={e=>setVehicleType(e.target.value)}><option>משאית</option><option>גורר</option><option>נגרר</option><option>מסחרית</option><option>רכב אחר</option></select></label>
-        <label>יצרן / דגם<input value={vehicleMake} onChange={e=>setVehicleMake(e.target.value)} placeholder="לדוגמה: Volvo FH"/></label>
-        <label>נהג משויך<select value={assignedDriverId} onChange={e=>setAssignedDriverId(e.target.value)}><option value="">ללא נהג משויך</option>{drivers.filter(d=>d.status==="active").map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label>
+        <label>סיווג מרכב<select value={bodyType} onChange={e=>setBodyType(e.target.value)}><option value="rigid_truck">משאית קשיחה</option><option value="tractor_unit">ראש גורר</option><option value="semi_trailer">סמי־טריילר</option><option value="full_trailer">משאית עם גרור</option><option value="articulated_crane">משאית מנוף זרוע מפרקית</option><option value="telescopic_crane">משאית מנוף טלסקופי</option><option value="loader_crane">משאית מנוף העמסה</option><option value="heavy_lift_crane">משאית מנוף כבד</option><option value="mobile_crane">עגורן נייד</option><option value="aerial_platform">משאית סל / במת הרמה</option><option value="recovery_crane">רכב חילוץ עם מנוף</option><option value="concrete_mixer">מערבל בטון</option><option value="concrete_pump">משאבת בטון</option><option value="tipper">משאית רכינה</option><option value="tanker">מכלית</option><option value="refrigerated">משאית קירור</option><option value="car_carrier">מובילית</option><option value="low_loader">מוביל חריג / low-loader</option><option value="other_special">רכב כבד מיוחד – אחר</option></select></label>
+        <label>סיווג מרכב<select value={bodyType} onChange={e=>setBodyType(e.target.value)}><option value="rigid_truck">משאית קשיחה</option><option value="tractor_unit">ראש גורר</option><option value="semi_trailer">סמי־טריילר</option><option value="full_trailer">משאית עם גרור</option><option value="articulated_crane">משאית מנוף זרוע מפרקית</option><option value="telescopic_crane">משאית מנוף טלסקופי</option><option value="loader_crane">משאית מנוף העמסה</option><option value="heavy_lift_crane">משאית מנוף כבד</option><option value="mobile_crane">עגורן נייד</option><option value="aerial_platform">משאית סל / במת הרמה</option><option value="recovery_crane">רכב חילוץ עם מנוף</option><option value="concrete_mixer">מערבל בטון</option><option value="concrete_pump">משאבת בטון</option><option value="tipper">משאית רכינה</option><option value="tanker">מכלית</option><option value="refrigerated">משאית קירור</option><option value="car_carrier">מובילית</option><option value="low_loader">מוביל חריג / low-loader</option><option value="other_special">רכב כבד מיוחד – אחר</option></select></label>
+  <label>יצרן / דגם<input value={vehicleMake} onChange={e=>setVehicleMake(e.target.value)} placeholder="לדוגמה: Volvo FH"/></label>
+        <label>נהג משויך<select value={assignedDriverId} onChange={e=>setAssignedDriverId(e.target.value)}><option value="">ללא נהג משויך</option>{drivers.filter(d=>isDriverEligibleForVehicleAssignment(d)).map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select><small>מוצגים רק נהגים פעילים עם תאריך תוקף רישיון תקין שלא פג. יש לוודא בנפרד שדרגת הרישיון מתאימה לרכב.</small></label>
         <div style={{gridColumn:"1 / -1",borderTop:"1px solid #e5eaf1",paddingTop:12,marginTop:4}}>
           <b>נתוני משאית לניווט (אופציונלי)</b>
           <p style={{fontSize:12,color:"#718096",margin:"5px 0 10px"}}>יש להזין לפי רישיון הרכב ומדידה בפועל. נתונים חלקיים לא יישמרו כפרופיל ניתוב.</p>
@@ -611,7 +646,7 @@ export default function Home() {
   <div style={{gridColumn:"1 / -1",fontWeight:700}}>עריכת פרטי רכב · {v.registration_number}</div>
   <label>סוג רכב<select value={vehicleType} onChange={e=>setVehicleType(e.target.value)}><option>משאית</option><option>גורר</option><option>נגרר</option><option>מסחרית</option><option>רכב אחר</option></select></label>
   <label>יצרן / דגם<input value={vehicleMake} onChange={e=>setVehicleMake(e.target.value)} placeholder="לדוגמה: Volvo FH"/></label>
-  <label>נהג משויך<select value={assignedDriverId} onChange={e=>setAssignedDriverId(e.target.value)}><option value="">ללא נהג משויך</option>{drivers.filter(d=>d.status==="active").map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label>
+  <label>נהג משויך<select value={assignedDriverId} onChange={e=>setAssignedDriverId(e.target.value)}><option value="">ללא נהג משויך</option>{drivers.filter(d=>isDriverEligibleForVehicleAssignment(d)).map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select><small>מוצגים רק נהגים פעילים עם תאריך תוקף רישיון תקין שלא פג. יש לוודא בנפרד שדרגת הרישיון מתאימה לרכב.</small></label>
   <div style={{gridColumn:"1 / -1",borderTop:"1px solid #e5eaf1",paddingTop:12,marginTop:4}}>
     <b>נתוני משאית לניווט</b>
     <p style={{fontSize:12,color:"#718096",margin:"5px 0 10px"}}>יש להזין רק נתונים שמופיעים ברישיון או שנמדדו בפועל. שינוי נתוני ניתוב יחייב בדיקה מחדש של הרישיון.</p>

@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TruckSafe restriction source human review event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "candidate_schema_version",
+    "source_id",
+    "publisher",
+    "dataset_name",
+    "dataset_version",
+    "licence_reference",
+    "retrieved_at",
+    "candidate_payload_sha256",
+    "assessment_report_sha256",
+    "reviewer",
+    "reviewed_at",
+    "decision",
+    "notes",
+    "evidence_refs",
+    "event_sha256"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "candidate_schema_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "publisher": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "dataset_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "dataset_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "licence_reference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "retrieved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "candidate_payload_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "assessment_report_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "reviewer": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "decision": {
+      "enum": [
+        "accepted_for_pilot",
+        "rejected",
+        "needs_more_evidence"
+      ]
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 4000
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1000
+      }
+    },
+    "event_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  }
+}

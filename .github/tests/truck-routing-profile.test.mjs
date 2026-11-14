@@ -53,23 +53,25 @@ test("rejects missing or out-of-range dimensions, weights, and vehicle configura
     { axle_count: 1 },
     { trailer_count: 4 },
     { routing_vehicle_type: "Car" },
-    { weight_per_axle_kg: 30001 }
+    { weight_per_axle_kg: 30001 },
+    { weight_per_axle_kg: 26001 }
   ]) {
     assert.equal(getSavedTruckRoutingProfile({ ...validVehicle, ...change }), null);
   }
 });
 
-test("requires an axle-load value and defaults a missing trailer count to zero", () => {
+test("keeps registered axle limits separate from trip-specific measured axle load", () => {
   const profile = getSavedTruckRoutingProfile({
     ...validVehicle,
     trailer_count: null,
     weight_per_axle_kg: 9000
   });
   assert.equal(profile.trailerCount, 0);
-  assert.equal(profile.weightPerAxleKg, 9000);
-  assert.equal(getSavedTruckRoutingProfile({ ...validVehicle, weight_per_axle_kg: null }), null);
+  assert.equal(profile.registeredMaxWeightPerAxleKg, 9000);
+  assert.equal(getSavedTruckRoutingProfile({ ...validVehicle, weight_per_axle_kg: null }).registeredMaxWeightPerAxleKg, null);
 });
 
 test("never allows demo vehicles to be used for truck routing", () => {
   assert.equal(getSavedTruckRoutingProfile({ ...validVehicle, is_demo: true }), null);
 });
+

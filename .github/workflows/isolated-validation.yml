@@ -1,0 +1,173 @@
+name: Isolated TruckSafe validation
+
+on:
+  push:
+    branches:
+      - test/isolated-e2e-ci
+  pull_request:
+    branches:
+      - main
+      - feat/ptv-safe-integration-v1
+  workflow_dispatch:
+    inputs:
+      confirm_test_auth:
+        description: "Run live Auth integration against the dedicated Test project only"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: isolated-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Generate lockfile without running install scripts
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - name: Run application, safety and workflow tests
+        run: npm run test:ci
+      - name: Build Next.js application
+        run: npx next build
+      - name: Run isolated concurrent application smoke tests
+        run: npm run test:smoke
+
+  database-integration:
+    concurrency:
+      group: isolated-db-${{ github.event.pull_request.head.ref || github.ref_name }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      SUPABASE_TEST_DB_URL: ${{ secrets.SUPABASE_TEST_DB_URL }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Check for isolated test database secret
+        id: test-db
+        shell: bash
+        run: |
+          if [ -z "$SUPABASE_TEST_DB_URL" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Database integration tests skipped because SUPABASE_TEST_DB_URL is not configured."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Validate that the connection targets only the isolated test project
+        if: steps.test-db.outputs.available == 'true'
+        shell: bash
+        run: |
+          set +x
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlsplit, unquote
+          raw = os.environ["SUPABASE_TEST_DB_URL"].strip()
+          if raw.startswith("psql "):
+              raw = raw[5:].strip()
+          raw = raw.strip("'").strip('"')
+          parsed = urlsplit(raw)
+          if parsed.scheme not in ("postgres", "postgresql"):
+              raise SystemExit("Expected a PostgreSQL URI.")
+          identity = (parsed.hostname or "") + " " + unquote(parsed.username or "")
+          if "yxxrgblpqzhnnyojbwcr" not in identity:
+              raise SystemExit("Refusing to run: database URI does not identify the dedicated TruckSafe Fleet Test project.")
+          if "jqebxlhhffwiebijiug" in identity:
+              raise SystemExit("Refusing to run: production project detected.")
+          PY
+      - name: Set up Node.js for database test runner
+        if: steps.test-db.outputs.available == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Install PostgreSQL driver
+        if: steps.test-db.outputs.available == 'true'
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund pg
+      - name: Run rollback-only database integration tests
+        if: steps.test-db.outputs.available == 'true'
+        shell: bash
+        run: |
+          set +x
+          node .github/tests/run-sql-tests.mjs
+
+
+  auth-integration:
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/test/isolated-e2e-ci') ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/test/isolated-e2e-ci' &&
+       inputs.confirm_test_auth == true)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      SUPABASE_TEST_URL: ${{ secrets.SUPABASE_TEST_URL }}
+      SUPABASE_TEST_ANON_KEY: ${{ secrets.SUPABASE_TEST_ANON_KEY }}
+      SUPABASE_TEST_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Check for dedicated Test Auth secrets
+        id: auth-secrets
+        shell: bash
+        run: |
+          set +x
+          if [ -z "$SUPABASE_TEST_URL" ] || [ -z "$SUPABASE_TEST_ANON_KEY" ] || [ -z "$SUPABASE_TEST_SERVICE_ROLE_KEY" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Live Auth integration skipped; dedicated Test Auth secrets are not all configured."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Set up Node.js
+        id: setup-node
+        if: steps.auth-secrets.outputs.available == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Generate lockfile without running install scripts
+        if: steps.auth-secrets.outputs.available == 'true'
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Install locked dependencies
+        id: install
+        if: steps.auth-secrets.outputs.available == 'true'
+        run: npm ci --no-audit --no-fund
+      - name: Build production app for isolated local HTTP integration
+        if: steps.auth-secrets.outputs.available == 'true'
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_TEST_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_TEST_ANON_KEY }}
+          SUPABASE_TEST_SERVICE_ROLE_KEY: ""
+          HERE_API_KEY: ""
+          PTV_API_KEY: ""
+          TRUCK_ROUTING_PROVIDER: disabled
+          TRUCK_RESTRICTION_COVERAGE_APPROVED: "false"
+        run: npm run build
+      - name: Verify signed Auth session and fail-closed membership over actual local HTTP server
+        if: steps.auth-secrets.outputs.available == 'true'
+        shell: bash
+        run: |
+          set +x
+          node .github/tests/live-supabase-auth.integration.mjs
+      - name: Sweep disposable Auth fixtures after test (also runs on failure)
+        if: always() && steps.auth-secrets.outputs.available == 'true' && steps.install.outcome == 'success'
+        shell: bash
+        run: |
+          set +x
+          node .github/tests/live-supabase-auth.integration.mjs --cleanup-only

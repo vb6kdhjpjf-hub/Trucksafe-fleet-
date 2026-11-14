@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trucksafe.invalid/schemas/bridge-clearance-measurement.schema.json",
+  "title": "TruckSafe per-lane bridge clearance measurement evidence",
+  "description": "A per-lane physical survey evidence record. A valid record is not by itself a legal restriction or permission to travel, and never grants routing approval.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_id",
+    "structure_id",
+    "road_segment_id",
+    "country_code",
+    "direction",
+    "lane_id",
+    "passage_length_m",
+    "measured_clearance_m",
+    "posted_clearance_status",
+    "posted_clearance_m",
+    "measurement_date",
+    "measurement_accuracy_cm",
+    "measurement_method",
+    "surveyor",
+    "measurement_reference",
+    "measurement_coverage",
+    "authority_name",
+    "authority_reference",
+    "evidence_status",
+    "approved_for_routing"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "record_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "structure_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "road_segment_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "country_code": {
+      "const": "IL"
+    },
+    "direction": {
+      "enum": [
+        "forward",
+        "backward"
+      ],
+      "description": "Direction is recorded separately; create a separate record for the opposite direction when surveyed."
+    },
+    "lane_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "passage_length_m": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1000
+    },
+    "measured_clearance_m": {
+      "type": "number",
+      "minimum": 0.5,
+      "maximum": 20,
+      "description": "The lowest valid physical clearance measured for this exact lane and direction."
+    },
+    "posted_clearance_status": {
+      "enum": [
+        "posted",
+        "not_posted",
+        "unknown"
+      ]
+    },
+    "posted_clearance_m": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0.5,
+      "maximum": 20,
+      "description": "Road-sign value only; never substitute this for measured_clearance_m."
+    },
+    "measurement_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "measurement_accuracy_cm": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1
+    },
+    "measurement_method": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 200
+    },
+    "surveyor": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 200
+    },
+    "measurement_reference": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "measurement_coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "both_sides_measured",
+        "lane_center_measured",
+        "left_edge_measured",
+        "right_edge_measured",
+        "hanging_installations_checked",
+        "passage_center_measured"
+      ],
+      "properties": {
+        "both_sides_measured": {
+          "const": true
+        },
+        "lane_center_measured": {
+          "const": true
+        },
+        "left_edge_measured": {
+          "const": true
+        },
+        "right_edge_measured": {
+          "const": true
+        },
+        "hanging_installations_checked": {
+          "const": true
+        },
+        "passage_center_measured": {
+          "type": "boolean"
+        }
+      }
+    },
+    "authority_name": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 200
+    },
+    "authority_reference": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "evidence_status": {
+      "enum": [
+        "unreviewed",
+        "needs_clarification",
+        "independently_verified",
+        "rejected"
+      ]
+    },
+    "approved_for_routing": {
+      "const": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "posted_clearance_status": {
+            "const": "posted"
+          }
+        },
+        "required": [
+          "posted_clearance_status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "posted_clearance_m": {
+            "type": "number",
+            "minimum": 0.5
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "posted_clearance_status": {
+            "enum": [
+              "not_posted",
+              "unknown"
+            ]
+          }
+        },
+        "required": [
+          "posted_clearance_status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "posted_clearance_m": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "passage_length_m": {
+            "exclusiveMinimum": 20
+          }
+        },
+        "required": [
+          "passage_length_m"
+        ]
+      },
+      "then": {
+        "properties": {
+          "measurement_coverage": {
+            "properties": {
+              "passage_center_measured": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

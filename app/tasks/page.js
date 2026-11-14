@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 import { buildPreTripChecklist } from "../../lib/pre-trip-checklist.mjs";
 import { Truck, ArrowRight, Plus, ClipboardList, MapPin, CalendarClock, Play, CheckCircle2, LogOut } from "lucide-react";
 
@@ -50,12 +51,14 @@ export default function TasksPage() {
   }, [router]);
 
   async function loadWorkspace(user) {
-    const { data: membership, error } = await supabase.from("fleet_members").select("fleet_id,role").eq("user_id", user.id).limit(1).maybeSingle();
-    if (error) { setMessage("לא הצלחנו לטעון את פרטי הצי: " + error.message); return; }
-    if (!membership) { router.replace("/"); return; }
-    const { data: current, error: fleetError } = await supabase.from("fleets").select("id,name").eq("id", membership.fleet_id).single();
-    if (fleetError) { setMessage("שגיאה בטעינת הצי: " + fleetError.message); return; }
-    setFleet({ ...current, role: membership.role });
+    const { data, error } = await resolveFleetWorkspace(supabase, user.id);
+    if (error) {
+      if (error.code === "AUTH_REQUIRED" || error.code === "NO_FLEET") router.replace("/");
+      else setMessage("לא הצלחנו לאמת את הצי: " + error.message);
+      return;
+    }
+    const current = data.fleet;
+    setFleet(current);
     const [t, d, v, tr] = await Promise.all([
       supabase.from("tasks").select("id,reference_code,title,description,pickup_address,delivery_address,scheduled_at,assigned_driver_id,assigned_vehicle_id,status,created_at").eq("fleet_id", current.id).order("created_at", { ascending: false }),
       supabase.from("drivers").select("id,full_name,status").eq("fleet_id", current.id).order("created_at", { ascending: false }),
@@ -98,6 +101,21 @@ export default function TasksPage() {
   async function updateStatus(task, status) {
     if (!fleet || !canManageTasks) { setMessage("אין לך הרשאה לעדכון סטטוס משימה."); return; }
     if (!["pending", "assigned", "cancelled"].includes(status)) { setMessage("סטטוס זה אינו ניתן לעדכון ידני."); return; }
+    if (status === "cancelled") {
+      setBusy(true); setMessage("");
+      const { data: activeTrip, error: activeTripError } = await supabase
+        .from("trips").select("id").eq("task_id", task.id).eq("status", "active").limit(1).maybeSingle();
+      if (activeTripError) {
+        setMessage("לא ניתן לאמת אם קיימת נסיעה פעילה. נסה שוב לפני ביטול המשימה.");
+        setBusy(false);
+        return;
+      }
+      if (activeTrip) {
+        setMessage("לא ניתן לבטל משימה בזמן שהנסיעה שלה פעילה. יש לסיים את הנסיעה תחילה.");
+        setBusy(false);
+        return;
+      }
+    }
     setBusy(true); setMessage("");
     const { error } = await supabase.from("tasks").update({ status }).eq("id", task.id).eq("fleet_id", fleet.id);
     if (error) setMessage("לא הצלחנו לעדכן סטטוס: " + error.message);
