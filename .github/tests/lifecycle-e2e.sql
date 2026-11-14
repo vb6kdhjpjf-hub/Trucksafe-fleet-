@@ -55,20 +55,20 @@ begin
     ('serialized driver and vehicle state guards', 'PASS',
      'Both state checks lock their parent row and private trigger functions are not client-executable');
 
-  if position('from public.drivers d' in lower(pg_get_functiondef(
+  if position('from public.drivers' in lower(pg_get_functiondef(
        'public.finish_trip(uuid,uuid)'::regprocedure
      ))) = 0
      or position('from public.vehicles' in lower(pg_get_functiondef(
        'public.finish_trip(uuid,uuid)'::regprocedure
      ))) = 0
-     or position('from public.drivers d' in lower(pg_get_functiondef(
+     or position('from public.drivers' in lower(pg_get_functiondef(
        'public.finish_trip(uuid,uuid)'::regprocedure
      ))) > position('from public.vehicles' in lower(pg_get_functiondef(
        'public.finish_trip(uuid,uuid)'::regprocedure
      )))
      or position('for update' in substring(
        lower(pg_get_functiondef('public.finish_trip(uuid,uuid)'::regprocedure))
-       from position('from public.drivers d' in lower(pg_get_functiondef('public.finish_trip(uuid,uuid)'::regprocedure)))
+       from position('from public.drivers' in lower(pg_get_functiondef('public.finish_trip(uuid,uuid)'::regprocedure)))
      )) = 0 then
     raise exception 'finish_trip must lock the driver before locking the vehicle';
   end if;
