@@ -6,7 +6,6 @@ begin;
 \ir ../../supabase/migrations/20261114130000_enforce_single_active_trip_assignments.sql
 \ir ../../supabase/migrations/20261114141000_prevent_driver_deactivation_during_active_trip.sql
 \ir ../../supabase/migrations/20261114143000_enforce_vehicle_active_trip_status.sql
-\ir ../../supabase/migrations/20261114145000_lock_driver_before_vehicle_on_trip_completion.sql
 \ir ../../supabase/migrations/20261114145000_lock_driver_before_trip_completion.sql
 
 create temporary table trucksafe_e2e_results (
