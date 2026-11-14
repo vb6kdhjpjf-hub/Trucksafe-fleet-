@@ -12,6 +12,27 @@ create temporary table trucksafe_e2e_results (
   detail text
 ) on commit drop;
 
+do $guard_test$
+begin
+  if position('for update' in lower(pg_get_functiondef(
+    'private.assert_vehicle_trip_status(uuid,uuid)'::regprocedure
+  ))) = 0 then
+    raise exception 'Vehicle trip-state assertion must lock the vehicle row to serialize concurrent writes';
+  end if;
+
+  if has_function_privilege('anon', 'private.assert_vehicle_trip_status(uuid,uuid)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'private.assert_vehicle_trip_status(uuid,uuid)', 'EXECUTE')
+     or has_function_privilege('anon', 'private.prevent_driver_deactivation_during_active_trip()', 'EXECUTE')
+     or has_function_privilege('authenticated', 'private.prevent_driver_deactivation_during_active_trip()', 'EXECUTE') then
+    raise exception 'Private trigger functions must not be executable through client roles';
+  end if;
+
+  insert into pg_temp.trucksafe_e2e_results values
+    ('serialized vehicle state guard and private function grants', 'PASS',
+     'Vehicle row is locked and private trigger functions are not client-executable');
+end
+$guard_test$;
+
 do $test$
 declare
   -- Successful lifecycle fixture
