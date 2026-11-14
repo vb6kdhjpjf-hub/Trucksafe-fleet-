@@ -2,7 +2,8 @@
 -- Every fixture is synthetic and the transaction is always rolled back.
 begin;
 
--- Apply the actual candidate migration transactionally for this rollback-only test.
+-- Apply candidate migrations transactionally for this rollback-only test.
+\ir ../../supabase/migrations/20261114130000_enforce_single_active_trip_assignments.sql
 \ir ../../supabase/migrations/20261114141000_prevent_driver_deactivation_during_active_trip.sql
 \ir ../../supabase/migrations/20261114143000_enforce_vehicle_active_trip_status.sql
 
@@ -19,17 +20,26 @@ begin
   ))) = 0 then
     raise exception 'Vehicle trip-state assertion must lock the vehicle row to serialize concurrent writes';
   end if;
+  if position('for update' in lower(pg_get_functiondef(
+    'private.assert_driver_trip_status(uuid,uuid)'::regprocedure
+  ))) = 0 then
+    raise exception 'Driver trip-state assertion must lock the driver row to serialize concurrent writes';
+  end if;
 
   if has_function_privilege('anon', 'private.assert_vehicle_trip_status(uuid,uuid)', 'EXECUTE')
      or has_function_privilege('authenticated', 'private.assert_vehicle_trip_status(uuid,uuid)', 'EXECUTE')
-     or has_function_privilege('anon', 'private.prevent_driver_deactivation_during_active_trip()', 'EXECUTE')
-     or has_function_privilege('authenticated', 'private.prevent_driver_deactivation_during_active_trip()', 'EXECUTE') then
+     or has_function_privilege('anon', 'private.assert_driver_trip_status(uuid,uuid)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'private.assert_driver_trip_status(uuid,uuid)', 'EXECUTE')
+     or has_function_privilege('anon', 'private.check_driver_state_after_driver_change()', 'EXECUTE')
+     or has_function_privilege('authenticated', 'private.check_driver_state_after_driver_change()', 'EXECUTE')
+     or has_function_privilege('anon', 'private.check_driver_state_after_trip_change()', 'EXECUTE')
+     or has_function_privilege('authenticated', 'private.check_driver_state_after_trip_change()', 'EXECUTE') then
     raise exception 'Private trigger functions must not be executable through client roles';
   end if;
 
   insert into pg_temp.trucksafe_e2e_results values
-    ('serialized vehicle state guard and private function grants', 'PASS',
-     'Vehicle row is locked and private trigger functions are not client-executable');
+    ('serialized driver and vehicle state guards', 'PASS',
+     'Both state checks lock their parent row and private trigger functions are not client-executable');
 end
 $guard_test$;
 
@@ -119,11 +129,13 @@ begin
   execute 'set local role authenticated';
   begin
     update public.drivers set status = 'off_duty' where id = d1 and fleet_id = f1;
+    set constraints all immediate;
     raise exception 'Active-trip driver deactivation unexpectedly succeeded';
   exception when check_violation then
     driver_deactivation_blocked := true;
   end;
   execute 'reset role';
+  execute 'set constraints all deferred';
   if not driver_deactivation_blocked then
     raise exception 'Database trigger did not reject driver deactivation during an active trip';
   end if;
