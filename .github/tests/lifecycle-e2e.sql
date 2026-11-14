@@ -14,7 +14,9 @@ declare
   u1 uuid := 'f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf11';
   f1 uuid := 'b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d33';
   d1 uuid := 'd1d0f66b-52e6-4e7e-a641-5c0f2f8eaf11';
+  d1b uuid := 'd1d0f66b-52e6-4e7e-a641-5c0f2f8eaf15';
   v1 uuid := 'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf11';
+  v1b uuid := 'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf15';
   t1 uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf11';
   v_trip_id uuid;
 
@@ -67,8 +69,13 @@ begin
     values (d1, f1, 'CI Test Driver', current_date + 365, 'active');
   insert into public.vehicles (id, fleet_id, registration_number, make, model, vehicle_type, status,
     test_due_at, insurance_due_at, registration_due_at, is_demo)
-    values (v1, f1, 'CI-TEST-001', 'Test', 'Truck', 'truck', 'available',
-      current_date + 365, current_date + 365, current_date + 365, false);
+    values
+      (v1, f1, 'CI-TEST-001', 'Test', 'Truck', 'truck', 'available',
+        current_date + 365, current_date + 365, current_date + 365, false),
+      (v1b, f1, 'CI-TEST-002', 'Test', 'Truck', 'truck', 'available',
+        current_date + 365, current_date + 365, current_date + 365, false);
+  insert into public.drivers (id, fleet_id, full_name, license_expires_at, status)
+    values (d1b, f1, 'CI Second Driver', current_date + 365, 'active');
   insert into public.tasks (id, fleet_id, title, pickup_address, delivery_address,
     assigned_driver_id, assigned_vehicle_id, status, created_by)
     values (t1, f1, 'CI end-to-end test task', 'Test origin', 'Test destination',
@@ -78,6 +85,35 @@ begin
     f1, t1, d1, v1, 'Test origin', 'Test destination', good_checklist
   );
   if v_trip_id is null then raise exception 'Lifecycle test: trip was not created'; end if;
+
+  -- Each partial unique index must independently reject a second active assignment.
+  begin
+    insert into public.trips (fleet_id, driver_id, vehicle_id, status)
+    values (f1, d1, v1b, 'active');
+    raise exception 'Active-driver uniqueness test unexpectedly accepted a duplicate';
+  exception when unique_violation then
+    insert into pg_temp.trucksafe_e2e_results values
+      ('one active trip per driver', 'PASS', 'Second active trip for the same driver was rejected');
+  end;
+
+  begin
+    insert into public.trips (fleet_id, driver_id, vehicle_id, status)
+    values (f1, d1b, v1, 'active');
+    raise exception 'Active-vehicle uniqueness test unexpectedly accepted a duplicate';
+  exception when unique_violation then
+    insert into pg_temp.trucksafe_e2e_results values
+      ('one active trip per vehicle', 'PASS', 'Second active trip for the same vehicle was rejected');
+  end;
+
+  begin
+    insert into public.trips (fleet_id, task_id, driver_id, vehicle_id, status)
+    values (f1, t1, d1b, v1b, 'active');
+    raise exception 'Active-task uniqueness test unexpectedly accepted a duplicate';
+  exception when unique_violation then
+    insert into pg_temp.trucksafe_e2e_results values
+      ('one active trip per task', 'PASS', 'Second active trip for the same task was rejected');
+  end;
+
   perform public.finish_trip(f1, v_trip_id);
 
   if (select status from public.trips where id = v_trip_id) <> 'completed'
