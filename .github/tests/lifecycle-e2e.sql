@@ -8,7 +8,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $guard$
 begin
   if new.status is distinct from old.status
      and new.status <> 'active'
@@ -23,7 +23,7 @@ begin
   end if;
   return new;
 end;
-$;
+$guard$;
 revoke all on function private.prevent_driver_deactivation_during_active_trip()
   from public, anon, authenticated;
 drop trigger if exists prevent_driver_deactivation_during_active_trip on public.drivers;
