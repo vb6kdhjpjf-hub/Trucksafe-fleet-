@@ -49,6 +49,7 @@ declare
   t1 uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf11';
   v_trip_id uuid;
   affected_rows integer;
+  driver_deactivation_blocked boolean := false;
 
   -- Safety-block fixtures
   u2 uuid := 'f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf12';
@@ -122,11 +123,15 @@ begin
     update public.drivers set status = 'off_duty' where id = d1 and fleet_id = f1;
     raise exception 'Active-trip driver deactivation unexpectedly succeeded';
   exception when check_violation then
-    insert into pg_temp.trucksafe_e2e_results values
-      ('driver cannot go off duty during active trip', 'PASS',
-       'Database trigger rejected the direct status update');
+    driver_deactivation_blocked := true;
   end;
   execute 'reset role';
+  if not driver_deactivation_blocked then
+    raise exception 'Database trigger did not reject driver deactivation during an active trip';
+  end if;
+  insert into pg_temp.trucksafe_e2e_results values
+    ('driver cannot go off duty during active trip', 'PASS',
+     'Database trigger rejected the direct status update');
   if (select status from public.drivers where id = d1) <> 'active' then
     raise exception 'Driver status changed while a trip was active';
   end if;
