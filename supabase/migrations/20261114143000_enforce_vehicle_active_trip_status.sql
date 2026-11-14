@@ -14,7 +14,8 @@ declare
 begin
   select v.status into v_status
   from public.vehicles v
-  where v.fleet_id = p_fleet_id and v.id = p_vehicle_id;
+  where v.fleet_id = p_fleet_id and v.id = p_vehicle_id
+  for update;
 
   if not found then
     return;
