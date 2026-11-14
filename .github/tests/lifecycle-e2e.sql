@@ -2,6 +2,35 @@
 -- Every fixture is synthetic and the transaction is always rolled back.
 begin;
 
+-- Apply the candidate driver-state guard transactionally for this rollback-only test.
+create or replace function private.prevent_driver_deactivation_during_active_trip()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $
+begin
+  if new.status is distinct from old.status
+     and new.status <> 'active'
+     and exists (
+       select 1 from public.trips t
+       where t.fleet_id = old.fleet_id
+         and t.driver_id = old.id
+         and t.status = 'active'
+     ) then
+    raise exception 'Cannot change driver status while an active trip is in progress'
+      using errcode = '23514';
+  end if;
+  return new;
+end;
+$;
+revoke all on function private.prevent_driver_deactivation_during_active_trip()
+  from public, anon, authenticated;
+drop trigger if exists prevent_driver_deactivation_during_active_trip on public.drivers;
+create trigger prevent_driver_deactivation_during_active_trip
+before update of status on public.drivers
+for each row execute function private.prevent_driver_deactivation_during_active_trip();
+
 create temporary table trucksafe_e2e_results (
   scenario text not null,
   outcome text not null,
@@ -86,6 +115,21 @@ begin
     f1, t1, d1, v1, 'Test origin', 'Test destination', good_checklist
   );
   if v_trip_id is null then raise exception 'Lifecycle test: trip was not created'; end if;
+
+  -- A manager's direct table update must not deactivate a driver during an active trip.
+  execute 'set local role authenticated';
+  begin
+    update public.drivers set status = 'off_duty' where id = d1 and fleet_id = f1;
+    raise exception 'Active-trip driver deactivation unexpectedly succeeded';
+  exception when check_violation then
+    insert into pg_temp.trucksafe_e2e_results values
+      ('driver cannot go off duty during active trip', 'PASS',
+       'Database trigger rejected the direct status update');
+  end;
+  execute 'reset role';
+  if (select status from public.drivers where id = d1) <> 'active' then
+    raise exception 'Driver status changed while a trip was active';
+  end if;
 
   -- Each partial unique index must independently reject a second active assignment.
   begin
