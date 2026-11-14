@@ -6,6 +6,7 @@ begin;
 \ir ../../supabase/migrations/20261114130000_enforce_single_active_trip_assignments.sql
 \ir ../../supabase/migrations/20261114141000_prevent_driver_deactivation_during_active_trip.sql
 \ir ../../supabase/migrations/20261114143000_enforce_vehicle_active_trip_status.sql
+\ir ../../supabase/migrations/20261114145000_lock_driver_before_vehicle_on_trip_completion.sql
 \ir ../../supabase/migrations/20261114145000_lock_driver_before_trip_completion.sql
 
 create temporary table trucksafe_e2e_results (
@@ -54,6 +55,28 @@ begin
   insert into pg_temp.trucksafe_e2e_results values
     ('serialized driver and vehicle state guards', 'PASS',
      'Both state checks lock their parent row and private trigger functions are not client-executable');
+
+  if position('from public.drivers d' in lower(pg_get_functiondef(
+       'public.finish_trip(uuid,uuid)'::regprocedure
+     ))) = 0
+     or position('from public.vehicles' in lower(pg_get_functiondef(
+       'public.finish_trip(uuid,uuid)'::regprocedure
+     ))) = 0
+     or position('from public.drivers d' in lower(pg_get_functiondef(
+       'public.finish_trip(uuid,uuid)'::regprocedure
+     ))) > position('from public.vehicles' in lower(pg_get_functiondef(
+       'public.finish_trip(uuid,uuid)'::regprocedure
+     )))
+     or position('for update' in substring(
+       lower(pg_get_functiondef('public.finish_trip(uuid,uuid)'::regprocedure))
+       from position('from public.drivers d' in lower(pg_get_functiondef('public.finish_trip(uuid,uuid)'::regprocedure)))
+     )) = 0 then
+    raise exception 'finish_trip must lock the driver before locking the vehicle';
+  end if;
+
+  insert into pg_temp.trucksafe_e2e_results values
+    ('finish-trip driver-before-vehicle lock order', 'PASS',
+     'Trip completion uses the same driver-then-vehicle lock order as trip start');
 end
 $guard_test$;
 
