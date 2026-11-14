@@ -2,7 +2,7 @@
 -- The migration is expanded by run-sql-tests.mjs and rolled back with this transaction.
 begin;
 
-\\ir ../../supabase/migrations/20261114130000_enforce_single_active_trip_assignments.sql
+\ir ../../supabase/migrations/20261114130000_enforce_single_active_trip_assignments.sql
 
 do $$
 declare
