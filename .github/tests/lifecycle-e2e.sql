@@ -4,6 +4,7 @@ begin;
 
 -- Apply the actual candidate migration transactionally for this rollback-only test.
 \ir ../../supabase/migrations/20261114141000_prevent_driver_deactivation_during_active_trip.sql
+\ir ../../supabase/migrations/20261114143000_enforce_vehicle_active_trip_status.sql
 
 create temporary table trucksafe_e2e_results (
   scenario text not null,
@@ -24,6 +25,8 @@ declare
   v_trip_id uuid;
   affected_rows integer;
   driver_deactivation_blocked boolean := false;
+  vehicle_available_blocked boolean := false;
+  vehicle_on_trip_without_trip_blocked boolean := false;
 
   -- Safety-block fixtures
   u2 uuid := 'f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf12';
@@ -110,6 +113,24 @@ begin
     raise exception 'Driver status changed while a trip was active';
   end if;
 
+  -- Deferred constraint must reject a manager making an active-trip vehicle available.
+  execute 'set local role authenticated';
+  begin
+    update public.vehicles set status = 'available' where id = v1 and fleet_id = f1;
+    set constraints all immediate;
+    raise exception 'Active-trip vehicle was incorrectly marked available';
+  exception when check_violation then
+    vehicle_available_blocked := true;
+  end;
+  execute 'reset role';
+  execute 'set constraints all deferred';
+  if not vehicle_available_blocked then
+    raise exception 'Vehicle status guard did not block availability during an active trip';
+  end if;
+  insert into pg_temp.trucksafe_e2e_results values
+    ('active-trip vehicle cannot become available', 'PASS',
+     'Deferred database constraint rejected the inconsistent status');
+
   -- Each partial unique index must independently reject a second active assignment.
   begin
     insert into public.trips (fleet_id, driver_id, vehicle_id, status)
@@ -172,6 +193,24 @@ begin
   insert into pg_temp.trucksafe_e2e_results values
     ('task → assigned driver/vehicle → inspection → trip completion', 'PASS',
      'Trip and task completed; vehicle returned to available; pre-trip inspection passed');
+
+  -- A vehicle cannot be marked on_trip after its last active trip has completed.
+  execute 'set local role authenticated';
+  begin
+    update public.vehicles set status = 'on_trip' where id = v1 and fleet_id = f1;
+    set constraints all immediate;
+    raise exception 'Vehicle was incorrectly marked on_trip without an active trip';
+  exception when check_violation then
+    vehicle_on_trip_without_trip_blocked := true;
+  end;
+  execute 'reset role';
+  execute 'set constraints all deferred';
+  if not vehicle_on_trip_without_trip_blocked then
+    raise exception 'Vehicle status guard allowed on_trip without an active trip';
+  end if;
+  insert into pg_temp.trucksafe_e2e_results values
+    ('vehicle cannot be on_trip without active trip', 'PASS',
+     'Deferred database constraint rejected the inconsistent status');
 
   -- Failed checklist must create an incident and must not open a trip.
   perform set_config('request.jwt.claim.sub', u2::text, true);
