@@ -1,7 +1,9 @@
 -- Enforce fleet-consistent assignments and prevent concurrent active trips.
 -- Applied to the isolated Test project only; Production is intentionally untouched.
 
-begin;
+-- Tasks need a composite candidate key so trips can reference task+fleet safely.
+alter table public.tasks
+  add constraint tasks_fleet_id_id_unique unique (fleet_id, id);
 
 -- Composite references ensure an assigned driver/vehicle belongs to the task's fleet.
 alter table public.tasks
@@ -43,5 +45,3 @@ create unique index trips_one_active_per_vehicle
 create unique index trips_one_active_per_task
   on public.trips (task_id)
   where status = 'active' and task_id is not null;
-
-commit;
