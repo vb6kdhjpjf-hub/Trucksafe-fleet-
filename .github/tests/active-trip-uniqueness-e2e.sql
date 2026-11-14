@@ -1,7 +1,7 @@
 -- Rollback-only verification of active-trip uniqueness protections.
 begin;
 
-\\ir ../../supabase/migrations/20261114130000_enforce_single_active_trip_assignments.sql
+\ir ../../supabase/migrations/20261114130000_enforce_single_active_trip_assignments.sql
 
 do $$
 declare
