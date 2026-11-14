@@ -6,6 +6,7 @@ begin;
 \ir ../../supabase/migrations/20261114130000_enforce_single_active_trip_assignments.sql
 \ir ../../supabase/migrations/20261114141000_prevent_driver_deactivation_during_active_trip.sql
 \ir ../../supabase/migrations/20261114143000_enforce_vehicle_active_trip_status.sql
+\ir ../../supabase/migrations/20261114145000_lock_driver_before_trip_completion.sql
 
 create temporary table trucksafe_e2e_results (
   scenario text not null,
@@ -14,7 +15,20 @@ create temporary table trucksafe_e2e_results (
 ) on commit drop;
 
 do $guard_test$
+declare
+  finish_definition text := lower(pg_get_functiondef('public.finish_trip(uuid,uuid)'::regprocedure));
+  driver_query_position integer;
+  vehicle_query_position integer;
 begin
+  driver_query_position := position('from public.drivers' in finish_definition);
+  vehicle_query_position := position('from public.vehicles' in finish_definition);
+  if driver_query_position = 0 or vehicle_query_position = 0
+     or driver_query_position > vehicle_query_position
+     or position('for update' in substring(finish_definition from driver_query_position)) = 0
+     or position('for update' in substring(finish_definition from vehicle_query_position)) = 0 then
+    raise exception 'finish_trip must lock the driver before the vehicle to match trip start lock order';
+  end if;
+
   if position('for update' in lower(pg_get_functiondef(
     'private.assert_vehicle_trip_status(uuid,uuid)'::regprocedure
   ))) = 0 then
