@@ -5,3 +5,6 @@ CREATE INDEX IF NOT EXISTS idx_road_restrictions_verified_by
 
 CREATE INDEX IF NOT EXISTS idx_vehicles_registration_verified_by
   ON public.vehicles (registration_verified_by);
+
+CREATE INDEX IF NOT EXISTS idx_vehicle_special_equipment_evidence_verified_by
+  ON public.vehicle_special_equipment (evidence_verified_by);
