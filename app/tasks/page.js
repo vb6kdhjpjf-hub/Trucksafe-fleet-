@@ -101,6 +101,10 @@ export default function TasksPage() {
   async function updateStatus(task, status) {
     if (!fleet || !canManageTasks) { setMessage("אין לך הרשאה לעדכון סטטוס משימה."); return; }
     if (!["pending", "assigned", "cancelled"].includes(status)) { setMessage("סטטוס זה אינו ניתן לעדכון ידני."); return; }
+    if (status === "cancelled" && trips.some(trip => trip.task_id === task.id && trip.status === "active")) {
+      setMessage("לא ניתן לבטל משימה בזמן שהנסיעה שלה פעילה. יש לסיים את הנסיעה תחילה.");
+      return;
+    }
     setBusy(true); setMessage("");
     const { error } = await supabase.from("tasks").update({ status }).eq("id", task.id).eq("fleet_id", fleet.id);
     if (error) setMessage("לא הצלחנו לעדכן סטטוס: " + error.message);
