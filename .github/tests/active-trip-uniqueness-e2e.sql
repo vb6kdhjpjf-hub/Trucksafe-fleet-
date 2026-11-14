@@ -1,7 +1,7 @@
 -- Rollback-only verification of active-trip uniqueness protections.
 begin;
 
-\ir ../../supabase/migrations/20261114130000_enforce_single_active_trip_assignments.sql
+\\ir ../../supabase/migrations/20261114130000_enforce_single_active_trip_assignments.sql
 
 do $$
 declare
@@ -14,14 +14,16 @@ declare
   duplicate_count integer;
 begin
   select count(*) into actual_count
-  from pg_indexes
-  where schemaname = 'public'
-    and indexname = any(expected)
-    and indexdef ilike 'CREATE UNIQUE INDEX%'
-    and indexdef ilike '%status = ''active''::text%';
+  from pg_index i
+  join pg_class idx on idx.oid = i.indexrelid
+  join pg_namespace ns on ns.oid = idx.relnamespace
+  where ns.nspname = 'public'
+    and idx.relname = any(expected)
+    and i.indisunique
+    and pg_get_expr(i.indpred, i.indrelid) like '%status = ''active''%';
 
   if actual_count <> 3 then
-    raise exception 'Expected all three active-trip unique indexes with active predicate; found %', actual_count;
+    raise exception 'Expected all three unique partial indexes with active predicate; found %', actual_count;
   end if;
 
   select count(*) into duplicate_count
