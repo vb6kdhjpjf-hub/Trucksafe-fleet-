@@ -17,7 +17,8 @@ begin
   from pg_indexes
   where schemaname = 'public'
     and indexname = any(expected)
-    and indexdef ilike '%WHERE (status = ''active''::text)%';
+    and indexdef ilike 'CREATE UNIQUE INDEX%'
+    and indexdef ilike '%status = ''active''::text%';
 
   if actual_count <> 3 then
     raise exception 'Expected all three active-trip unique indexes with active predicate; found %', actual_count;
