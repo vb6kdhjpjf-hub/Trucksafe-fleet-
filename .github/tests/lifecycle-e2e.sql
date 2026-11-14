@@ -90,6 +90,7 @@ declare
   v1b uuid := 'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf15';
   t1 uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf11';
   t1b uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf16';
+  t1c uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf17';
   v_trip_id uuid;
   affected_rows integer;
   driver_deactivation_blocked boolean := false;
@@ -265,16 +266,36 @@ begin
     ('task → assigned driver/vehicle → inspection → trip completion', 'PASS',
      'Trip and task completed; vehicle returned to available; pre-trip inspection passed');
 
-  -- Once the trip is complete, the driver may go off duty; that driver must
-  -- then be rejected by the start-trip RPC even if a new task is assigned.
+  -- A driver may start another trip after the previous trip has completed.
   insert into public.tasks (id, fleet_id, title, pickup_address, delivery_address,
     assigned_driver_id, assigned_vehicle_id, status, created_by)
-    values (t1b, f1, 'CI off-duty driver rejection task', 'Test origin', 'Test destination',
+    values (t1b, f1, 'CI second trip after completion', 'Test origin', 'Test destination',
+      d1, v1, 'assigned', u1);
+  v_trip_id := public.start_trip_with_inspection(
+    f1, t1b, d1, v1, 'Test origin', 'Test destination', good_checklist
+  );
+  if v_trip_id is null
+     or (select status from public.vehicles where id = v1) <> 'on_trip' then
+    raise exception 'Driver could not start a new trip after the previous trip completed';
+  end if;
+  perform public.finish_trip(f1, v_trip_id);
+  if (select status from public.trips where id = v_trip_id) <> 'completed'
+     or (select status from public.vehicles where id = v1) <> 'available' then
+    raise exception 'Second trip did not complete cleanly';
+  end if;
+  insert into pg_temp.trucksafe_e2e_results values
+    ('driver may start a new trip after completion', 'PASS',
+     'Completed trip released the driver and vehicle for a subsequent trip');
+
+  -- Once the trip is complete, an off-duty driver must be rejected by the RPC.
+  insert into public.tasks (id, fleet_id, title, pickup_address, delivery_address,
+    assigned_driver_id, assigned_vehicle_id, status, created_by)
+    values (t1c, f1, 'CI off-duty driver rejection task', 'Test origin', 'Test destination',
       d1, v1, 'assigned', u1);
   update public.drivers set status = 'off_duty' where id = d1 and fleet_id = f1;
   begin
     v_trip_id := public.start_trip_with_inspection(
-      f1, t1b, d1, v1, 'Test origin', 'Test destination', good_checklist
+      f1, t1c, d1, v1, 'Test origin', 'Test destination', good_checklist
     );
   exception when others then
     if sqlerrm not like 'הנהג אינו פעיל או שאינו שייך לצי%' then
