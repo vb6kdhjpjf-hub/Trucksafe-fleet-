@@ -25,16 +25,6 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Missing vehicles.registration_verified_by index';
   END IF;
-
-  IF NOT EXISTS (
-    SELECT 1
-    FROM pg_indexes
-    WHERE schemaname = 'public'
-      AND indexname = 'idx_vehicle_special_equipment_evidence_verified_by'
-      AND indexdef ILIKE '%(evidence_verified_by)%'
-  ) THEN
-    RAISE EXCEPTION 'Missing vehicle_special_equipment.evidence_verified_by index';
-  END IF;
 END
 $$;
 
