@@ -18,6 +18,74 @@ create temporary table trucksafe_e2e_results (
 
 ) on commit drop;
 
+do $road_restriction_evidence_schema_test$
+declare
+  required_columns text[] := array[
+    'structure_id', 'road_segment_id', 'lane_id', 'passage_length_m',
+    'posted_clearance_status', 'posted_clearance_m', 'surveyor',
+    'measurement_coverage'
+  ];
+  missing_columns text[];
+  missing_constraints text[];
+begin
+  select array_agg(required.column_name order by required.column_name)
+  into missing_columns
+  from unnest(required_columns) as required(column_name)
+  where not exists (
+    select 1 from information_schema.columns c
+    where c.table_schema = 'public'
+      and c.table_name = 'road_restrictions'
+      and c.column_name = required.column_name
+  );
+
+  if missing_columns is not null then
+    raise exception 'Road restriction evidence schema is missing columns: %', missing_columns;
+  end if;
+
+  select array_agg(required.constraint_name order by required.constraint_name)
+  into missing_constraints
+  from unnest(array[
+    'road_restrictions_passage_length_check',
+    'road_restrictions_posted_clearance_status_check',
+    'road_restrictions_posted_clearance_value_check',
+    'road_restrictions_measurement_coverage_shape_check',
+    'road_restrictions_verified_lane_level_height_evidence_check'
+  ]) as required(constraint_name)
+  where not exists (
+    select 1 from pg_constraint c
+    where c.conrelid = 'public.road_restrictions'::regclass
+      and c.conname = required.constraint_name
+      and c.convalidated
+  );
+
+  if missing_constraints is not null then
+    raise exception 'Road restriction evidence constraints are missing or unvalidated: %', missing_constraints;
+  end if;
+
+  if exists (
+    select 1 from public.road_restrictions
+    where restriction_type = 'height'
+      and verification_status = 'verified'
+      and (
+        nullif(btrim(structure_id), '') is null
+        or nullif(btrim(road_segment_id), '') is null
+        or nullif(btrim(lane_id), '') is null
+        or direction not in ('forward', 'backward')
+        or passage_length_m is null
+        or nullif(btrim(surveyor), '') is null
+        or posted_clearance_status is null
+        or measurement_coverage is null
+      )
+  ) then
+    raise exception 'A verified height restriction lacks lane-level physical evidence';
+  end if;
+
+  insert into pg_temp.trucksafe_e2e_results values
+    ('lane-level bridge clearance evidence schema', 'PASS',
+     'Required fields and validated constraints exist; no verified height row lacks required evidence');
+end
+$road_restriction_evidence_schema_test$;
+
 do $israel_date_guard_test$
 declare
   definition text := lower(pg_get_functiondef(
