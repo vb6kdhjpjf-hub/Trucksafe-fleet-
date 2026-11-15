@@ -55,7 +55,7 @@ test("rejects malformed or routing-approved candidate and assessment report", as
 });
 
 test("rejects assessment report carrying unknown decision fields", async t => {
-  const f = await fixture(t, { valid: true, approved_for_routing: false, reviewer: "auto", dimensions: {} });
+  const f = await fixture(t, { valid: true, errors: [], approved_for_routing: false, reviewer: "auto", dimensions: {} });
   await assert.rejects(createHumanReviewEvent(base(f)), /review-event fields/);
 });
 
@@ -69,6 +69,7 @@ test("rejects array-shaped assessment dimensions", async t => {
 test("rejects an assessment report that belongs to a different candidate", async t => {
   const f = await fixture(t, {
     valid: true,
+    errors: [],
     approved_for_routing: false,
     candidate_payload_sha256: "f".repeat(64),
     dimensions: { authority: { status: "evidenced", evidence_refs: ["https://evidence.invalid/a"] } }
