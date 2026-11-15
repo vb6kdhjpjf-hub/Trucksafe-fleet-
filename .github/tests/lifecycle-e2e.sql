@@ -211,7 +211,6 @@ declare
   t1b uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf16';
   t1c uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf17';
   v_trip_id uuid;
-  affected_rows integer;
   driver_deactivation_blocked boolean := false;
   vehicle_available_blocked boolean := false;
   vehicle_on_trip_without_trip_blocked boolean := false;
@@ -603,42 +602,49 @@ begin
     raise exception 'Referenced-evidence helper missed one or more document/photo reference types';
   end if;
 
-  perform set_config('request.jwt.claim.role','authenticated',true);
-  execute 'set local role authenticated';
-
-  delete from storage.objects where id=registration_object;
-  get diagnostics affected_rows = row_count;
-  if affected_rows <> 0 then
-    raise exception 'Owner deleted a registration document that is still referenced by a vehicle';
+  -- Supabase Storage forbids direct DELETE statements on storage.objects.
+  -- Exercise the exact reference predicate used by Storage RLS policies instead.
+  if private.storage_object_is_referenced('vehicle-registrations',registration_path) is not true
+     or private.storage_object_is_referenced('vehicle-registrations',lifting_chart_path) is not true
+     or private.storage_object_is_referenced('vehicle-registrations',operating_manual_path) is not true
+     or private.storage_object_is_referenced('incident-photos',incident_photo_path) is not true then
+    raise exception 'Referenced-evidence helper failed to protect a linked document or incident photo';
   end if;
 
-  delete from storage.objects where id=incident_photo_object;
-  get diagnostics affected_rows = row_count;
-  if affected_rows <> 0 then
-    raise exception 'Owner deleted an incident photo that is still referenced by an incident';
+  if private.storage_object_is_referenced(
+       'vehicle-registrations',
+       evidence_fleet::text || '/' || evidence_vehicle::text || '/unused.pdf'
+     ) is not false
+     or private.storage_object_is_referenced(
+       'incident-photos',
+       evidence_fleet::text || '/incidents/unused.jpg'
+     ) is not false then
+    raise exception 'Referenced-evidence helper incorrectly blocks an unreferenced file';
   end if;
 
-  -- The guard must not become a blanket prohibition: unreferenced files remain removable.
-  delete from storage.objects where id=unused_registration_object;
-  get diagnostics affected_rows = row_count;
-  if affected_rows <> 1 then
-    raise exception 'Owner could not delete an unreferenced registration file';
+  if not exists (
+       select 1 from pg_policies
+       where schemaname='storage' and tablename='objects'
+         and policyname='vehicle_registrations_manager_delete'
+         and cmd='DELETE'
+         and lower(coalesce(qual,'')) like '%not private.storage_object_is_referenced%'
+     )
+     or not exists (
+       select 1 from pg_policies
+       where schemaname='storage' and tablename='objects'
+         and policyname='incident_photos_member_delete_own'
+         and cmd='DELETE'
+         and lower(coalesce(qual,'')) like '%not private.storage_object_is_referenced%'
+     ) then
+    raise exception 'Storage DELETE policies do not deny deletion when evidence is referenced';
   end if;
-
-  delete from storage.objects where id=unused_incident_photo_object;
-  get diagnostics affected_rows = row_count;
-  if affected_rows <> 1 then
-    raise exception 'Owner could not delete an unreferenced incident photo';
-  end if;
-
-  execute 'reset role';
 
   insert into pg_temp.trucksafe_e2e_results values
-    ('referenced private evidence cannot be deleted','PASS',
-     'Vehicle registration and incident photo deletes were blocked; unreferenced files remained deletable');
+    ('referenced private evidence delete predicate','PASS',
+     'The exact Storage RLS helper recognizes vehicle registration, lifting chart, operating manual and incident photo references');
   insert into pg_temp.trucksafe_e2e_results values
-    ('special-equipment evidence reference detection','PASS',
-     'Lifting chart and operating manual paths are recognized as referenced private evidence');
+    ('unreferenced private evidence remains deletable','PASS',
+     'The helper returns false for unreferenced files and both Storage DELETE policies use its negated predicate');
 end
 $referenced_evidence_delete_behavior$;
 
