@@ -72,7 +72,8 @@ begin
     'road_restrictions_posted_clearance_status_check',
     'road_restrictions_posted_clearance_value_check',
     'road_restrictions_measurement_coverage_shape_check',
-    'road_restrictions_verified_lane_level_height_evidence_check'
+    'road_restrictions_verified_lane_level_height_evidence_check',
+    'road_restrictions_verified_height_measurement_check'
   ]) as required(constraint_name)
   where not exists (
     select 1 from pg_constraint c
@@ -85,12 +86,22 @@ begin
     raise exception 'Road restriction evidence constraints are missing or unvalidated: %', missing_constraints;
   end if;
 
-  select upper(pg_get_constraintdef(c.oid))
+  -- The complete verification contract is intentionally split across
+  -- independent CHECK constraints: lane-level provenance and the existing
+  -- physical measurement/safety-margin guard. Inspect both together.
+  select string_agg(upper(pg_get_constraintdef(c.oid)), ' AND ')
   into guard_definition
   from pg_constraint c
   where c.conrelid = 'public.road_restrictions'::regclass
-    and c.conname = 'road_restrictions_verified_lane_level_height_evidence_check'
+    and c.conname in (
+      'road_restrictions_verified_lane_level_height_evidence_check',
+      'road_restrictions_verified_height_measurement_check'
+    )
     and c.convalidated;
+
+  if guard_definition is null then
+    raise exception 'Verified height evidence constraints are missing or unvalidated';
+  end if;
 
   foreach required_fragment in array required_guard_fragments loop
     if position(required_fragment in guard_definition) = 0 then
