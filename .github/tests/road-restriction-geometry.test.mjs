@@ -255,6 +255,35 @@ test("fails closed when provider route geometry leaves supported Israel operatin
   assert.equal(result.unresolved[0].reason, "route_geometry_outside_supported_israel_bounds");
 });
 
+test("enforces weight, width, and length restrictions against the saved truck profile", () => {
+  const cases = [
+    { type: "weight", field: "max_weight_t", limit: 9.5, atLimit: 10, expectedConflict: true },
+    { type: "weight", field: "max_weight_t", limit: 10, atLimit: 10, expectedConflict: false },
+    { type: "width", field: "max_width_m", limit: 2.4, atLimit: 2.5, expectedConflict: true },
+    { type: "width", field: "max_width_m", limit: 2.5, atLimit: 2.5, expectedConflict: false },
+    { type: "length", field: "max_length_m", limit: 8.5, atLimit: 9, expectedConflict: true },
+    { type: "length", field: "max_length_m", limit: 9, atLimit: 9, expectedConflict: false }
+  ];
+
+  for (const scenario of cases) {
+    const result = evaluateFleetRestrictions({
+      sections,
+      restrictions: [verifiedRestriction({
+        restriction_type: scenario.type,
+        [scenario.field]: scenario.limit
+      })],
+      restrictionCatalogLoaded: true,
+      vehicle,
+      currentWeightKg: scenario.type === "weight" ? scenario.atLimit * 1000 : 10000,
+      now
+    });
+
+    assert.equal(result.validated, !scenario.expectedConflict, scenario.type + " limit " + scenario.limit);
+    assert.equal(result.conflicts.length, scenario.expectedConflict ? 1 : 0, scenario.type + " conflict count");
+    assert.equal(result.unresolved.length, 0, scenario.type + " should be fully evaluated");
+  }
+});
+
 test("fails closed when the loaded restriction catalogue is empty", () => {
   const result = evaluateFleetRestrictions({
     sections,
