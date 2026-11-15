@@ -22,7 +22,7 @@ async function fixture(t) {
     },
     retrieved_at: "2026-11-10T17:00:00Z",
     schema_version: "1.0", review: { approved_for_routing: false } }));
-  await writeFile(assessmentReportFile, JSON.stringify({ valid: true, approved_for_routing: false, candidate_payload_sha256: hash(JSON.stringify(payload)), dimensions: { authority: { status: "evidenced", evidence_refs: ["https://evidence.invalid/a"] } } }));
+  await writeFile(assessmentReportFile, JSON.stringify({ valid: true, errors: [], approved_for_routing: false, candidate_payload_sha256: hash(JSON.stringify(payload)), dimensions: { authority: { status: "evidenced", evidence_refs: ["https://evidence.invalid/a"] } } }));
   const created = await createHumanReviewEvent({ candidateFile, assessmentReportFile, outputDir, reviewer: "reviewer-1", decision: "needs_more_evidence", reviewedAt: "2026-11-10T17:30:00Z" });
   return { root, candidateFile, assessmentReportFile, eventFile: created.output };
 }
@@ -75,4 +75,22 @@ test("rejects an assessment report whose candidate binding was changed", async t
   report.candidate_payload_sha256 = "f".repeat(64);
   await writeFile(f.assessmentReportFile, JSON.stringify(report));
   await assert.rejects(verifyHumanReviewEvent(f), /linked to a different candidate/);
+});
+
+
+test("rejects assessment reports whose validity flag contradicts their errors", async t => {
+  const f = await fixture(t);
+  const report = JSON.parse(await readFile(f.assessmentReportFile, "utf8"));
+  report.valid = true;
+  report.errors = ["synthetic validation error"];
+  await writeFile(f.assessmentReportFile, JSON.stringify(report));
+  await assert.rejects(verifyHumanReviewEvent(f), /Assessment report is malformed/);
+  await assert.rejects(createHumanReviewEvent({
+    candidateFile: f.candidateFile,
+    assessmentReportFile: f.assessmentReportFile,
+    outputDir: path.join(f.root, "quarantine"),
+    reviewer: "reviewer-2",
+    decision: "needs_more_evidence",
+    reviewedAt: "2026-11-10T17:40:00Z"
+  }), /Assessment report is malformed/);
 });
