@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
-import { lstat, open, realpath } from "node:fs/promises";
+import { mkdir, open } from "node:fs/promises";
 import path from "node:path";
 import { hashRestrictionPayload } from "../lib/restriction-source-envelope.mjs";
+import { assertPrivateDirectory } from "../lib/private-directory.mjs";
 import { pathToFileURL } from "node:url";
 
 const sha256 = value => createHash("sha256").update(value).digest("hex");
@@ -63,15 +64,11 @@ export async function createHumanReviewEvent({ candidateFile, assessmentReportFi
   };
   const canonical = JSON.stringify(event);
   const completeEvent = { ...event, event_sha256: sha256(canonical) };
-  const requestedDir = path.resolve(outputDir);
-  const info = await lstat(requestedDir);
-  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("Output path must be an existing, non-symlink directory");
-  const dir = await realpath(requestedDir);
+  const dir = await assertPrivateDirectory(outputDir, "Output");
   const reviewsDir = path.join(dir, "reviews");
-  await lstat(reviewsDir).catch(async error => { if (error.code !== "ENOENT") throw error; const { mkdir } = await import("node:fs/promises"); await mkdir(reviewsDir, { mode: 0o700 }); });
-  const reviewInfo = await lstat(reviewsDir);
-  if (!reviewInfo.isDirectory() || reviewInfo.isSymbolicLink()) throw new Error("Reviews path must be a non-symlink directory");
-  const output = path.join(await realpath(reviewsDir), "review-" + completeEvent.event_sha256 + ".json");
+  await mkdir(reviewsDir, { mode: 0o700 }).catch(error => { if (error.code !== "EEXIST") throw error; });
+  const privateReviewsDir = await assertPrivateDirectory(reviewsDir, "Reviews");
+  const output = path.join(privateReviewsDir, "review-" + completeEvent.event_sha256 + ".json");
   const handle = await open(output, "wx", 0o600);
   try { await handle.writeFile(JSON.stringify(completeEvent, null, 2) + "\n", "utf8"); await handle.sync(); }
   catch (error) { await handle.close().catch(() => {}); throw error; }
