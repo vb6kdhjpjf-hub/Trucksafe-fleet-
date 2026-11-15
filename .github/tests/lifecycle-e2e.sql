@@ -7,12 +7,69 @@ begin;
 \ir ../../supabase/migrations/20261114141000_prevent_driver_deactivation_during_active_trip.sql
 \ir ../../supabase/migrations/20261114143000_enforce_vehicle_active_trip_status.sql
 \ir ../../supabase/migrations/20261114145000_lock_driver_before_trip_completion.sql
+\ir ../../supabase/migrations/20261115100000_protect_referenced_private_evidence.sql
 
 create temporary table trucksafe_e2e_results (
   scenario text not null,
   outcome text not null,
   detail text
+
 ) on commit drop;
+
+do $evidence_guard_test$
+declare
+  helper_definition text;
+begin
+  helper_definition := lower(pg_get_functiondef(
+    'private.storage_object_is_referenced(text,text)'::regprocedure
+  ));
+
+  if position('public.vehicles' in helper_definition) = 0
+     or position('public.vehicle_special_equipment' in helper_definition) = 0
+     or position('public.incidents' in helper_definition) = 0 then
+    raise exception 'Evidence reference guard must cover vehicle registrations, lifting charts, and incident photos';
+  end if;
+
+  if not (
+    select prosecdef
+    from pg_proc
+    where oid = 'private.storage_object_is_referenced(text,text)'::regprocedure
+  ) then
+    raise exception 'Evidence reference guard must be SECURITY DEFINER so caller RLS cannot hide references';
+  end if;
+
+  if not has_function_privilege('authenticated',
+       'private.storage_object_is_referenced(text,text)', 'EXECUTE')
+     or has_function_privilege('anon',
+       'private.storage_object_is_referenced(text,text)', 'EXECUTE') then
+    raise exception 'Evidence reference guard must be executable by authenticated users only';
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and policyname = 'vehicle_registrations_manager_delete'
+      and cmd = 'DELETE'
+      and coalesce(qual, '') ilike '%storage_object_is_referenced%'
+  ) then
+    raise exception 'Vehicle registration delete policy must block deletion of referenced evidence';
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and policyname = 'incident_photos_member_delete_own'
+      and cmd = 'DELETE'
+      and coalesce(qual, '') ilike '%storage_object_is_referenced%'
+  ) then
+    raise exception 'Incident photo delete policy must block deletion of referenced evidence';
+  end if;
+
+  insert into pg_temp.trucksafe_e2e_results values
+    ('referenced private evidence deletion guard', 'PASS',
+     'Migration applies transactionally; helper is SECURITY DEFINER with restricted execution and both delete policies call it');
+end
+$evidence_guard_test$;
 
 do $guard_test$
 declare
