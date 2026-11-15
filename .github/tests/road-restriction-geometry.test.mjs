@@ -113,6 +113,28 @@ test("detects a route passing near a linear restriction segment", () => {
   assert.equal(routePassesNearRestriction(sections, segment), true);
 });
 
+test("fails closed when point geometry is accompanied by a partial linear restriction", () => {
+  const partialSegment = verifiedRestriction({
+    latitude: 32.84,
+    longitude: 35.505,
+    start_latitude: 32.839,
+    start_longitude: 35.505,
+    end_latitude: null,
+    end_longitude: null
+  });
+  assert.equal(routePassesNearRestriction(sections, partialSegment), null);
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [partialSegment],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now
+  });
+  assert.equal(result.validated, false);
+  assert.equal(result.unresolved[0].reason, "missing_or_invalid_location_or_route_geometry");
+});
+
 test("rejects incomplete or out-of-Israel linear restriction geometry", () => {
   assert.equal(routePassesNearRestriction(sections, verifiedRestriction({
     latitude: null, longitude: null,
