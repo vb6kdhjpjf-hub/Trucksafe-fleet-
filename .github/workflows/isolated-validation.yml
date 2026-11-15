@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - test/isolated-e2e-ci
+      - fix/physical-clearance-routing-gate
   pull_request:
     branches:
       - main
