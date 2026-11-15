@@ -9,6 +9,7 @@ begin;
 \ir ../../supabase/migrations/20261114145000_lock_driver_before_trip_completion.sql
 \ir ../../supabase/migrations/20261115100000_protect_referenced_private_evidence.sql
 \ir ../../supabase/migrations/20261115113000_guard_vehicle_registration_insert_verification.sql
+\ir ../../supabase/migrations/20261115120000_use_israel_local_date_for_trip_compliance.sql
 
 create temporary table trucksafe_e2e_results (
   scenario text not null,
@@ -16,6 +17,26 @@ create temporary table trucksafe_e2e_results (
   detail text
 
 ) on commit drop;
+
+do $israel_date_guard_test$
+declare
+  definition text := lower(pg_get_functiondef(
+    'public.start_trip_with_inspection(uuid,uuid,uuid,uuid,text,text,jsonb)'::regprocedure
+  ));
+  today_reference_count integer;
+begin
+  today_reference_count := (length(definition) - length(replace(definition, 'v_today', ''))) / length('v_today');
+  if position('asia/jerusalem' in definition) = 0
+     or position('v_today date' in definition) = 0
+     or position('current_date' in definition) > 0
+     or today_reference_count <> 5 then
+    raise exception 'Trip compliance must use one Israel-local calendar date for driver licence and all vehicle documents';
+  end if;
+  insert into pg_temp.trucksafe_e2e_results values
+    ('Israel-local trip document expiry', 'PASS',
+     'Driver licence, vehicle test, insurance and registration compare against one Asia/Jerusalem date');
+end
+$israel_date_guard_test$;
 
 do $evidence_guard_test$
 declare
