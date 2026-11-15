@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import { constants } from "node:fs";
 import { lstat, open, readdir } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { hashRestrictionPayload } from "../lib/restriction-source-envelope.mjs";
 import { assertPrivateDirectory } from "../lib/private-directory.mjs";
 import { verifyHumanReviewEvent } from "./verify-restriction-source-review.mjs";
+import { openNoFollow } from "../lib/open-no-follow.mjs";
 
 const sha256 = value => createHash("sha256").update(value).digest("hex");
 const isHash = value => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
@@ -35,7 +35,7 @@ function isValidAssessmentReport(report, candidatePayloadHash) {
 }
 
 async function readBounded(file, maxBytes = 5 * 1024 * 1024) {
-  const handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  const handle = await openNoFollow(file);
   try {
     const info = await handle.stat();
     if (!info.isFile() || info.size > maxBytes) throw new Error("Input must be a regular file within the size limit");
