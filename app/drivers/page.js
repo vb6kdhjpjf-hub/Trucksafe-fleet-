@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
+import { getIsraelCalendarDate, differenceInCalendarDays } from "../../lib/israel-date.mjs";
 import { Truck, ArrowRight, Plus, Pencil, Phone, IdCard, CalendarDays, Users, LogOut } from "lucide-react";
 
 const emptyForm = { full_name: "", phone: "", license_number: "", license_class: "", license_expires_at: "" };
@@ -118,8 +119,11 @@ export default function DriversPage() {
     } finally { setBusy(false); }
   }
 
-  const today = new Date(); today.setHours(0,0,0,0);
-  const licenseAlerts = drivers.filter(d=>d.license_expires_at).map(driver=>({...driver,days:Math.ceil((new Date(driver.license_expires_at+"T00:00:00")-today)/86400000)})).filter(driver=>driver.days<=30).sort((a,b)=>a.days-b.days);
+  const today = getIsraelCalendarDate();
+  const licenseAlerts = drivers.filter(d=>d.license_expires_at).map(driver=>{
+    try { return {...driver,days:differenceInCalendarDays(driver.license_expires_at,today),invalid:false}; }
+    catch { return {...driver,days:Number.NEGATIVE_INFINITY,invalid:true}; }
+  }).filter(driver=>driver.invalid||driver.days<=30).sort((a,b)=>a.days-b.days);
   const expiredLicenses=licenseAlerts.filter(driver=>driver.days<0);
   const soonLicenses=licenseAlerts.filter(driver=>driver.days>=0);
   const canManageDrivers = ["owner", "fleet_manager"].includes(fleet?.role);
