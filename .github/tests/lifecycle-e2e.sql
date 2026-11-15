@@ -211,6 +211,7 @@ declare
   t1b uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf16';
   t1c uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf17';
   v_trip_id uuid;
+  affected_rows integer;
   driver_deactivation_blocked boolean := false;
   vehicle_available_blocked boolean := false;
   vehicle_on_trip_without_trip_blocked boolean := false;
@@ -537,7 +538,6 @@ declare
   lifting_chart_path text;
   operating_manual_path text;
   incident_photo_path text;
-  affected_rows integer;
 begin
   insert into auth.users (
     id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data
