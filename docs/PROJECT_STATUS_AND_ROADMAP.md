@@ -1,6 +1,6 @@
 # TruckSafe Fleet V1 — Project Status and Roadmap
 
-Last reviewed: 2026-11-12
+Last reviewed: 2026-11-15
 Branch: `test/isolated-e2e-ci`
 Pull request: [#15](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/pull/15) — open, Draft, not merged
 Production release: **not approved**
@@ -34,7 +34,7 @@ TruckSafe has a substantial fleet-management application and an isolated validat
 
 ## Verified engineering baseline
 
-The latest verified isolated validation run is [GitHub Actions run 43201819301](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43201819301), on commit `731d69f11cfdb1b6f1aa7b38ed3b65743e7cdfc3`. The matching [pull-request validation run 43201830998](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43201830998) also passed. All three push jobs passed: application validation, rollback-only database integration on the dedicated Test project, and live Test Auth integration.
+The latest verified isolated validation run is [GitHub Actions run 43684930143](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43684930143), on commit `a7aafe6705decbb4c63d0ea351e7c35bcea72aac`. All three jobs completed successfully on this exact commit: application validation, rollback-only database integration on the dedicated Test project, and signed Test Auth/local HTTP integration. This confirms the current branch head passed its isolated CI gates; it does not establish production readiness, authoritative restriction coverage, or road safety.
 
 Recorded results:
 - Application and safety tests passed (210 tests); delivery quantity, photo and GPS tests passed (19); fleet API access tests passed (40); enterprise-import tests passed (30); workflow safety tests passed (8).
@@ -376,5 +376,5 @@ Enterprise adoption also needs a labelled synthetic demo fleet, role-based onboa
 - Added the TransIsrael ISTRC open-data page to the source registry as an **acquisition lead only**. The published page identifies potential research/data access relating to Highway 6, the express lane from Shapirim to Tel Aviv, and the Carmel Tunnels, and lists `eldads@transisrael.co.il` as a contact. This does not establish that a downloadable dataset, API, truck-restriction fields, measured clearances, or commercial-use rights are available.
 - The TransIsrael operator's public infrastructure-coordination page identifies different concessionaires and road segments (including the northern Highway 6 segment, the central/southern segment, the express lane, and the Carmel Tunnels). Asset-level owner/operator/competent-authority responsibility must therefore be confirmed for each relevant segment; do not treat TransIsrael as the authority for every road or every asset.
 - The corresponding data-access request remains an internal draft and has **not** been sent. No external contact or data connection was made. The registry entry is candidate-only and routing-ineligible, and the national restriction-coverage approval remains disabled.
-- Latest CI run [43684750697](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43684750697) passed all three jobs on commit `6a6a531201fa8fe763aed503a44084c6eb1e7402`: application validation/build, isolated Test database integration, and signed Test Auth/local HTTP integration with fixture cleanup.
+- Latest CI run [43684930143](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43684930143) passed all three jobs on commit `a7aafe6705decbb4c63d0ea351e7c35bcea72aac`: application validation/build, isolated Test database integration, and signed Test Auth/local HTTP integration with fixture cleanup.
 - PR #15 remains open and Draft; PR #19 remains open and Draft. No merge, deployment, Production database change, provider activation, or external authority outreach occurred.
