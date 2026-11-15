@@ -184,6 +184,25 @@ test("uses the lowest of legal, posted and physically measured height limits", (
   }
 });
 
+test("fails closed when measured or posted physical clearance evidence is missing", () => {
+  for (const restriction of [
+    verifiedRestriction({ measured_clearance_m: null }),
+    verifiedRestriction({ posted_clearance_status: "posted", posted_clearance_m: null })
+  ]) {
+    const result = evaluateFleetRestrictions({
+      sections,
+      restrictions: [restriction],
+      restrictionCatalogLoaded: true,
+      vehicle,
+      currentWeightKg: 10000,
+      now
+    });
+    assert.equal(result.validated, false);
+    assert.equal(result.conflicts.length, 0);
+    assert.equal(result.unresolved[0].reason, "height_clearance_evidence_incomplete");
+  }
+});
+
 test("does not reject a route for a distant, verified restriction", () => {
   const distant = verifiedRestriction({ latitude: 32.85, longitude: 35.505 });
   const result = evaluateFleetRestrictions({
