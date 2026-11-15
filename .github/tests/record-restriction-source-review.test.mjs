@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createHumanReviewEvent } from "../../scripts/record-restriction-source-review.mjs";
@@ -9,7 +9,7 @@ import { createHumanReviewEvent } from "../../scripts/record-restriction-source-
 const hash = value => createHash("sha256").update(value).digest("hex");
 async function fixture(t, report = { valid: true, approved_for_routing: false, dimensions: { authority: { status: "evidenced", evidence_refs: ["https://evidence.invalid/a"] } } }) {
   const root = await mkdtemp(path.join(os.tmpdir(), "trucksafe-review-")); t.after(() => rm(root, { recursive: true, force: true }));
-  const outputDir = path.join(root, "quarantine"); await mkdir(outputDir);
+  const outputDir = path.join(root, "quarantine"); await mkdir(outputDir); await chmod(outputDir, 0o700);
   const candidateFile = path.join(root, "candidate.json"); const assessmentReportFile = path.join(root, "assessment.json");
   const payload = { id: "synthetic-review-payload" };
   await writeFile(candidateFile, JSON.stringify({ payload, payload_sha256: hash(JSON.stringify(payload)), source: {
@@ -74,4 +74,10 @@ test("rejects an assessment report that belongs to a different candidate", async
     dimensions: { authority: { status: "evidenced", evidence_refs: ["https://evidence.invalid/a"] } }
   });
   await assert.rejects(createHumanReviewEvent(base(f)), /linked to a different candidate/);
+});
+
+test("rejects a review output directory accessible to group or other users", async t => {
+  const f = await fixture(t);
+  await chmod(f.outputDir, 0o755);
+  await assert.rejects(createHumanReviewEvent(base(f)), /private permissions/);
 });
