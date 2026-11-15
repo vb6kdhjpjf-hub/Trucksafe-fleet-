@@ -104,9 +104,13 @@ begin
   ));
 
   if position('tg_op = ''insert''' in definition) = 0
-     or position('registration_verified_at is not null' in definition) = 0
-     or position('registration_verified_by is not null' in definition) = 0 then
-    raise exception 'Vehicle registration guard must reject client-supplied approval metadata on INSERT';
+     or position('registration_verification_status := ''unverified''' in definition) = 0
+     or position('registration_document_path := null' in definition) = 0
+     or position('registration_document_uploaded_at := null' in definition) = 0
+     or position('registration_verified_at := null' in definition) = 0
+     or position('registration_verified_by := null' in definition) = 0
+     or position('registration_verification_note := null' in definition) = 0 then
+    raise exception 'Vehicle registration guard must clear all client-supplied evidence and approval metadata on INSERT';
   end if;
 
   if (
