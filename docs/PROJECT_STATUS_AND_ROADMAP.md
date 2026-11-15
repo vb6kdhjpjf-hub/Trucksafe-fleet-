@@ -378,3 +378,12 @@ Enterprise adoption also needs a labelled synthetic demo fleet, role-based onboa
 - The corresponding data-access request remains an internal draft and has **not** been sent. No external contact or data connection was made. The registry entry is candidate-only and routing-ineligible, and the national restriction-coverage approval remains disabled.
 - Latest CI run [43684930143](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43684930143) passed all three jobs on commit `a7aafe6705decbb4c63d0ea351e7c35bcea72aac`: application validation/build, isolated Test database integration, and signed Test Auth/local HTTP integration with fixture cleanup.
 - PR #15 remains open and Draft; PR #19 remains open and Draft. No merge, deployment, Production database change, provider activation, or external authority outreach occurred.
+
+
+## Carmel Tunnels published dimensions classified as context only — 15 November 2026
+
+- Reviewed the official TransIsrael Carmel Tunnels project page. It publishes general project figures of 6.5 m tunnel height and 10 m width and identifies Carmelton Group Ltd. as the concessionaire/operator during the concession period. See [official project page](https://www.transisrael.co.il/Project?projectID=87).
+- These figures are **not** lane- and direction-specific clearance evidence. The page does not provide a measurement date, method, vertical accuracy, supporting survey, per-opening geometry, or a clear distinction between design, posted and physically measured clearance. It cannot establish that a particular truck is permitted or physically able to pass.
+- Added the page to the source registry as `transisrael-carmel-tunnels-published-dimensions`, explicitly candidate-only and routing-ineligible. Added regression coverage that prevents this published context from being treated as verified truck clearance or route approval.
+- The official TransIsrael responsibility page and infrastructure-coordination page continue to show that concessionaire/segment responsibility must be checked rather than assuming one operator controls every asset.
+- No data was imported, no routing/provider behavior changed, no external authority was contacted, and no Production/Test database was modified. National restriction coverage remains unapproved.
