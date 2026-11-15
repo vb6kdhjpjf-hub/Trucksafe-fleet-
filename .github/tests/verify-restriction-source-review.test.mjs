@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createHumanReviewEvent } from "../../scripts/record-restriction-source-review.mjs";
@@ -10,7 +10,7 @@ import { verifyHumanReviewEvent } from "../../scripts/verify-restriction-source-
 const hash = value => createHash("sha256").update(value).digest("hex");
 async function fixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), "trucksafe-review-")); t.after(() => rm(root, { recursive: true, force: true }));
-  const outputDir = path.join(root, "quarantine"); await mkdir(outputDir);
+  const outputDir = path.join(root, "quarantine"); await mkdir(outputDir); await chmod(outputDir, 0o700);
   const candidateFile = path.join(root, "candidate.json"); const assessmentReportFile = path.join(root, "assessment.json");
   const payload = { id: "synthetic-review-payload" };
   await writeFile(candidateFile, JSON.stringify({ payload, payload_sha256: hash(JSON.stringify(payload)), source: {
