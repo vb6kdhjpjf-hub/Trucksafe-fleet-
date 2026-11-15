@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createHumanReviewEvent } from "../../scripts/record-restriction-source-review.mjs";
@@ -22,7 +22,7 @@ const validAssessment = (candidatePayloadHash, overrides = {}) => ({
 async function fixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), "trucksafe-manifest-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const reviewsDir = path.join(root, "reviews"); await mkdir(reviewsDir);
+  const reviewsDir = path.join(root, "reviews"); await mkdir(reviewsDir); await chmod(reviewsDir, 0o700);
   const payload = { restrictions: [{ id: "synthetic-1" }] };
   const payloadHash = hash(JSON.stringify(payload));
   const candidateFile = path.join(root, "candidate-" + payloadHash + ".json");
@@ -106,4 +106,10 @@ test("rejects assessment reports whose valid flag contradicts their errors", asy
     assert.equal(result.manifest.candidates[0].status, "assessment_invalid");
     assert.equal(result.manifest.candidates[0].approved_for_routing, false);
   }
+});
+
+test("rejects a review directory accessible to group or other users", async t => {
+  const f = await fixture(t);
+  await chmod(path.join(f.root, "reviews"), 0o755);
+  await assert.rejects(buildRestrictionSourceManifest({ quarantineDir: f.root }), /private permissions/);
 });
