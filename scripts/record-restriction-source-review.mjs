@@ -36,7 +36,7 @@ export async function createHumanReviewEvent({ candidateFile, assessmentReportFi
   const reportBytes = await readBytes(assessmentReportFile);
   const report = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(reportBytes));
   if (!report || typeof report !== "object" || Array.isArray(report) || report.approved_for_routing !== false ||
-      typeof report.valid !== "boolean" || !report.dimensions || typeof report.dimensions !== "object" || Array.isArray(report.dimensions)) {
+      typeof report.valid !== "boolean" || !Array.isArray(report.errors) || report.errors.some(item => typeof item !== "string") || report.valid !== (report.errors.length === 0) || !report.dimensions || typeof report.dimensions !== "object" || Array.isArray(report.dimensions)) {
     throw new Error("Assessment report is malformed or not explicitly unapproved");
   }
   if (report.candidate_payload_sha256 !== candidate.payload_sha256) {
