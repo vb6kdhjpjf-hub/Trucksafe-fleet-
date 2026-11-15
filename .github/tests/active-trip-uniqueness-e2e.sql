@@ -1,0 +1,45 @@
+-- Rollback-only verification of the production candidate migration.
+-- The migration is expanded by run-sql-tests.mjs and rolled back with this transaction.
+begin;
+
+\ir ../../supabase/migrations/20261114130000_enforce_single_active_trip_assignments.sql
+
+do $$
+declare
+  expected text[] := array[
+    'trips_one_active_per_driver',
+    'trips_one_active_per_vehicle',
+    'trips_one_active_per_task'
+  ];
+  actual_count integer;
+  duplicate_count integer;
+begin
+  select count(*) into actual_count
+  from pg_index i
+  join pg_class idx on idx.oid = i.indexrelid
+  join pg_namespace ns on ns.oid = idx.relnamespace
+  where ns.nspname = 'public'
+    and idx.relname = any(expected)
+    and i.indisunique
+    and pg_get_expr(i.indpred, i.indrelid) like '%status = ''active''%';
+
+  if actual_count <> 3 then
+    raise exception 'Expected all three unique partial indexes with active predicate; found %', actual_count;
+  end if;
+
+  select count(*) into duplicate_count
+  from (
+    select driver_id
+    from public.trips
+    where status = 'active'
+    group by driver_id
+    having count(*) > 1
+  ) duplicates;
+
+  if duplicate_count <> 0 then
+    raise exception 'Existing active trips contain duplicate drivers';
+  end if;
+end
+$$;
+
+rollback;
