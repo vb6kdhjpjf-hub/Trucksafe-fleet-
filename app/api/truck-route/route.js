@@ -3,6 +3,7 @@ import { selectSafeTruckRoute } from "../../../lib/road-restriction-geometry.mjs
 import { isTruckRouteConfigured } from "../../../lib/truck-route-readiness.mjs";
 import { getSavedTruckRoutingProfile } from "../../../lib/truck-routing-profile.mjs";
 import { assessVehicleSpecialRouting } from "../../../lib/vehicle-capabilities.mjs";
+import { assessVehicleDocumentCompliance } from "../../../lib/vehicle-document-compliance.mjs";
 import { validateTruckTripWeights } from "../../../lib/truck-trip-weight.mjs";
 import { checkTruckRouteQuota } from "../../../lib/truck-route-quota.mjs";
 import { readJsonBodyLimited } from "../../../lib/request-body-limits.mjs";
@@ -111,7 +112,7 @@ export async function POST(request) {
 
     const { data: savedVehicle, error: vehicleError } = await db
       .from("vehicles")
-      .select("id,fleet_id,status,is_demo,registration_verification_status,registration_document_path,registration_verified_at,registration_verified_by,body_type,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,empty_weight_kg,axle_count,trailer_count,weight_per_axle_kg")
+      .select("id,fleet_id,status,is_demo,test_due_at,insurance_due_at,registration_due_at,registration_verification_status,registration_document_path,registration_verified_at,registration_verified_by,body_type,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,empty_weight_kg,axle_count,trailer_count,weight_per_axle_kg")
       .eq("id", vehicleId)
       .eq("fleet_id", membership.fleet_id)
       .maybeSingle();
@@ -121,6 +122,17 @@ export async function POST(request) {
     }
     if (!["available", "assigned"].includes(savedVehicle.status)) {
       return response({ error: "אפשר לתכנן מסלול רק לרכב זמין או משויך שאינו בטיפול או מושבת." }, 409);
+    }
+
+    const documentCompliance = assessVehicleDocumentCompliance(savedVehicle);
+    if (!documentCompliance.ready) {
+      return response({
+        error: "מסמכי הרכב אינם בתוקף או שחסר מידע. יש לעדכן טסט, ביטוח ורישיון רכב לפני תכנון מסלול.",
+        diagnosticCode: documentCompliance.reason,
+        missingDocuments: documentCompliance.missing,
+        invalidDocuments: documentCompliance.invalid,
+        expiredDocuments: documentCompliance.expired
+      }, 409);
     }
 
     let specialEquipment = null;
