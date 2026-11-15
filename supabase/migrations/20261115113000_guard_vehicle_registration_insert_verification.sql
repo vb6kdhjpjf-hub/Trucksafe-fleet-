@@ -13,18 +13,23 @@ declare
 begin
   if tg_op = 'INSERT' then
     if not is_service_role then
-      if new.registration_verification_status not in ('unverified', 'pending')
-         or new.registration_verified_at is not null
-         or new.registration_verified_by is not null
-         or new.registration_verification_note is not null then
-        raise exception 'Only the trusted verification service may approve or reject vehicle registration documents';
-      end if;
+      -- Client-created vehicles always begin without trusted registration evidence.
+      new.registration_verification_status := 'unverified';
+      new.registration_document_path := null;
+      new.registration_document_uploaded_at := null;
+      new.registration_verified_at := null;
+      new.registration_verified_by := null;
+      new.registration_verification_note := null;
     end if;
     return new;
   end if;
 
   routing_profile_changed :=
-    new.registration_document_path is distinct from old.registration_document_path
+    new.registration_number is distinct from old.registration_number
+    or new.make is distinct from old.make
+    or new.model is distinct from old.model
+    or new.vehicle_type is distinct from old.vehicle_type
+    or new.registration_document_path is distinct from old.registration_document_path
     or new.routing_vehicle_type is distinct from old.routing_vehicle_type
     or new.height_cm is distinct from old.height_cm
     or new.width_cm is distinct from old.width_cm

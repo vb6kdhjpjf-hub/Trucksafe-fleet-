@@ -3,6 +3,7 @@
 begin;
 
 \ir ../../supabase/migrations/20261110170000_guard_vehicle_registration_insert.sql
+\ir ../../supabase/migrations/20261115113000_guard_vehicle_registration_insert_verification.sql
 \ir ../../supabase/migrations/20261111180000_maintenance_incident_vehicle_match.sql
 \ir ../../supabase/migrations/20261112130000_add_lane_level_bridge_clearance_evidence.sql
 
