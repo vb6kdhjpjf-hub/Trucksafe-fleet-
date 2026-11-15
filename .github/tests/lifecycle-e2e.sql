@@ -88,6 +88,7 @@ begin
         nullif(btrim(structure_id), '') is null
         or nullif(btrim(road_segment_id), '') is null
         or nullif(btrim(lane_id), '') is null
+        or direction is null
         or direction not in ('forward', 'backward')
         or passage_length_m is null
         or nullif(btrim(surveyor), '') is null
