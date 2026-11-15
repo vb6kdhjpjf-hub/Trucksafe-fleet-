@@ -369,3 +369,12 @@ Security: one verified fleet per import; authorized roles only; ambiguous matche
 Enterprise adoption also needs a labelled synthetic demo fleet, role-based onboarding, customer-approved migration rehearsal, reconciliation report, data ownership/export/retention documentation, security/access-control evidence, support/escalation expectations and measurable pilot outcomes.
 
 **Status:** CSV parser and initial driver/vehicle mapping and validation helpers are implemented and CI-tested. Migration Center UI, private upload, XLSX parser, staging/job ledger, import APIs, customer entity and connectors remain unimplemented. No operational records, customer data or Production schema/data have been changed.
+
+
+## TransIsrael source acquisition lead and isolated CI — 15 November 2026
+
+- Added the TransIsrael ISTRC open-data page to the source registry as an **acquisition lead only**. The published page identifies potential research/data access relating to Highway 6, the express lane from Shapirim to Tel Aviv, and the Carmel Tunnels, and lists `eldads@transisrael.co.il` as a contact. This does not establish that a downloadable dataset, API, truck-restriction fields, measured clearances, or commercial-use rights are available.
+- The TransIsrael operator's public infrastructure-coordination page identifies different concessionaires and road segments (including the northern Highway 6 segment, the central/southern segment, the express lane, and the Carmel Tunnels). Asset-level owner/operator/competent-authority responsibility must therefore be confirmed for each relevant segment; do not treat TransIsrael as the authority for every road or every asset.
+- The corresponding data-access request remains an internal draft and has **not** been sent. No external contact or data connection was made. The registry entry is candidate-only and routing-ineligible, and the national restriction-coverage approval remains disabled.
+- CI run [43684302225](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43684302225) passed all three jobs on commit `991d797d08183fd2146dc7c57c406aea3d4c5f91`: application validation/build, isolated Test database integration, and signed Test Auth/local HTTP integration with fixture cleanup.
+- PR #15 remains open and Draft; PR #19 remains open and Draft. No merge, deployment, Production database change, provider activation, or external authority outreach occurred.
