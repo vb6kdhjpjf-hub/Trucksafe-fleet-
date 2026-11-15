@@ -49,3 +49,16 @@ This live signed-token suite is distinct from rollback-only SQL tests that simul
 The latest Test-project security advisor still reports two authenticated-callable `SECURITY DEFINER` RPCs: `public.start_trip_with_inspection` and `public.finish_trip`. A read-only review found that these are deliberate atomic trip operations: they derive the actor from `auth.uid()`, check fleet membership and applicable role/driver constraints, use a pinned empty `search_path`, and are not executable by `anon`. Do not change them to `SECURITY INVOKER` or revoke authenticated execution merely to silence the generic lint; first add live signed-in positive and negative-path coverage and review the complete call sites.
 
 The Test performance advisor also reports two unindexed nullable reviewer foreign keys (`road_restrictions.verified_by` and `vehicles.registration_verified_by`). Additive index migration and rollback-only test candidates exist in the branch but have not been applied persistently. The advisor reports 17 currently unused indexes; do not remove them without workload evidence.
+
+## Latest trip-lifecycle and signed Auth validation — 15 November 2026
+
+The latest branch head was validated by both pull-request and direct-push workflow events:
+
+- [PR validation run 43669829126](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43669829126): application validation/build/smoke tests and rollback-only Test database integration passed. The live Auth job was correctly skipped for the pull-request event because PR jobs do not receive the Test Auth secrets.
+- [Direct-push validation run 43669825101](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/43669825101): application validation/build/smoke tests, rollback-only Test database integration, and live signed Test Auth integration all passed.
+
+The lifecycle SQL suite now asserts the complete finish_trip row-lock order — task, driver, trip, vehicle — verifies each query actually uses FOR UPDATE, and checks that driver/task assignments are revalidated after the parent locks are acquired. The migration is included only in the rollback-only Test SQL suite; it has not been applied persistently to Test or Production.
+
+The live Auth run validated seven disposable signed Test identities across owner, fleet manager, dispatcher, safety manager, driver, ambiguous multi-fleet and unassigned cases. It also verified real PostgREST/RLS visibility, role changes and membership revocation, actual route-handler authorization, invalid-token denial, and forged user_metadata privilege rejection. Cleanup removed all seven marked identities and their fleets; the follow-up cleanup found zero remaining fixtures.
+
+These results apply only to the tested branch and isolated Test project. PR #15 remains open and Draft. No merge, deployment, Production database change, provider activation, or external authority contact occurred. Truck routing remains blocked pending authoritative, current, licensed and independently validated restriction data with known geographic coverage.
