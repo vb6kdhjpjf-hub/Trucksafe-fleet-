@@ -500,6 +500,148 @@ begin
 end
 $test$;
 
+
+do $israel_midnight_boundary_test$
+begin
+  -- Winter UTC+2: Israeli midnight is 22:00 UTC.
+  if (timestamptz '2026-11-14 21:59:59.999+00' at time zone 'Asia/Jerusalem')::date <> date '2026-11-14'
+     or (timestamptz '2026-11-14 22:00:00+00' at time zone 'Asia/Jerusalem')::date <> date '2026-11-15' then
+    raise exception 'Israel winter midnight boundary calculation is incorrect';
+  end if;
+
+  -- Summer UTC+3: Israeli midnight is 21:00 UTC.
+  if (timestamptz '2026-07-01 20:59:59.999+00' at time zone 'Asia/Jerusalem')::date <> date '2026-07-01'
+     or (timestamptz '2026-07-01 21:00:00+00' at time zone 'Asia/Jerusalem')::date <> date '2026-07-02' then
+    raise exception 'Israel summer midnight boundary calculation is incorrect';
+  end if;
+
+  insert into pg_temp.trucksafe_e2e_results values
+    ('Israel winter and summer midnight boundaries', 'PASS',
+     'Expiry calendar date changes at midnight in Asia/Jerusalem for UTC+2 and UTC+3');
+end
+$israel_midnight_boundary_test$;
+
+do $referenced_evidence_delete_behavior$
+declare
+  evidence_user uuid := 'f8d0f66b-52e6-4e7e-a641-5c0f2f8eaf31';
+  evidence_fleet uuid := 'b4fbe3c8-1a2f-4c7a-8c6e-6f9a1b0c2d61';
+  evidence_vehicle uuid := 'e2d0f66b-52e6-4e7e-a641-5c0f2f8eaf31';
+  evidence_incident uuid := '11000000-0000-4000-8000-000000000061';
+  evidence_equipment uuid := '22000000-0000-4000-8000-000000000061';
+  registration_object uuid := '33000000-0000-4000-8000-000000000061';
+  lifting_chart_object uuid := '33000000-0000-4000-8000-000000000062';
+  operating_manual_object uuid := '33000000-0000-4000-8000-000000000063';
+  incident_photo_object uuid := '33000000-0000-4000-8000-000000000064';
+  unused_registration_object uuid := '33000000-0000-4000-8000-000000000065';
+  unused_incident_photo_object uuid := '33000000-0000-4000-8000-000000000066';
+  registration_path text;
+  lifting_chart_path text;
+  operating_manual_path text;
+  incident_photo_path text;
+  affected_rows integer;
+begin
+  insert into auth.users (
+    id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data
+  ) values (
+    evidence_user,'authenticated','authenticated',
+    'trucksafe-ci-evidence-guard@example.invalid','test-only-no-login',now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb
+  );
+
+  perform set_config('request.jwt.claim.sub',evidence_user::text,true);
+  perform set_config('request.jwt.claim.role','service_role',true);
+
+  insert into public.fleets(id,name,owner_user_id)
+  values(evidence_fleet,'CI evidence deletion guard fleet',evidence_user);
+
+  insert into public.vehicles(
+    id,fleet_id,registration_number,make,model,vehicle_type,status,
+    test_due_at,insurance_due_at,registration_due_at,is_demo
+  ) values(
+    evidence_vehicle,evidence_fleet,'CI-EVIDENCE-001','Test','Truck','truck','available',
+    current_date+365,current_date+365,current_date+365,false
+  );
+
+  registration_path := evidence_fleet::text || '/' || evidence_vehicle::text || '/registration.pdf';
+  lifting_chart_path := evidence_fleet::text || '/' || evidence_vehicle::text || '/lifting-chart.pdf';
+  operating_manual_path := evidence_fleet::text || '/' || evidence_vehicle::text || '/operating-manual.pdf';
+  incident_photo_path := evidence_fleet::text || '/incidents/' || evidence_incident::text || '/photo.jpg';
+
+  update public.vehicles
+  set registration_document_path=registration_path
+  where id=evidence_vehicle and fleet_id=evidence_fleet;
+
+  insert into public.vehicle_special_equipment(
+    id,fleet_id,vehicle_id,equipment_kind,
+    lifting_chart_document_path,operating_manual_document_path
+  ) values(
+    evidence_equipment,evidence_fleet,evidence_vehicle,'crane',
+    lifting_chart_path,operating_manual_path
+  );
+
+  insert into public.incidents(
+    id,fleet_id,vehicle_id,incident_type,description,status,created_by,photo_path
+  ) values(
+    evidence_incident,evidence_fleet,evidence_vehicle,'other',
+    'CI evidence reference fixture','open',evidence_user,incident_photo_path
+  );
+
+  insert into storage.objects(id,bucket_id,name,owner,metadata) values
+    (registration_object,'vehicle-registrations',registration_path,evidence_user,'{}'::jsonb),
+    (lifting_chart_object,'vehicle-registrations',lifting_chart_path,evidence_user,'{}'::jsonb),
+    (operating_manual_object,'vehicle-registrations',operating_manual_path,evidence_user,'{}'::jsonb),
+    (incident_photo_object,'incident-photos',incident_photo_path,evidence_user,'{}'::jsonb),
+    (unused_registration_object,'vehicle-registrations',
+      evidence_fleet::text || '/' || evidence_vehicle::text || '/unused.pdf',evidence_user,'{}'::jsonb),
+    (unused_incident_photo_object,'incident-photos',
+      evidence_fleet::text || '/incidents/unused.jpg',evidence_user,'{}'::jsonb);
+
+  if not private.storage_object_is_referenced('vehicle-registrations',registration_path)
+     or not private.storage_object_is_referenced('vehicle-registrations',lifting_chart_path)
+     or not private.storage_object_is_referenced('vehicle-registrations',operating_manual_path)
+     or not private.storage_object_is_referenced('incident-photos',incident_photo_path) then
+    raise exception 'Referenced-evidence helper missed one or more document/photo reference types';
+  end if;
+
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  execute 'set local role authenticated';
+
+  delete from storage.objects where id=registration_object;
+  get diagnostics affected_rows = row_count;
+  if affected_rows <> 0 then
+    raise exception 'Owner deleted a registration document that is still referenced by a vehicle';
+  end if;
+
+  delete from storage.objects where id=incident_photo_object;
+  get diagnostics affected_rows = row_count;
+  if affected_rows <> 0 then
+    raise exception 'Owner deleted an incident photo that is still referenced by an incident';
+  end if;
+
+  -- The guard must not become a blanket prohibition: unreferenced files remain removable.
+  delete from storage.objects where id=unused_registration_object;
+  get diagnostics affected_rows = row_count;
+  if affected_rows <> 1 then
+    raise exception 'Owner could not delete an unreferenced registration file';
+  end if;
+
+  delete from storage.objects where id=unused_incident_photo_object;
+  get diagnostics affected_rows = row_count;
+  if affected_rows <> 1 then
+    raise exception 'Owner could not delete an unreferenced incident photo';
+  end if;
+
+  execute 'reset role';
+
+  insert into pg_temp.trucksafe_e2e_results values
+    ('referenced private evidence cannot be deleted','PASS',
+     'Vehicle registration and incident photo deletes were blocked; unreferenced files remained deletable');
+  insert into pg_temp.trucksafe_e2e_results values
+    ('special-equipment evidence reference detection','PASS',
+     'Lifting chart and operating manual paths are recognized as referenced private evidence');
+end
+$referenced_evidence_delete_behavior$;
+
 select scenario, outcome, detail from pg_temp.trucksafe_e2e_results order by scenario;
 
 -- CI fixtures must never persist, even when all assertions pass.
