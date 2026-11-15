@@ -58,3 +58,10 @@ begin
   return new;
 end;
 $$;
+
+-- Attach the guard to INSERT as well as UPDATE; replacing the function alone
+-- would leave newly inserted rows outside the verification guard.
+drop trigger if exists guard_vehicle_registration_verification on public.vehicles;
+create trigger guard_vehicle_registration_verification
+before insert or update on public.vehicles
+for each row execute function private.guard_vehicle_registration_verification();

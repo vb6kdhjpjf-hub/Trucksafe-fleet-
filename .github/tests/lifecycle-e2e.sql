@@ -8,6 +8,7 @@ begin;
 \ir ../../supabase/migrations/20261114143000_enforce_vehicle_active_trip_status.sql
 \ir ../../supabase/migrations/20261114145000_lock_driver_before_trip_completion.sql
 \ir ../../supabase/migrations/20261115100000_protect_referenced_private_evidence.sql
+\ir ../../supabase/migrations/20261115113000_guard_vehicle_registration_insert_verification.sql
 
 create temporary table trucksafe_e2e_results (
   scenario text not null,
@@ -70,6 +71,37 @@ begin
      'Migration applies transactionally; helper is SECURITY DEFINER with restricted execution and both delete policies call it');
 end
 $evidence_guard_test$;
+
+do $vehicle_insert_verification_test$
+declare
+  definition text;
+begin
+  definition := lower(pg_get_functiondef(
+    'private.guard_vehicle_registration_verification()'::regprocedure
+  ));
+
+  if position('tg_op = ''insert''' in definition) = 0
+     or position('registration_verified_at is not null' in definition) = 0
+     or position('registration_verified_by is not null' in definition) = 0 then
+    raise exception 'Vehicle registration guard must reject client-supplied approval metadata on INSERT';
+  end if;
+
+  if (
+    select count(distinct event_manipulation)
+    from information_schema.triggers
+    where trigger_schema = 'public'
+      and event_object_table = 'vehicles'
+      and trigger_name = 'guard_vehicle_registration_verification'
+      and event_manipulation in ('INSERT','UPDATE')
+  ) <> 2 then
+    raise exception 'Vehicle registration verification guard must run on both INSERT and UPDATE';
+  end if;
+
+  insert into pg_temp.trucksafe_e2e_results values
+    ('vehicle registration insert verification guard', 'PASS',
+     'Trigger is attached to INSERT and UPDATE; client inserts cannot claim trusted verification');
+end
+$vehicle_insert_verification_test$;
 
 do $guard_test$
 declare
