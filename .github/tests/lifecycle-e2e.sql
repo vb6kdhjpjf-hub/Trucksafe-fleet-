@@ -38,9 +38,9 @@ begin
      or not (task_query_position < driver_query_position
        and driver_query_position < trip_lock_position
        and trip_lock_position < vehicle_query_position)
-     or position('for update' in substring(finish_definition from task_query_position)) = 0
-     or position('for update' in substring(finish_definition from driver_query_position)) = 0
-     or position('for update' in substring(finish_definition from trip_lock_position)) = 0
+     or position('for update' in substring(finish_definition from task_query_position for driver_query_position - task_query_position)) = 0
+     or position('for update' in substring(finish_definition from driver_query_position for trip_lock_position - driver_query_position)) = 0
+     or position('for update' in substring(finish_definition from trip_lock_position for vehicle_query_position - trip_lock_position)) = 0
      or position('for update' in substring(finish_definition from vehicle_query_position)) = 0 then
     raise exception 'finish_trip must lock task -> driver -> trip -> vehicle, matching trip-start lock order';
   end if;
