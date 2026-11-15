@@ -7,7 +7,7 @@ import path from "node:path";
 import { createHumanReviewEvent } from "../../scripts/record-restriction-source-review.mjs";
 
 const hash = value => createHash("sha256").update(value).digest("hex");
-async function fixture(t, report = { valid: true, approved_for_routing: false, dimensions: { authority: { status: "evidenced", evidence_refs: ["https://evidence.invalid/a"] } } }) {
+async function fixture(t, report = { valid: true, errors: [], approved_for_routing: false, dimensions: { authority: { status: "evidenced", evidence_refs: ["https://evidence.invalid/a"] } } }) {
   const root = await mkdtemp(path.join(os.tmpdir(), "trucksafe-review-")); t.after(() => rm(root, { recursive: true, force: true }));
   const outputDir = path.join(root, "quarantine"); await mkdir(outputDir); await chmod(outputDir, 0o700);
   const candidateFile = path.join(root, "candidate.json"); const assessmentReportFile = path.join(root, "assessment.json");
