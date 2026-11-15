@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
-import { constants } from "node:fs";
-import { open } from "node:fs/promises";
 import path from "node:path";
 import { hashRestrictionPayload } from "../lib/restriction-source-envelope.mjs";
+import { openNoFollow } from "../lib/open-no-follow.mjs";
 import { pathToFileURL } from "node:url";
 
 const sha256 = value => createHash("sha256").update(value).digest("hex");
@@ -11,7 +10,7 @@ const decisions = new Set(["accepted_for_pilot", "rejected", "needs_more_evidenc
 const eventKeys = ["schema_version", "candidate_schema_version", "source_id", "publisher", "dataset_name", "dataset_version", "licence_reference", "retrieved_at", "candidate_payload_sha256", "assessment_report_sha256", "reviewer", "reviewed_at", "decision", "notes", "evidence_refs", "event_sha256"];
 
 async function readBytes(file) {
-  const handle = await open(path.resolve(file), constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  const handle = await openNoFollow(path.resolve(file));
   try {
     const info = await handle.stat();
     if (!info.isFile() || info.size > 1024 * 1024) throw new Error("Input must be a regular file no larger than 1 MiB");
