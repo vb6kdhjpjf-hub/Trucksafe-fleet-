@@ -62,6 +62,24 @@ begin
     raise exception 'Road restriction evidence constraints are missing or unvalidated: %', missing_constraints;
   end if;
 
+  if position('direction IS NOT NULL' in upper(pg_get_constraintdef(
+       (select oid from pg_constraint
+        where conrelid = 'public.road_restrictions'::regclass
+          and conname = 'road_restrictions_verified_lane_level_height_evidence_check')
+     ))) = 0
+     or position('PASSAGE_LENGTH_M IS NOT NULL' in upper(pg_get_constraintdef(
+       (select oid from pg_constraint
+        where conrelid = 'public.road_restrictions'::regclass
+          and conname = 'road_restrictions_verified_lane_level_height_evidence_check')
+     ))) = 0
+     or position('POSTED_CLEARANCE_STATUS IS NOT NULL' in upper(pg_get_constraintdef(
+       (select oid from pg_constraint
+        where conrelid = 'public.road_restrictions'::regclass
+          and conname = 'road_restrictions_verified_lane_level_height_evidence_check')
+     ))) = 0 then
+    raise exception 'Verified bridge evidence guard must explicitly reject NULL direction, passage length and posted status';
+  end if;
+
   if exists (
     select 1 from public.road_restrictions
     where restriction_type = 'height'
