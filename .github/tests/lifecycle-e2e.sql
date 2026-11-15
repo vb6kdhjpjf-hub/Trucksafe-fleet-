@@ -25,8 +25,31 @@ declare
     'posted_clearance_status', 'posted_clearance_m', 'surveyor',
     'measurement_coverage'
   ];
+  required_guard_fragments text[] := array[
+    'COUNTRY_CODE = ''IL''',
+    'DIRECTION IS NOT NULL',
+    'PASSAGE_LENGTH_M IS NOT NULL',
+    'MAX_HEIGHT_M IS NOT NULL',
+    'MEASURED_CLEARANCE_M IS NOT NULL',
+    'MEASUREMENT_DATE IS NOT NULL',
+    'MEASUREMENT_ACCURACY_CM IS NOT NULL',
+    'MEASUREMENT_METHOD',
+    'MEASUREMENT_LOCATION_NOTE',
+    'MEASUREMENT_DOCUMENT_URL IS NOT NULL',
+    'VERIFIED_AT IS NOT NULL',
+    'VERIFIED_BY IS NOT NULL',
+    'SOURCE_NAME',
+    'SOURCE_URL IS NOT NULL',
+    'SOURCE_LAST_CHECKED_AT IS NOT NULL',
+    'VERIFICATION_NOTE',
+    'POSTED_CLEARANCE_STATUS IS NOT NULL',
+    'SURVEYOR',
+    'MEASUREMENT_COVERAGE IS NOT NULL'
+  ];
   missing_columns text[];
   missing_constraints text[];
+  guard_definition text;
+  required_fragment text;
 begin
   select array_agg(required.column_name order by required.column_name)
   into missing_columns
@@ -62,23 +85,18 @@ begin
     raise exception 'Road restriction evidence constraints are missing or unvalidated: %', missing_constraints;
   end if;
 
-  if position('direction IS NOT NULL' in upper(pg_get_constraintdef(
-       (select oid from pg_constraint
-        where conrelid = 'public.road_restrictions'::regclass
-          and conname = 'road_restrictions_verified_lane_level_height_evidence_check')
-     ))) = 0
-     or position('PASSAGE_LENGTH_M IS NOT NULL' in upper(pg_get_constraintdef(
-       (select oid from pg_constraint
-        where conrelid = 'public.road_restrictions'::regclass
-          and conname = 'road_restrictions_verified_lane_level_height_evidence_check')
-     ))) = 0
-     or position('POSTED_CLEARANCE_STATUS IS NOT NULL' in upper(pg_get_constraintdef(
-       (select oid from pg_constraint
-        where conrelid = 'public.road_restrictions'::regclass
-          and conname = 'road_restrictions_verified_lane_level_height_evidence_check')
-     ))) = 0 then
-    raise exception 'Verified bridge evidence guard must explicitly reject NULL direction, passage length and posted status';
-  end if;
+  select upper(pg_get_constraintdef(c.oid))
+  into guard_definition
+  from pg_constraint c
+  where c.conrelid = 'public.road_restrictions'::regclass
+    and c.conname = 'road_restrictions_verified_lane_level_height_evidence_check'
+    and c.convalidated;
+
+  foreach required_fragment in array required_guard_fragments loop
+    if position(required_fragment in guard_definition) = 0 then
+      raise exception 'Verified bridge evidence guard is missing required rule: %', required_fragment;
+    end if;
+  end loop;
 
   if exists (
     select 1 from public.road_restrictions
@@ -91,17 +109,30 @@ begin
         or direction is null
         or direction not in ('forward', 'backward')
         or passage_length_m is null
-        or nullif(btrim(surveyor), '') is null
+        or max_height_m is null
+        or measured_clearance_m is null
+        or measurement_date is null
+        or measurement_accuracy_cm is null
+        or nullif(btrim(measurement_method), '') is null
+        or nullif(btrim(measurement_location_note), '') is null
+        or nullif(btrim(measurement_document_url), '') is null
+        or verified_at is null
+        or verified_by is null
+        or nullif(btrim(source_name), '') is null
+        or nullif(btrim(source_url), '') is null
+        or source_last_checked_at is null
+        or nullif(btrim(verification_note), '') is null
         or posted_clearance_status is null
+        or nullif(btrim(surveyor), '') is null
         or measurement_coverage is null
       )
   ) then
-    raise exception 'A verified height restriction lacks lane-level physical evidence';
+    raise exception 'A verified height restriction lacks required physical survey or provenance evidence';
   end if;
 
   insert into pg_temp.trucksafe_e2e_results values
     ('lane-level bridge clearance evidence schema', 'PASS',
-     'Required fields and validated constraints exist; no verified height row lacks required evidence');
+     'Required fields and complete verified-evidence constraints exist; no verified height row lacks evidence');
 end
 $road_restriction_evidence_schema_test$;
 
