@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { constants } from "node:fs";
 import { open, rm } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { validateCandidateRestrictionEnvelope } from "../lib/restriction-source-envelope.mjs";
 import { assertPrivateDirectory } from "../lib/private-directory.mjs";
+import { openNoFollow } from "../lib/open-no-follow.mjs";
 
 export const MAX_SOURCE_BYTES = 5 * 1024 * 1024;
 
@@ -29,7 +29,7 @@ export function parseArgs(argv) {
 }
 
 async function readBoundedInput(input) {
-  const handle = await open(input, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  const handle = await openNoFollow(input);
   try {
     const info = await handle.stat();
     if (!info.isFile()) throw new Error("Input must be a regular file");
