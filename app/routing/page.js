@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { getSavedTruckRoutingProfile } from "../../lib/truck-routing-profile.mjs";
+import { assessVehicleDocumentCompliance, getIsraelCalendarDate } from "../../lib/vehicle-document-compliance.mjs";
 import { formatRejectedRouteMessages } from "../../lib/truck-route-rejection.mjs";
 import { ArrowRight, MapPin, Navigation, Route, ShieldAlert, Truck } from "lucide-react";
 
@@ -70,6 +71,7 @@ export default function TruckRoutingPage() {
   const mapElement = useRef(null);
   const [form, setForm] = useState(initial);
   const [vehicles, setVehicles] = useState([]);
+  const [vehicleComplianceWarning, setVehicleComplianceWarning] = useState("");
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -91,7 +93,7 @@ export default function TruckRoutingPage() {
       if (error || !data.session) { router.replace("/"); return; }
       const { data: vehicleRows, error: vehicleError } = await supabase
         .from("vehicles")
-        .select("id,registration_number,make,model,status,is_demo,registration_verification_status,registration_document_path,registration_verified_at,registration_verified_by,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,empty_weight_kg,axle_count,trailer_count,weight_per_axle_kg")
+        .select("id,registration_number,make,model,status,is_demo,test_due_at,insurance_due_at,registration_due_at,registration_verification_status,registration_document_path,registration_verified_at,registration_verified_by,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,empty_weight_kg,axle_count,trailer_count,weight_per_axle_kg")
         .in("status", ["available", "assigned"])
         .order("registration_number", { ascending: true });
       if (!alive) return;
@@ -99,7 +101,12 @@ export default function TruckRoutingPage() {
         setMessage("לא ניתן לטעון את כלי הרכב המורשים לניווט. נסה לטעון מחדש.");
         setVehicles([]);
       } else {
-        const eligibleVehicles = (vehicleRows || []).filter(vehicle => getSavedTruckRoutingProfile(vehicle));
+        const profileVehicles = (vehicleRows || []).filter(vehicle => getSavedTruckRoutingProfile(vehicle));
+        const today = getIsraelCalendarDate();
+        const eligibleVehicles = profileVehicles.filter(vehicle => assessVehicleDocumentCompliance(vehicle, today).ready);
+        setVehicleComplianceWarning(profileVehicles.length > eligibleVehicles.length
+          ? "רכב עם טסט, ביטוח או רישיון רכב חסרים או שפג תוקפם לא יוצג לבחירה."
+          : "");
         setVehicles(eligibleVehicles);
         if (eligibleVehicles.length === 1) setSelectedVehicleId(eligibleVehicles[0].id);
       }
@@ -369,6 +376,7 @@ export default function TruckRoutingPage() {
 
       <form onSubmit={calculate} style={{ background: "white", border: "1px solid #e5eaf1", borderRadius: 16, padding: 18, boxShadow: "0 5px 20px #17233808" }}>
         <h2 style={{ margin: "0 0 14px", fontSize: 18 }}>פרטי הנסיעה והרכב</h2>
+        {vehicleComplianceWarning && <p role="status" style={{ background: "#fff8e8", border: "1px solid #f0d9a8", borderRadius: 9, padding: 10, margin: "0 0 12px", fontSize: 13 }}>{vehicleComplianceWarning}</p>}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 14 }}>
           <label style={label}>רכב שמור ומאומת מהצי<select required style={field} value={selectedVehicleId} onChange={event => selectVehicle(event.target.value)}><option value="">בחר רכב מאומת</option>{vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.id}>{vehicle.registration_number}{vehicle.make ? " · " + vehicle.make : ""}</option>)}</select></label>
           <label style={label}>מוצא בישראל<div style={{ display: "flex", gap: 7, marginTop: 6 }}><input required maxLength={180} style={{ ...field, marginTop: 0, minWidth: 0 }} value={form.origin} onChange={e => update("origin", e.target.value)} placeholder="כתובת, יישוב או אזור"/><button type="button" onClick={useCurrentLocation} disabled={locating || busy} style={{ ...field, width: "auto", whiteSpace: "nowrap", marginTop: 0, cursor: "pointer" }}><MapPin size={15} style={{ verticalAlign: "middle" }}/> {locating ? "מאתר..." : "המיקום שלי"}</button></div></label>
