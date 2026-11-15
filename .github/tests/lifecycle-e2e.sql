@@ -27,8 +27,10 @@ begin
 
   if position('public.vehicles' in helper_definition) = 0
      or position('public.vehicle_special_equipment' in helper_definition) = 0
+     or position('lifting_chart_document_path' in helper_definition) = 0
+     or position('operating_manual_document_path' in helper_definition) = 0
      or position('public.incidents' in helper_definition) = 0 then
-    raise exception 'Evidence reference guard must cover vehicle registrations, lifting charts, and incident photos';
+    raise exception 'Evidence reference guard must cover vehicle registrations, lifting charts, operating manuals, and incident photos';
   end if;
 
   if not (
