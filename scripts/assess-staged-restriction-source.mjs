@@ -1,12 +1,13 @@
-import { constants } from "node:fs";
-import { lstat, open, realpath } from "node:fs/promises";
+import { open } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { assessRestrictionSource } from "../lib/restriction-source-assessment.mjs";
 import { hashRestrictionPayload } from "../lib/restriction-source-envelope.mjs";
+import { assertPrivateDirectory } from "../lib/private-directory.mjs";
+import { openNoFollow } from "../lib/open-no-follow.mjs";
 
 async function readJson(file) {
-  const handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  const handle = await openNoFollow(file);
   try {
     const info = await handle.stat();
     if (!info.isFile() || info.size > 1024 * 1024) throw new Error("Input must be a regular file no larger than 1 MiB");
@@ -27,10 +28,7 @@ export async function createAssessmentReport({ candidateFile, assessmentFile, ou
   if (candidatePayloadHash !== candidate.payload_sha256) throw new Error("Candidate payload hash does not match stored payload");
   const assessment = await readJson(assessmentFile);
   const report = { ...assessRestrictionSource(assessment), candidate_payload_sha256: candidate.payload_sha256 };
-  const requestedDir = path.resolve(outputDir);
-  const info = await lstat(requestedDir);
-  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("Output path must be an existing, non-symlink directory");
-  const dir = await realpath(requestedDir);
+  const dir = await assertPrivateDirectory(outputDir, "Assessment output");
   const output = path.join(dir, "candidate-" + candidate.payload_sha256 + ".assessment.json");
   const handle = await open(output, "wx", 0o600);
   try { await handle.writeFile(JSON.stringify(report, null, 2) + "\n", "utf8"); await handle.sync(); }
