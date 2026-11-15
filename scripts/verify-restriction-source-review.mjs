@@ -33,7 +33,7 @@ export async function verifyHumanReviewEvent({ candidateFile, assessmentReportFi
     throw new Error("Candidate is malformed or not explicitly unapproved");
   }
   if (hashRestrictionPayload(candidate.payload) !== candidate.payload_sha256) throw new Error("Candidate payload hash does not match stored payload");
-  if (!report || typeof report !== "object" || Array.isArray(report) || report.approved_for_routing !== false || typeof report.valid !== "boolean" || !report.dimensions || typeof report.dimensions !== "object" || Array.isArray(report.dimensions)) {
+  if (!report || typeof report !== "object" || Array.isArray(report) || report.approved_for_routing !== false || typeof report.valid !== "boolean" || !Array.isArray(report.errors) || report.errors.some(item => typeof item !== "string") || report.valid !== (report.errors.length === 0) || !report.dimensions || typeof report.dimensions !== "object" || Array.isArray(report.dimensions)) {
     throw new Error("Assessment report is malformed or not explicitly unapproved");
   }
   if (report.candidate_payload_sha256 !== candidate.payload_sha256) {
