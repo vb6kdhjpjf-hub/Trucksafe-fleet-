@@ -3,6 +3,7 @@
 BEGIN;
 
 \ir ../../supabase/migrations/20261111162000_enforce_fleet_scoped_foreign_keys.sql
+\ir ../../supabase/migrations/20261111180000_maintenance_incident_vehicle_match.sql
 
 CREATE TEMP TABLE trucksafe_fk_results (
   scenario text PRIMARY KEY,
@@ -98,7 +99,7 @@ BEGIN
   VALUES
     (inc_a, f_a, trip_a, d_a, v_a, 'collision', 'Synthetic fleet A incident'),
     (inc_b, f_b, trip_b, d_b, v_b, 'collision', 'Synthetic fleet B incident'),
-    (inc_extra, f_a, NULL, NULL, NULL, 'other', 'Incident delete behavior'),
+    (inc_extra, f_a, NULL, d_a, v_a, 'other', 'Incident delete behavior'),
     (inc_trip_extra, f_a, trip_extra, d_a, v_a, 'other', 'Trip delete behavior');
 
   INSERT INTO public.inspections
@@ -175,6 +176,10 @@ BEGIN
   PERFORM pg_temp.assert_fk_rejects(
     format('INSERT INTO public.maintenance_records (fleet_id,vehicle_id,maintenance_type,incident_id) VALUES (%L,%L,%L,%L)', f_a, v_a, 'repair', inc_b),
     'maintenance incident cannot cross fleets');
+
+  PERFORM pg_temp.assert_fk_rejects(
+    format('INSERT INTO public.maintenance_records (fleet_id,vehicle_id,maintenance_type,incident_id) VALUES (%L,%L,%L,%L)', f_a, v_extra, 'repair', inc_a),
+    'maintenance incident must belong to the same vehicle');
 
   PERFORM pg_temp.assert_fk_rejects(
     format('INSERT INTO public.trip_locations (trip_id,driver_id,latitude,longitude) VALUES (%L,%L,32.1,34.1)', trip_a, d_b),
