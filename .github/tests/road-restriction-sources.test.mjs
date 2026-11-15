@@ -292,3 +292,18 @@ test("TransIsrael ISTRC page is an asset-scoped acquisition lead, not a restrict
   assert.match(source.limitations, /רישיון וזכויות שימוש מסחרי/);
   assert.equal(isSourceCandidateOnly(source), true);
 });
+
+
+test("TransIsrael Carmel Tunnels published dimensions are context only, not lane-level clearance or truck passage approval", () => {
+  const source = getRoadRestrictionSource("transisrael-carmel-tunnels-published-dimensions");
+  assert.ok(source);
+  assert.equal(source.publisher, "חברת חוצה ישראל בע״מ");
+  assert.equal(source.url, "https://www.transisrael.co.il/Project?projectID=87");
+  assert.equal(source.candidateOnly, true);
+  assert.equal(source.routingEligible, false);
+  assert.equal(source.dataTypes.includes("carmel_tunnels_published_height_context"), true);
+  assert.match(source.limitations, /גובה מנהרה 6.5 מ׳ ורוחב 10 מ׳/);
+  assert.match(source.limitations, /אין בהם שיוך לכל נתיב/);
+  assert.match(source.limitations, /אין להסיק מהם שרכב מסוים מורשה או מסוגל לעבור/);
+  assert.equal(isSourceCandidateOnly(source), true);
+});
