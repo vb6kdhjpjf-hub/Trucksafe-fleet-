@@ -18,6 +18,7 @@ export default function TasksPage() {
   const [trips, setTrips] = useState([]);
   const [inspections, setInspections] = useState([]);
   const [drivers, setDrivers] = useState([]);
+  const [currentDriverId, setCurrentDriverId] = useState(null);
   const [vehicles, setVehicles] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [showForm, setShowForm] = useState(false);
@@ -59,21 +60,26 @@ export default function TasksPage() {
     }
     const current = data.fleet;
     setFleet(current);
-    const [t, d, v, tr] = await Promise.all([
+    const [t, d, v, tr, currentDriver] = await Promise.all([
       supabase.from("tasks").select("id,reference_code,title,description,pickup_address,delivery_address,scheduled_at,assigned_driver_id,assigned_vehicle_id,status,created_at").eq("fleet_id", current.id).order("created_at", { ascending: false }),
       supabase.from("drivers").select("id,full_name,status").eq("fleet_id", current.id).order("created_at", { ascending: false }),
       supabase.from("vehicles").select("id,registration_number,make,vehicle_type,status").eq("fleet_id", current.id).order("created_at", { ascending: false }),
-      supabase.from("trips").select("id,task_id,driver_id,vehicle_id,status,origin_address,destination_address,started_at,ended_at").eq("fleet_id", current.id).order("created_at", { ascending: false }).limit(50)
+      supabase.from("trips").select("id,task_id,driver_id,vehicle_id,status,origin_address,destination_address,started_at,ended_at").eq("fleet_id", current.id).order("created_at", { ascending: false }).limit(50),
+      supabase.from("drivers").select("id").eq("fleet_id", current.id).eq("user_id", user.id).maybeSingle()
     ]);
     if (t.error) setMessage("שגיאה בטעינת המשימות: " + t.error.message); else setTasks(t.data || []);
     if (d.error) setMessage("שגיאה בטעינת הנהגים: " + d.error.message); else setDrivers(d.data || []);
     if (v.error) setMessage("שגיאה בטעינת כלי הרכב: " + v.error.message); else setVehicles(v.data || []);
     if (tr.error) setMessage("שגיאה בטעינת הנסיעות: " + tr.error.message); else setTrips(tr.data || []);
+    setCurrentDriverId(currentDriver?.data?.id || null);
+    if (currentDriver?.error) setMessage("לא הצלחנו לאמת את שיוך הנהג לחשבון. פעולות נסיעה יישארו חסומות עד לבדיקה.");
     const { data: inspectionRows, error: inspectionError } = await supabase.from("inspections").select("id,trip_id,vehicle_id,driver_id,inspection_type,checklist,defects,passed,inspected_at").eq("fleet_id", current.id).order("inspected_at", { ascending: false }).limit(30);
     if (inspectionError) setMessage("שגיאה בטעינת היסטוריית בדיקות הרכב: " + inspectionError.message); else setInspections(inspectionRows || []);
   }
 
   const canManageTasks = ["owner", "fleet_manager", "dispatcher"].includes(fleet?.role);
+  const isAssignedDriver = driverId => Boolean(currentDriverId && currentDriverId === driverId);
+  const canOperateTrip = trip => canManageTasks || isAssignedDriver(trip?.driver_id);
 
   async function saveTask(e) {
     e.preventDefault();
@@ -124,6 +130,7 @@ export default function TasksPage() {
   }
 
   async function startTrip(task) {
+    if (!canManageTasks && !isAssignedDriver(task?.assigned_driver_id)) { setMessage("רק מנהל מורשה או הנהג המשויך למשימה יכולים לפתוח נסיעה."); return; }
     if (!task.assigned_driver_id || !task.assigned_vehicle_id) { setMessage("כדי להתחיל נסיעה יש לשייך למשימה גם נהג וגם רכב."); return; }
     setPreTripTask(task); setPreTripChecks({}); setPreTripDefectDetails(""); setMessage("");
   }
@@ -165,6 +172,7 @@ export default function TasksPage() {
   }
 
   async function endTrip(trip) {
+    if (!canOperateTrip(trip)) { setMessage("רק מנהל מורשה או הנהג המשויך לנסיעה יכולים לסיים אותה."); return; }
     if (!fleet || !session?.user || !trip?.id) return;
     setBusy(true); setMessage("");
     try {
@@ -198,6 +206,7 @@ export default function TasksPage() {
   }
 
   function startTracking(trip) {
+    if (!isAssignedDriver(trip?.driver_id)) { setMessage("מעקב GPS יכול להתחיל רק ממכשיר הנהג המשויך לנסיעה."); return; }
     if (!navigator.geolocation) { setMessage("המכשיר או הדפדפן אינם תומכים בשיתוף מיקום."); return; }
     if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
     setMessage("מבקש הרשאת מיקום ומתחיל מעקב...");
@@ -251,7 +260,7 @@ export default function TasksPage() {
             <div className="task-card-top"><div><b>{tasks.find(t=>t.id===trip.task_id)?.title || "נסיעה ללא משימה"}</b><small>התחלה: {trip.started_at ? new Date(trip.started_at).toLocaleString("he-IL") : "לא צוין"}</small></div><span className="task-status task-in_progress">בנסיעה</span></div>
             <div className="task-assignees"><span>נהג: {drivers.find(d=>d.id===trip.driver_id)?.full_name || "לא ידוע"}</span><span>רכב: {vehicles.find(v=>v.id===trip.vehicle_id)?.registration_number || "לא ידוע"}</span></div>
             <div className="task-route"><span><MapPin size={14}/> {trip.origin_address || "מוצא לא צוין"}</span><span><MapPin size={14}/> {trip.destination_address || "יעד לא צוין"}</span></div>
-            <div className="task-actions">{trackingTripId===trip.id ? <button className="secondary-btn" disabled={busy} onClick={stopTracking}>עצירת מעקב GPS</button> : <button className="secondary-btn" disabled={busy || trackingTripId!==null} onClick={()=>startTracking(trip)}>התחלת מעקב GPS רציף</button>}<button className="primary-btn" disabled={busy} onClick={()=>endTrip(trip)}><CheckCircle2 size={14}/> סיום נסיעה</button></div>
+            <div className="task-actions">{isAssignedDriver(trip.driver_id) ? (trackingTripId===trip.id ? <button className="secondary-btn" disabled={busy} onClick={stopTracking}>עצירת מעקב GPS</button> : <button className="secondary-btn" disabled={busy || trackingTripId!==null} onClick={()=>startTracking(trip)}>התחלת מעקב GPS רציף</button>) : <span className="task-description">מעקב GPS זמין ממכשיר הנהג המשויך בלבד</span>}{canOperateTrip(trip) && <button className="primary-btn" disabled={busy} onClick={()=>endTrip(trip)}><CheckCircle2 size={14}/> סיום נסיעה</button>}</div>
           </article>)}</div>}
       </section>
       <section className="fleet-panel">
@@ -284,7 +293,7 @@ export default function TasksPage() {
             {(task.pickup_address || task.delivery_address) && <div className="task-route"><span><MapPin size={14}/> איסוף: {task.pickup_address || "לא צוין"}</span><span><MapPin size={14}/> יעד: {task.delivery_address || "לא צוין"}</span></div>}
             <div className="task-assignees"><span>נהג: {drivers.find(d=>d.id===task.assigned_driver_id)?.full_name || "לא שובץ"}</span><span>רכב: {vehicles.find(v=>v.id===task.assigned_vehicle_id)?.registration_number || "לא שובץ"}</span>{task.scheduled_at && <span><CalendarClock size={13}/> {new Date(task.scheduled_at).toLocaleString("he-IL")}</span>}</div>
             {task.description && <p className="task-description">{task.description}</p>}
-            <div className="task-actions"><label>סטטוס<select disabled={busy||!canManageTasks} value={task.status} onChange={e=>updateStatus(task,e.target.value)}>{Object.entries(labels).filter(([value])=>["pending","assigned","cancelled"].includes(value)||value===task.status).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>{!["completed","cancelled"].includes(task.status) && <button className="primary-btn" disabled={busy} onClick={()=>startTrip(task)}><Play size={14}/> פתיחת נסיעה</button>}</div>
+            <div className="task-actions"><label>סטטוס<select disabled={busy||!canManageTasks} value={task.status} onChange={e=>updateStatus(task,e.target.value)}>{Object.entries(labels).filter(([value])=>["pending","assigned","cancelled"].includes(value)||value===task.status).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>{!["completed","cancelled"].includes(task.status) && (canManageTasks || isAssignedDriver(task.assigned_driver_id)) && <button className="primary-btn" disabled={busy} onClick={()=>startTrip(task)}><Play size={14}/> פתיחת נסיעה</button>}</div>
           </article>)}</div>}
       </section>
       <p className="fleet-foot">TruckSafe Fleet V1 · המשימות והנסיעות נשמרות במסד הנתונים</p>
