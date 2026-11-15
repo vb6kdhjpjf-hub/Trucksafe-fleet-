@@ -14,6 +14,7 @@ function isValidAssessmentReport(report, candidatePayloadHash) {
   if (!report || typeof report !== "object" || Array.isArray(report) ||
       report.approved_for_routing !== false || report.candidate_payload_sha256 !== candidatePayloadHash || !isHash(report.candidate_payload_sha256) || typeof report.valid !== "boolean" ||
       !Array.isArray(report.errors) || report.errors.some(item => typeof item !== "string") ||
+      report.valid !== (report.errors.length === 0) ||
       !report.dimensions || typeof report.dimensions !== "object" || Array.isArray(report.dimensions) ||
       !Array.isArray(report.blocking_gaps) || typeof report.evidence_dossier_complete !== "boolean" ||
       Object.keys(report.dimensions).length !== ASSESSMENT_DIMENSIONS.length ||
