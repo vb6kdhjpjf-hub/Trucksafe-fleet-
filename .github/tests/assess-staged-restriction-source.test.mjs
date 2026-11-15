@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createAssessmentReport } from "../../scripts/assess-staged-restriction-source.mjs";
@@ -10,7 +10,7 @@ import { RESTRICTION_SOURCE_ASSESSMENT_DIMENSIONS } from "../../lib/restriction-
 test("creates a separate conservative report without modifying the candidate", async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), "trucksafe-assess-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const outputDir = path.join(root, "reports"); await mkdir(outputDir);
+  const outputDir = path.join(root, "reports"); await mkdir(outputDir); await chmod(outputDir, 0o700);
   const candidateFile = path.join(root, "candidate.json");
   const assessmentFile = path.join(root, "assessment.json");
   const payload = { fixture: true };
@@ -29,7 +29,7 @@ test("creates a separate conservative report without modifying the candidate", a
 test("defaults incomplete evidence to blocking gaps and never overwrites a report", async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), "trucksafe-assess-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const outputDir = path.join(root, "reports"); await mkdir(outputDir);
+  const outputDir = path.join(root, "reports"); await mkdir(outputDir); await chmod(outputDir, 0o700);
   const candidateFile = path.join(root, "candidate.json");
   const assessmentFile = path.join(root, "assessment.json");
   const payload = { fixture: "incomplete" };
@@ -44,7 +44,7 @@ test("defaults incomplete evidence to blocking gaps and never overwrites a repor
 test("rejects a candidate not explicitly marked unapproved", async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), "trucksafe-assess-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const outputDir = path.join(root, "reports"); await mkdir(outputDir);
+  const outputDir = path.join(root, "reports"); await mkdir(outputDir); await chmod(outputDir, 0o700);
   const candidateFile = path.join(root, "candidate.json"); const assessmentFile = path.join(root, "assessment.json");
   await writeFile(candidateFile, JSON.stringify({ payload_sha256: "c".repeat(64), review: { approved_for_routing: true } }));
   await writeFile(assessmentFile, "{}");
