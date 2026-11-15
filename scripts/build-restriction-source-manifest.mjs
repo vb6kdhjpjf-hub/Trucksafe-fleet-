@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, open, readdir, realpath } from "node:fs/promises";
+import { lstat, open, readdir } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { hashRestrictionPayload } from "../lib/restriction-source-envelope.mjs";
+import { assertPrivateDirectory } from "../lib/private-directory.mjs";
 import { verifyHumanReviewEvent } from "./verify-restriction-source-review.mjs";
 
 const sha256 = value => createHash("sha256").update(value).digest("hex");
@@ -72,22 +73,16 @@ export async function buildRestrictionSourceManifest({ quarantineDir, outputDir 
       !/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$/.test(createdAt)) {
     throw new Error("createdAt must be ISO 8601 with an explicit timezone");
   }
-  const requestedDir = path.resolve(quarantineDir);
-  const dirInfo = await lstat(requestedDir);
-  if (!dirInfo.isDirectory() || dirInfo.isSymbolicLink()) throw new Error("Quarantine path must be an existing, non-symlink directory");
-  const dir = await realpath(requestedDir);
-  const targetInfo = await lstat(path.resolve(outputDir));
-  if (!targetInfo.isDirectory() || targetInfo.isSymbolicLink()) throw new Error("Output path must be an existing, non-symlink directory");
-  const targetDir = await realpath(path.resolve(outputDir));
+  const dir = await assertPrivateDirectory(quarantineDir, "Quarantine");
+  const targetDir = await assertPrivateDirectory(outputDir, "Output");
 
   const names = await readdir(dir);
   const candidateNames = names.filter(name => /^candidate-[a-f0-9]{64}\.json$/.test(name)).sort();
   const reviewDir = path.join(dir, "reviews");
   let reviewNames = [];
   try {
-    const info = await lstat(reviewDir);
-    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("Reviews path must be a non-symlink directory");
-    reviewNames = (await readdir(reviewDir)).filter(name => /^review-[a-f0-9]{64}\.json$/.test(name)).sort();
+    const privateReviewDir = await assertPrivateDirectory(reviewDir, "Reviews");
+    reviewNames = (await readdir(privateReviewDir)).filter(name => /^review-[a-f0-9]{64}\\.json$/.test(name)).sort();
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
