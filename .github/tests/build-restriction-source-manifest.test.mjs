@@ -91,3 +91,19 @@ test("marks an assessment linked to a different candidate as invalid", async t =
   assert.equal(result.manifest.candidates[0].status, "assessment_invalid");
   assert.equal(result.manifest.candidates[0].approved_for_routing, false);
 });
+
+test("rejects assessment reports whose valid flag contradicts their errors", async t => {
+  for (const overrides of [
+    { valid: true, errors: ["synthetic validation error"] },
+    { valid: false, errors: [] }
+  ]) {
+    const f = await fixture(t);
+    await writeFile(f.assessmentFile, JSON.stringify(validAssessment(f.payloadHash, overrides)));
+    const result = await buildRestrictionSourceManifest({
+      quarantineDir: f.root,
+      createdAt: "2026-11-10T18:50:00Z"
+    });
+    assert.equal(result.manifest.candidates[0].status, "assessment_invalid");
+    assert.equal(result.manifest.candidates[0].approved_for_routing, false);
+  }
+});
