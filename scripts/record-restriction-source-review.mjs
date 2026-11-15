@@ -1,16 +1,16 @@
 import { createHash } from "node:crypto";
-import { constants as fsConstants } from "node:fs";
 import { mkdir, open } from "node:fs/promises";
 import path from "node:path";
 import { hashRestrictionPayload } from "../lib/restriction-source-envelope.mjs";
 import { assertPrivateDirectory } from "../lib/private-directory.mjs";
+import { openNoFollow } from "../lib/open-no-follow.mjs";
 import { pathToFileURL } from "node:url";
 
 const sha256 = value => createHash("sha256").update(value).digest("hex");
 const isHash = value => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 
 async function readBytes(file) {
-  const handle = await open(file, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+  const handle = await openNoFollow(file);
   try {
     const info = await handle.stat();
     if (!info.isFile() || info.size > 1024 * 1024) throw new Error("Input must be a regular file no larger than 1 MiB");
