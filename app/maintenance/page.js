@@ -52,6 +52,8 @@ export default function MaintenancePage() {
     if(form.cost!==""&&(!Number.isFinite(Number(form.cost))||Number(form.cost)<0)){setMessage("יש להזין עלות תקינה שאינה שלילית.");return;}
     if(form.odometer_km!==""&&(!Number.isFinite(Number(form.odometer_km))||Number(form.odometer_km)<0)){setMessage("יש להזין קילומטראז׳ תקין שאינו שלילי.");return;}
     if(form.scheduled_at&&form.completed_at&&form.completed_at<form.scheduled_at){setMessage("תאריך הביצוע אינו יכול להיות לפני מועד הטיפול המתוכנן.");return;}
+    if(form.status==="completed"&&!form.completed_at){setMessage("כדי לסמן טיפול כהושלם, יש להזין גם את תאריך הביצוע.");return;}
+    if(form.completed_at&&form.status!=="completed"){setMessage("אם הוזן תאריך ביצוע, יש לבחור בסטטוס הושלם.");return;}
     setBusy(true);setMessage("");
     try{
       const payload={fleet_id:fleet.id,vehicle_id:form.vehicle_id,incident_id:form.incident_id||null,maintenance_type:form.maintenance_type,description:form.description.trim()||null,scheduled_at:form.scheduled_at||null,completed_at:form.completed_at||null,cost:form.cost===""?null:Number(form.cost),odometer_km:form.odometer_km===""?null:Number(form.odometer_km),status:form.status};
