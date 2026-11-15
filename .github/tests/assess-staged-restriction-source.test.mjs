@@ -50,3 +50,31 @@ test("rejects a candidate not explicitly marked unapproved", async t => {
   await writeFile(assessmentFile, "{}");
   await assert.rejects(createAssessmentReport({ candidateFile, assessmentFile, outputDir }), /not explicitly unapproved/);
 });
+
+
+test("rejects symlinked candidate and assessment inputs", async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "trucksafe-assess-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const outputDir = path.join(root, "reports"); await mkdir(outputDir); await chmod(outputDir, 0o700);
+  const realCandidate = path.join(root, "real-candidate.json");
+  const candidateLink = path.join(root, "candidate-link.json");
+  const assessmentFile = path.join(root, "assessment.json");
+  const payload = { fixture: "symlink" };
+  await writeFile(realCandidate, JSON.stringify({ payload_sha256: hashRestrictionPayload(payload), payload, review: { approved_for_routing: false } }));
+  await writeFile(assessmentFile, "{}");
+  const { symlink } = await import("node:fs/promises");
+  await symlink(realCandidate, candidateLink);
+  await assert.rejects(createAssessmentReport({ candidateFile: candidateLink, assessmentFile, outputDir }));
+});
+
+test("rejects a group/world-accessible assessment output directory", async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "trucksafe-assess-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const outputDir = path.join(root, "reports"); await mkdir(outputDir); await chmod(outputDir, 0o755);
+  const candidateFile = path.join(root, "candidate.json");
+  const assessmentFile = path.join(root, "assessment.json");
+  const payload = { fixture: "permissions" };
+  await writeFile(candidateFile, JSON.stringify({ payload_sha256: hashRestrictionPayload(payload), payload, review: { approved_for_routing: false } }));
+  await writeFile(assessmentFile, "{}");
+  await assert.rejects(createAssessmentReport({ candidateFile, assessmentFile, outputDir }), /private permissions/);
+});
