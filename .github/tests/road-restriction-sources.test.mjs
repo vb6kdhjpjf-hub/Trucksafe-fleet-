@@ -277,3 +277,18 @@ test("every registered source remains routing-ineligible until a separate safety
     assert.equal(isSourceCandidateOnly(source), true, `${source.id} must remain candidate-only for routing decisions`);
   }
 });
+
+
+test("TransIsrael ISTRC page is an asset-scoped acquisition lead, not a restriction feed or proof of network-wide authority", () => {
+  const source = getRoadRestrictionSource("transisrael-infrastructure-data-access-lead");
+  assert.ok(source);
+  assert.equal(source.publisher, "המרכז הישראלי לחקר תחבורה חכמה (ISTRC), מידע על חוצה ישראל");
+  assert.equal(source.contact, "eldads@transisrael.co.il");
+  assert.equal(source.candidateOnly, true);
+  assert.equal(source.routingEligible, false);
+  assert.equal(source.dataTypes.includes("carmel_tunnels_asset_data_access_lead"), true);
+  assert.match(source.limitations, /לא מאגר נתונים זמין/);
+  assert.match(source.limitations, /חלוקת אחריות בין זכיינים ומקטעים/);
+  assert.match(source.limitations, /רישיון וזכויות שימוש מסחרי/);
+  assert.equal(isSourceCandidateOnly(source), true);
+});
