@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
+import { getIsraelCalendarDate, addIsraelCalendarDays, differenceInCalendarDays } from "../../lib/israel-date.mjs";
 import { Truck, ArrowRight, Plus, Wrench, RefreshCw, CalendarDays } from "lucide-react";
 
 const blank = { vehicle_id: "", incident_id: "", maintenance_type: "טיפול תקופתי", description: "", scheduled_at: "", completed_at: "", cost: "", odometer_km: "", status: "scheduled" };
@@ -87,7 +88,7 @@ export default function MaintenancePage() {
     if(!canManageMaintenance){setMessage("אין לך הרשאה לעדכון טיפולים.");return;}
     setBusy(true);setMessage("");
     try{
-      const {error}=await supabase.from("maintenance_records").update({status:"completed",completed_at:new Date().toISOString().slice(0,10)}).eq("id",record.id).eq("fleet_id",fleet.id);
+      const {error}=await supabase.from("maintenance_records").update({status:"completed",completed_at:getIsraelCalendarDate()}).eq("id",record.id).eq("fleet_id",fleet.id);
       if(error){setMessage("לא הצלחנו לעדכן: "+error.message);return;}
       await load(fleet.id);setMessage("הטיפול סומן כהושלם.");
     }catch(error){setMessage("עדכון הטיפול נכשל: "+(error?.message||"שגיאה לא ידועה"));}
@@ -104,24 +105,25 @@ export default function MaintenancePage() {
     }catch(error){setMessage("עדכון הטיפול נכשל: "+(error?.message||"שגיאה לא ידועה"));}
     finally{setBusy(false);}
   }
-  const today=new Date().toISOString().slice(0,10);
+  const today=getIsraelCalendarDate();
+  const inThirtyDays=addIsraelCalendarDays(today,30);
   const pending=records.filter(r=>r.status!=="completed");
   const overdue=pending.filter(r=>r.scheduled_at && r.scheduled_at<today);
-  const upcoming=pending.filter(r=>r.scheduled_at && r.scheduled_at>=today && r.scheduled_at<=new Date(Date.now()+30*86400000).toISOString().slice(0,10));
-  const date=v=>v?new Date(v+"T00:00:00").toLocaleDateString("he-IL"):"לא נקבע";
-  const vehicleDue=vehicles.filter(v=>v.next_service_at && v.next_service_at<=new Date(Date.now()+30*86400000).toISOString().slice(0,10)).sort((a,b)=>a.next_service_at.localeCompare(b.next_service_at));
+  const upcoming=pending.filter(r=>r.scheduled_at && r.scheduled_at>=today && r.scheduled_at<=inThirtyDays);
+  const date=v=>v?new Intl.DateTimeFormat("he-IL",{timeZone:"Asia/Jerusalem"}).format(new Date(v+"T12:00:00.000Z")):"לא נקבע";
+  const vehicleDue=vehicles.filter(v=>v.next_service_at && v.next_service_at<=inThirtyDays).sort((a,b)=>a.next_service_at.localeCompare(b.next_service_at));
   const complianceItems=vehicles.flatMap(v=>[
     {vehicle:v,label:"טסט",date:v.test_due_at},
     {vehicle:v,label:"ביטוח",date:v.insurance_due_at},
     {vehicle:v,label:"רישיון רכב",date:v.registration_due_at}
-  ]).filter(x=>x.date).map(x=>({...x,days:Math.ceil((new Date(x.date+"T00:00:00")-new Date(today+"T00:00:00"))/86400000)}));
+  ]).filter(x=>x.date).map(x=>({...x,days:differenceInCalendarDays(x.date,today)}));
   const expiredCompliance=complianceItems.filter(x=>x.days<0);
   const soonCompliance=complianceItems.filter(x=>x.days>=0&&x.days<=30);
   const money=v=>v==null?"—":Number(v).toLocaleString("he-IL")+" ₪";
   const completedRecords=records.filter(r=>r.status==="completed" && r.cost!=null);
   const totalMaintenanceCost=completedRecords.reduce((sum,r)=>sum+Number(r.cost||0),0);
   const costByVehicle=vehicles.map(v=>{const list=completedRecords.filter(r=>r.vehicle_id===v.id);return {vehicle:v,total:list.reduce((sum,r)=>sum+Number(r.cost||0),0),count:list.length};}).filter(x=>x.count>0).sort((x,y)=>y.total-x.total);
-  const monthlyCosts=Array.from({length:6},(_,index)=>{const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-index);const key=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");return {key,label:d.toLocaleDateString("he-IL",{month:"long",year:"numeric"}),amount:completedRecords.filter(r=>(r.completed_at||r.scheduled_at||r.created_at||"").slice(0,7)===key).reduce((sum,r)=>sum+Number(r.cost||0),0)};}).reverse();
+  const monthlyCosts=Array.from({length:6},(_,index)=>{const d=new Date(today+"T12:00:00.000Z");d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()-index);const key=d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0");return {key,label:new Intl.DateTimeFormat("he-IL",{timeZone:"Asia/Jerusalem",month:"long",year:"numeric"}).format(d),amount:completedRecords.filter(r=>(r.completed_at||r.scheduled_at||r.created_at||"").slice(0,7)===key).reduce((sum,r)=>sum+Number(r.cost||0),0)};}).reverse();
   if(loading)return <main className="auth-wrap"><section className="auth-card">טוען נתוני תחזוקה...</section></main>;
   return <main className="fleet-home maintenance-page" dir="rtl">
     <header className="fleet-header"><div className="auth-brand"><span><Truck size={24}/></span><div><h1>TruckSafe</h1><small>תחזוקת כלי רכב</small></div></div><a className="nav-link" href="/"><ArrowRight size={16}/> חזרה ללוח הבקרה</a></header>
