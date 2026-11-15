@@ -165,6 +165,25 @@ test("blocks a nearby verified height restriction that the truck exceeds", () =>
   assert.equal(result.conflicts[0].restrictionType, "height");
 });
 
+test("uses the lowest of legal, posted and physically measured height limits", () => {
+  for (const restriction of [
+    verifiedRestriction({ max_height_m: 4.5, measured_clearance_m: 4.0, posted_clearance_m: 4.4 }),
+    verifiedRestriction({ max_height_m: 4.5, measured_clearance_m: 4.62, posted_clearance_m: 4.1 })
+  ]) {
+    const result = evaluateFleetRestrictions({
+      sections,
+      restrictions: [restriction],
+      restrictionCatalogLoaded: true,
+      vehicle,
+      currentWeightKg: 10000,
+      now
+    });
+    assert.equal(result.validated, false);
+    assert.equal(result.conflicts.length, 1);
+    assert.equal(result.conflicts[0].restrictionType, "height");
+  }
+});
+
 test("does not reject a route for a distant, verified restriction", () => {
   const distant = verifiedRestriction({ latitude: 32.85, longitude: 35.505 });
   const result = evaluateFleetRestrictions({
