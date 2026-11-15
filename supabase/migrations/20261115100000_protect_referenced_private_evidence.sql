@@ -20,6 +20,10 @@ as $$
         select 1 from public.vehicle_special_equipment e
         where e.lifting_chart_document_path = p_name
       )
+      or exists (
+        select 1 from public.vehicle_special_equipment e
+        where e.operating_manual_document_path = p_name
+      )
     when 'incident-photos' then
       exists (
         select 1 from public.incidents i
