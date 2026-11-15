@@ -59,6 +59,8 @@ jobs:
     env:
       SUPABASE_TEST_DB_URL: ${{ secrets.SUPABASE_TEST_DB_URL }}
     steps:
+      - name: Check out code
+        uses: actions/checkout@v7
       - name: Check for isolated test database secret
         id: test-db
         shell: bash
