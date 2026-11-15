@@ -8,7 +8,7 @@ const num=v=>v.trim()===""?null:Number(v);
 const empty={vehicle_id:"",equipment_kind:"crane",manufacturer:"",model:"",serial_number:"",travel_height_cm:"",travel_width_cm:"",travel_length_cm:"",working_height_cm:"",working_width_cm:"",working_length_cm:"",max_outreach_cm:"",max_lifting_capacity_kg:"",axle_configuration:""};
 
 export default function SpecialEquipmentPage(){
- const [fleet,setFleet]=useState(null),[vehicles,setVehicles]=useState([]),[rows,setRows]=useState([]),[form,setForm]=useState(empty),[chart,setChart]=useState(null),[busy,setBusy]=useState(false),[message,setMessage]=useState(""),[notes,setNotes]=useState({});
+ const [fleet,setFleet]=useState(null),[vehicles,setVehicles]=useState([]),[rows,setRows]=useState([]),[form,setForm]=useState(empty),[chart,setChart]=useState(null),[manual,setManual]=useState(null),[busy,setBusy]=useState(false),[message,setMessage]=useState(""),[notes,setNotes]=useState({});
  async function load(){
   const {data:{user},error:authError}=await supabase.auth.getUser();
   if(authError||!user){setMessage("יש להתחבר למערכת כדי לנהל ציוד מיוחד.");return;}
@@ -26,9 +26,11 @@ export default function SpecialEquipmentPage(){
   if(v.error||e.error){setMessage("לא ניתן לטעון כלי רכב או ציוד מיוחד. בדוק הרשאות ומסד נתונים.");return;}
   setVehicles(v.data||[]);
   const rowsWithChartLinks=await Promise.all((e.data||[]).map(async row=>{
-   if(!row.lifting_chart_document_path)return {...row,chartUrl:null};
-   const {data:link,error:linkError}=await supabase.storage.from("vehicle-registrations").createSignedUrl(row.lifting_chart_document_path,300);
-   return {...row,chartUrl:linkError?null:link?.signedUrl||null};
+   const [chartResult,manualResult]=await Promise.all([
+    row.lifting_chart_document_path?supabase.storage.from("vehicle-registrations").createSignedUrl(row.lifting_chart_document_path,300):Promise.resolve({data:null,error:null}),
+    row.operating_manual_document_path?supabase.storage.from("vehicle-registrations").createSignedUrl(row.operating_manual_document_path,300):Promise.resolve({data:null,error:null})
+   ]);
+   return {...row,chartUrl:chartResult.error?null:chartResult.data?.signedUrl||null,manualUrl:manualResult.error?null:manualResult.data?.signedUrl||null};
   }));
   setRows(rowsWithChartLinks);
  }
@@ -38,7 +40,7 @@ export default function SpecialEquipmentPage(){
   const expectedKind=vehicle?.body_type==="aerial_platform"?"aerial_platform":vehicle?.body_type==="concrete_pump"?"concrete_pump":(vehicle?.body_type==="other_special"||vehicle?.body_type==="low_loader")?"other_special":"crane";
   const existing=rows.find(r=>r.vehicle_id===id);
   setForm(existing?{vehicle_id:id,equipment_kind:existing.equipment_kind,manufacturer:existing.manufacturer||"",model:existing.model||"",serial_number:existing.serial_number||"",travel_height_cm:String(existing.travel_height_cm??""),travel_width_cm:String(existing.travel_width_cm??""),travel_length_cm:String(existing.travel_length_cm??""),working_height_cm:String(existing.working_height_cm??""),working_width_cm:String(existing.working_width_cm??""),working_length_cm:String(existing.working_length_cm??""),max_outreach_cm:String(existing.max_outreach_cm??""),max_lifting_capacity_kg:String(existing.max_lifting_capacity_kg??""),axle_configuration:existing.axle_configuration||""}:{...empty,vehicle_id:id,equipment_kind:expectedKind});
-  setChart(null);
+  setChart(null);setManual(null);
  }
  const update=(key,value)=>setForm(current=>({...current,[key]:value}));
  const field=(label,key,props={})=><label style={{display:"grid",gap:5}}>{label}<input type={props.type||"text"} min={props.min} max={props.max} step={props.step} required={props.required||false} value={form[key]} onChange={e=>update(key,e.target.value)}/></label>;
@@ -52,20 +54,29 @@ export default function SpecialEquipmentPage(){
   if(["crane","aerial_platform","concrete_pump"].includes(form.equipment_kind)&&!chart&&!rows.some(r=>r.vehicle_id===vehicle.id&&r.lifting_chart_document_path)){setMessage("למנוף, סל או משאבת בטון נדרש תרשים יצרן.");return;}
   if(["crane","aerial_platform","concrete_pump"].includes(form.equipment_kind)&&(!values.working_height_cm||!values.working_width_cm||!values.working_length_cm||values.max_outreach_cm===null||!values.max_lifting_capacity_kg)){setMessage("למנוף, סל או משאבת בטון חובה למלא גובה, רוחב ואורך עבודה, שלוחה וכושר הרמה לפי מסמך היצרן.");return;}
   setBusy(true);setMessage("");
+  const uploadedPaths=[];
   try{
-   let chartPath=rows.find(r=>r.vehicle_id===vehicle.id)?.lifting_chart_document_path||null;
-   if(chart){
-    if(!["application/pdf","image/jpeg","image/png","image/webp"].includes(chart.type)||chart.size>8*1024*1024)throw new Error("תרשים היצרן חייב להיות PDF/JPEG/PNG/WEBP עד 8MB.");
-    const safeName=chart.name.replace(/[^a-zA-Z0-9._-]/g,"_").slice(-100)||"lifting-chart.pdf";
-    chartPath=`${fleet.id}/${vehicle.id}/${crypto.randomUUID()}-${safeName}`;
-    const {error}=await supabase.storage.from("vehicle-registrations").upload(chartPath,chart,{contentType:chart.type,upsert:false});
+   const existing=rows.find(r=>r.vehicle_id===vehicle.id);
+   let chartPath=existing?.lifting_chart_document_path||null;
+   let manualPath=existing?.operating_manual_document_path||null;
+   const uploadEvidence=async(file,label,defaultName)=>{
+    if(!["application/pdf","image/jpeg","image/png","image/webp"].includes(file.type)||file.size>8*1024*1024)throw new Error(`${label} חייב להיות PDF/JPEG/PNG/WEBP עד 8MB.`);
+    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,"_").slice(-100)||defaultName;
+    const path=`${fleet.id}/${vehicle.id}/${crypto.randomUUID()}-${safeName}`;
+    const {error}=await supabase.storage.from("vehicle-registrations").upload(path,file,{contentType:file.type,upsert:false});
     if(error)throw error;
-   }
-   const payload={fleet_id:fleet.id,vehicle_id:vehicle.id,equipment_kind:form.equipment_kind,manufacturer:form.manufacturer.trim()||null,model:form.model.trim()||null,serial_number:form.serial_number.trim()||null,...values,axle_configuration:form.axle_configuration.trim(),lifting_chart_document_path:chartPath};
+    uploadedPaths.push(path);return path;
+   };
+   if(chart)chartPath=await uploadEvidence(chart,"תרשים היצרן","lifting-chart.pdf");
+   if(manual)manualPath=await uploadEvidence(manual,"מדריך ההפעלה","operating-manual.pdf");
+   const payload={fleet_id:fleet.id,vehicle_id:vehicle.id,equipment_kind:form.equipment_kind,manufacturer:form.manufacturer.trim()||null,model:form.model.trim()||null,serial_number:form.serial_number.trim()||null,...values,axle_configuration:form.axle_configuration.trim(),lifting_chart_document_path:chartPath,operating_manual_document_path:manualPath};
    const {error}=await supabase.from("vehicle_special_equipment").upsert(payload,{onConflict:"fleet_id,vehicle_id"});
    if(error)throw error;
-   setChart(null);await load();setMessage("פרטי הציוד נשמרו ונשלחו לבדיקה מחדש. הם עדיין אינם מאושרים לניווט.");
-  }catch(error){setMessage("לא ניתן לשמור את הציוד: "+(error?.message||"שגיאה לא ידועה"));}
+   uploadedPaths.length=0;setChart(null);setManual(null);await load();setMessage("פרטי הציוד והמסמכים נשמרו ונשלחו לבדיקה מחדש. הם עדיין אינם מאושרים לניווט.");
+  }catch(error){
+   if(uploadedPaths.length)await supabase.storage.from("vehicle-registrations").remove(uploadedPaths).catch(()=>{});
+   setMessage("לא ניתן לשמור את הציוד: "+(error?.message||"שגיאה לא ידועה"));
+  }
   finally{setBusy(false);}
  }
  async function review(row,decision){
@@ -97,6 +108,7 @@ export default function SpecialEquipmentPage(){
     {field("שלוחת עבודה מרבית (ס״מ)","max_outreach_cm",{type:"number",min:0,max:100000,step:1})}
     {field("כושר הרמה מרבי (ק״ג)","max_lifting_capacity_kg",{type:"number",min:0,max:1000000,step:1})}
     <label style={{gridColumn:"1 / -1"}}>תרשים הרמה / מסמך יצרן (PDF/JPEG/PNG/WEBP, עד 8MB)<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" onChange={e=>setChart(e.target.files?.[0]||null)}/></label>
+    <label style={{gridColumn:"1 / -1"}}>מדריך הפעלה של היצרן (PDF/JPEG/PNG/WEBP, עד 8MB; מומלץ לצרף)<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" onChange={e=>setManual(e.target.files?.[0]||null)}/></label>
     <button disabled={busy} style={{padding:12,border:0,borderRadius:8,background:"#175cd3",color:"white",fontWeight:700}}>שמירת פרופיל ושליחה לבדיקה</button>
    </form>
   </section>
@@ -105,7 +117,8 @@ export default function SpecialEquipmentPage(){
     <h3>{vehicles.find(v=>v.id===row.vehicle_id)?.registration_number||"רכב לא ידוע"} · {kinds.find(k=>k[0]===row.equipment_kind)?.[1]||row.equipment_kind}</h3>
     <p>נסיעה: {row.travel_height_cm} × {row.travel_width_cm} × {row.travel_length_cm} ס״מ · עבודה: גובה {row.working_height_cm||"—"} ס״מ · שלוחה {row.max_outreach_cm||"—"} ס״מ · כושר הרמה {row.max_lifting_capacity_kg||"—"} ק״ג</p>
     <p>יצרן: {row.manufacturer||"—"} · דגם: {row.model||"—"} · מספר סידורי: {row.serial_number||"—"} · סרנים: {row.axle_configuration||"—"}</p>
-    {row.lifting_chart_document_path&&(row.chartUrl?<a href={row.chartUrl} target="_blank" rel="noopener noreferrer">פתיחת תרשים היצרן (קישור מאובטח ל־5 דקות)</a>:<small>לא ניתן ליצור קישור צפייה למסמך. בדוק הרשאת מנהל וגישה לאחסון הפרטי.</small>)}
+    {row.lifting_chart_document_path&&(row.chartUrl?<a href={row.chartUrl} target="_blank" rel="noopener noreferrer">פתיחת תרשים היצרן (קישור מאובטח ל־5 דקות)</a>:<small>לא ניתן ליצור קישור צפייה לתרשים. בדוק הרשאה וגישה לאחסון הפרטי.</small>)}
+    {row.operating_manual_document_path&&(row.manualUrl?<a style={{display:"block",marginTop:6}} href={row.manualUrl} target="_blank" rel="noopener noreferrer">פתיחת מדריך ההפעלה (קישור מאובטח ל־5 דקות)</a>:<small style={{display:"block"}}>לא ניתן ליצור קישור צפייה למדריך ההפעלה. בדוק הרשאה וגישה לאחסון הפרטי.</small>)}
     <strong>סטטוס: {row.evidence_status==="verified"?"מאומת פנימית":row.evidence_status==="rejected"?"נדחה":"ממתין לבדיקה"}</strong>
     {row.evidence_status==="pending"&&<div style={{display:"grid",gap:8,maxWidth:420,marginTop:10}}><p>לפני אישור, פתח את תרשים היצרן המאובטח והשווה את נתוני הנסיעה, שלושת ממדי העבודה, השלוחה וכושר ההרמה למסמכי הרכב. במוביל חריג, ודא שמידות התצורה הנגררת והסרנים תואמות למסמכים. האישור הוא בדיקה פנימית בלבד.</p><textarea rows={2} maxLength={1000} placeholder="מה נבדק? הערה של לפחות 5 תווים" value={notes[row.id]||""} onChange={e=>setNotes(x=>({...x,[row.id]:e.target.value}))}/><div style={{display:"flex",gap:8}}><button disabled={busy} onClick={()=>review(row,"verified")}>אישור בדיקה פנימית</button><button disabled={busy} onClick={()=>review(row,"rejected")}>דחייה</button></div></div>}
     <small style={{display:"block",marginTop:8,color:"#667085"}}>אימות פנימי בלבד — אינו אישור משרד התחבורה, היתר הרמה או אישור שמסלול מתאים לנסיעה.</small>
