@@ -82,7 +82,7 @@ export async function buildRestrictionSourceManifest({ quarantineDir, outputDir 
   let reviewNames = [];
   try {
     const privateReviewDir = await assertPrivateDirectory(reviewDir, "Reviews");
-    reviewNames = (await readdir(privateReviewDir)).filter(name => /^review-[a-f0-9]{64}\\.json$/.test(name)).sort();
+    reviewNames = (await readdir(privateReviewDir)).filter(name => /^review-[a-f0-9]{64}\.json$/.test(name)).sort();
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
