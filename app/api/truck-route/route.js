@@ -47,7 +47,8 @@ export async function GET() {
   const configured = isTruckRouteConfigured({
     provider: process.env.TRUCK_ROUTING_PROVIDER,
     apiKey: process.env.HERE_API_KEY,
-    restrictionCoverageApproved: process.env.TRUCK_RESTRICTION_COVERAGE_APPROVED
+    restrictionCoverageApproved: process.env.TRUCK_RESTRICTION_COVERAGE_APPROVED,
+    providerApproved: process.env.TRUCK_ROUTING_PROVIDER_APPROVED
   });
   return response({ configured });
 }
@@ -73,6 +74,12 @@ export async function POST(request) {
     if (gate.status === 401) return response({ error: "החיבור אינו תקף. יש להתחבר מחדש." }, 401);
     if (gate.status === 403) return response({ error: "אין לחשבון הרשאה לצי יחיד ומאומת לתכנון מסלולים." }, 403);
     const { membership } = gate.data;
+
+    // HERE remains locked unless a separate, explicit provider approval is configured.
+    // This gate is independent from restriction-coverage approval and runs before any paid provider call.
+    if (process.env.TRUCK_ROUTING_PROVIDER_APPROVED !== "true") {
+      return response({ error: "ספק הניווט נעול עד לאישור מפורש ונפרד להפעלתו." }, 503);
+    }
 
     if (process.env.TRUCK_RESTRICTION_COVERAGE_APPROVED !== "true") {
       return response({ error: "ניווט משאיות חסום עד לאימות כיסוי ארצי ועדכני של מגבלות הדרך. אין להסתמך על המאגר החלקי כמסלול בטוח." }, 503);
