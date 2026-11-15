@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, open, realpath, rm } from "node:fs/promises";
+import { open, rm } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { validateCandidateRestrictionEnvelope } from "../lib/restriction-source-envelope.mjs";
+import { assertPrivateDirectory } from "../lib/private-directory.mjs";
 
 export const MAX_SOURCE_BYTES = 5 * 1024 * 1024;
 
@@ -64,12 +65,7 @@ export async function stageCandidate({ input, quarantineDir, source, retrievedAt
   const validation = validateCandidateRestrictionEnvelope(envelope, canonicalPayload);
   if (!validation.valid) throw new Error(`Candidate validation failed: ${validation.errors.join("; ")}`);
 
-  const requestedDir = path.resolve(quarantineDir);
-  const dirInfo = await lstat(requestedDir);
-  if (!dirInfo.isDirectory() || dirInfo.isSymbolicLink()) {
-    throw new Error("Quarantine path must be an existing, non-symlink directory");
-  }
-  const dir = await realpath(requestedDir);
+  const dir = await assertPrivateDirectory(quarantineDir, "Quarantine");
   const output = path.join(dir, `candidate-${envelope.payload_sha256}.json`);
   if (path.dirname(output) !== dir) throw new Error("Unsafe quarantine output path");
 
