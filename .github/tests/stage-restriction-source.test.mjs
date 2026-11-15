@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { MAX_SOURCE_BYTES, parseArgs, stageCandidate } from "../../scripts/stage-restriction-source.mjs";
@@ -19,6 +19,7 @@ async function fixture(t, raw = '{"id":"bridge-test","clearance_m":4.2}') {
   const input = path.join(root, "source.json");
   const quarantineDir = path.join(root, "quarantine");
   await mkdir(quarantineDir);
+  await chmod(quarantineDir, 0o700);
   await writeFile(input, raw, "utf8");
   return { root, input, quarantineDir };
 }
@@ -112,4 +113,10 @@ test("CLI arguments reject unknown, duplicate, and missing values", () => {
   assert.throws(() => parseArgs(["--source-id", "a", "--source-id", "b"]), /Invalid or duplicate argument/);
   assert.throws(() => parseArgs(["--source-id", "--publisher", "x"]), /Missing value/);
   assert.throws(() => parseArgs([]), /Missing required arguments/);
+});
+
+test("rejects a quarantine directory accessible to group or other users", async t => {
+  const paths = await fixture(t);
+  await chmod(paths.quarantineDir, 0o755);
+  await assert.rejects(stageCandidate({ ...paths, source }), /private permissions/);
 });
