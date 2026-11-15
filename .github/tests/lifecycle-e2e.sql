@@ -17,16 +17,37 @@ create temporary table trucksafe_e2e_results (
 do $guard_test$
 declare
   finish_definition text := lower(pg_get_functiondef('public.finish_trip(uuid,uuid)'::regprocedure));
+  task_query_position integer;
   driver_query_position integer;
+  trip_lock_position integer;
   vehicle_query_position integer;
 begin
+  task_query_position := position('from public.tasks' in finish_definition);
   driver_query_position := position('from public.drivers' in finish_definition);
+  -- The first trips query is an intentionally unlocked candidate lookup.
+  -- The second trips query, after task and driver locks, must lock the trip row.
+  if driver_query_position > 0 then
+    trip_lock_position := driver_query_position
+      + position('from public.trips' in substring(finish_definition from driver_query_position));
+  end if;
   vehicle_query_position := position('from public.vehicles' in finish_definition);
-  if driver_query_position = 0 or vehicle_query_position = 0
-     or driver_query_position > vehicle_query_position
+
+  if task_query_position = 0 or driver_query_position = 0
+     or trip_lock_position <= driver_query_position
+     or vehicle_query_position = 0
+     or not (task_query_position < driver_query_position
+       and driver_query_position < trip_lock_position
+       and trip_lock_position < vehicle_query_position)
+     or position('for update' in substring(finish_definition from task_query_position)) = 0
      or position('for update' in substring(finish_definition from driver_query_position)) = 0
+     or position('for update' in substring(finish_definition from trip_lock_position)) = 0
      or position('for update' in substring(finish_definition from vehicle_query_position)) = 0 then
-    raise exception 'finish_trip must lock the driver before the vehicle to match trip start lock order';
+    raise exception 'finish_trip must lock task -> driver -> trip -> vehicle, matching trip-start lock order';
+  end if;
+
+  if position('v_trip.driver_id is distinct from v_candidate_driver_id' in finish_definition) = 0
+     or position('v_trip.task_id is distinct from v_candidate_task_id' in finish_definition) = 0 then
+    raise exception 'finish_trip must revalidate trip assignments after acquiring parent locks';
   end if;
 
   if position('for update' in lower(pg_get_functiondef(
@@ -55,27 +76,9 @@ begin
     ('serialized driver and vehicle state guards', 'PASS',
      'Both state checks lock their parent row and private trigger functions are not client-executable');
 
-  if position('from public.drivers' in lower(pg_get_functiondef(
-       'public.finish_trip(uuid,uuid)'::regprocedure
-     ))) = 0
-     or position('from public.vehicles' in lower(pg_get_functiondef(
-       'public.finish_trip(uuid,uuid)'::regprocedure
-     ))) = 0
-     or position('from public.drivers' in lower(pg_get_functiondef(
-       'public.finish_trip(uuid,uuid)'::regprocedure
-     ))) > position('from public.vehicles' in lower(pg_get_functiondef(
-       'public.finish_trip(uuid,uuid)'::regprocedure
-     )))
-     or position('for update' in substring(
-       lower(pg_get_functiondef('public.finish_trip(uuid,uuid)'::regprocedure))
-       from position('from public.drivers' in lower(pg_get_functiondef('public.finish_trip(uuid,uuid)'::regprocedure)))
-     )) = 0 then
-    raise exception 'finish_trip must lock the driver before locking the vehicle';
-  end if;
-
   insert into pg_temp.trucksafe_e2e_results values
-    ('finish-trip driver-before-vehicle lock order', 'PASS',
-     'Trip completion uses the same driver-then-vehicle lock order as trip start');
+    ('finish-trip task-driver-trip-vehicle lock order', 'PASS',
+     'Completion follows task -> driver -> trip -> vehicle and revalidates assignments');
 end
 $guard_test$;
 
