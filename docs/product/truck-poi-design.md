@@ -63,3 +63,18 @@ Keep POIs, live road events, private fleet incidents, and legal truck restrictio
 6. Only after separate approval, run a bounded pilot using one approved source, with attribution, monitoring, rate limits, correction handling, and a kill switch.
 
 No source, migration, API, provider subscription, production data change, or deployment is authorized by this design document.
+
+## Optional partner offers and driver rewards
+
+A later commercial layer may show opt-in, station-specific offers such as a coffee and pastry after a qualifying refuelling visit. This is a partner feature, not a core navigation dependency:
+
+- Keep offers separate from POI facts, truck-access evidence, road restrictions, and safety-event data.
+- An offer must identify the participating operator/location, exact eligibility (for example, qualifying refuelling transaction), benefit, redemption method, valid dates/times, exclusions, stock/availability caveat, and partner terms.
+- Do not claim that refuelling occurred based only on GPS presence, a geofence, or a driver tap. Qualifying purchase must be confirmed by a participating operator/payment/POS integration, or by a partner-issued receipt/token flow with fraud controls.
+- Prefer a partner-issued, short-lived, single-use redemption token or QR code validated at the station POS. Do not build fuel payment processing, store payment credentials, or collect full receipts/card data as a shortcut.
+- Until a verified integration exists, the app may show a clearly labelled informational offer only; it must not promise automatic eligibility or successful redemption.
+- Offers are optional, user-initiated, and must never influence safe-route selection, hide a safer stop, or distract a moving driver. Present them when parked or before departure.
+- Minimize data: share only the minimum transaction/eligibility signal required with the partner, with explicit user consent and clear retention terms. Do not expose fleet membership, vehicle registration, or route history to advertisers.
+- Commercial ranking and sponsorship must be visibly labelled and kept separate from safety, suitability, distance, and route-detour ranking.
+
+This is a future design option only. No partner has been contacted, no commercial agreement or integration exists, and no offer is currently redeemable in TruckSafe.
