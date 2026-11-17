@@ -101,3 +101,15 @@ test("map location refreshes are isolated across fleet and auth generations", as
   assert.match(source, /if \(loadingLocations\.current\.get\(id\) === requestGeneration\) loadingLocations\.current\.delete\(id\)/);
   assert.match(source, /locationRequestGenerationRef\.current \+= 1;\s*activeFleetIdRef\.current = null;\s*historyByTrip\.current\.clear\(\)/);
 });
+
+
+test("stale map responses cannot mutate shared GPS history before generation validation", async () => {
+  const source = await readFile("app/map/page.js", "utf8");
+  const localHistory = source.indexOf("const nextHistoryByTrip = new Map(historyByTrip.current)");
+  const historyCommit = source.indexOf("historyByTrip.current = nextHistoryByTrip");
+  const generationGuard = source.indexOf("requestGeneration !== locationRequestGenerationRef.current", localHistory);
+  assert.ok(localHistory >= 0);
+  assert.ok(generationGuard > localHistory);
+  assert.ok(historyCommit > generationGuard);
+  assert.ok(source.indexOf("nextHistoryByTrip.set(trip.id, history)") > localHistory);
+});
