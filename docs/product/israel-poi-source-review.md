@@ -204,3 +204,19 @@ The directory marks AdBlue/urea at all four stations and shows a fuel-98 icon, m
 The directory page exposes a “navigate to station” link for each entry, but the retrieved page content does not expose a stable coordinate pair or machine-readable entrance geometry. The map control on the directory is not itself coordinate evidence. Do not create POI coordinates by geocoding the broad road/interchange description or by guessing from the map display. A later exact-location review should capture the destination URL behind each station-specific navigation link and independently verify its pin and truck entrance against operator/road geometry; this is still a manual research task, not permission to ingest or redistribute the destination data.
 
 **Decision unchanged:** retain the four stations as direction-specific operator-reviewed candidates only. No coordinates were added, no diesel/high-flow claims were made, no source was bulk-downloaded, and no POI/API/database/map/production integration was performed.
+
+ 
+### Third-party coordinate leads for the four Highway 6 stations (2026-11-17)
+
+A follow-up search located coordinate candidates in third-party directory/map records. These are recorded only to guide a later operator-side pin check; they are **not approved coordinates**, do not establish the station's truck entrance, and must not be imported into a production map or used for truck routing.
+
+| Operator listing | Candidate coordinate (lat, lon) | Third-party evidence | Assessment |
+|---|---:|---|---|
+| Magal East (south-to-north) | 32.3797531, 35.0175718 | Near-place directory: https://il.near-place.com/dwr-lwn-mgl-mzrh-yitzhak-rabin-highway ; separate myLPG listing: https://www.mylpg.eu/stations/israel/station/-6--F0F7410B-EB08-71F2-3B5C-816953543547 gives 32.379953, 35.017702 | Two third-party points differ by roughly 25 m; require operator pin confirmation and physical entrance verification. |
+| Magal West (north-to-south) | 32.381352, 35.017048 | Near-place directory: https://il.near-place.com/gas_station-nearby-dor-alon-kbys-6-mgl | Single third-party lead; not enough to establish the correct access point. |
+| Naan East (south-to-north) | 31.882149, 34.8796569 | Near-place directory: https://il.near-place.com/dwr-lwn-nn-mzrh-nn | Single third-party lead; very close to the Naan West listing, so verify which carriageway/station it identifies. |
+| Naan West (north-to-south) | 31.8821878, 34.8785757 | Near-place directory: https://il.near-place.com/dwr-lwn-nn-mrb-gzr | Single third-party lead; very close to the Naan East listing, so verify carriageway and entry. |
+
+**Cross-check outcome:** official Dor Alon listings do distinguish the four names and directions, and the Highway 6 operator independently confirms the stations include truck weighing/rest facilities. The third-party coordinates are clustered closely enough that a generic pin could land on the wrong side or the wrong internal area. The current evidence does not resolve lane/side identity, truck entry geometry, turning path, overhead clearance, vehicle limits, or whether a navigation pin leads through a truck-appropriate entrance. A future verification must compare each candidate against the official station-specific navigation destination and a current road/entrance view, and should obtain explicit operator confirmation where ambiguity remains.
+
+**Decision:** keep all four coordinate pairs in this research note as unverified leads only. Do not add them to truck-POI records, map markers, routing graph, or production data. No coordinates were imported and no operator was contacted.
