@@ -59,9 +59,10 @@ export default function FleetMapPage() {
         .eq("fleet_id", id).eq("status", "active");
       if (tripError) throw tripError;
       const activeTripIds = new Set((trips || []).map(trip => trip.id));
-      pruneInactiveTripHistory(historyByTrip.current, activeTripIds);
+      const nextHistoryByTrip = new Map(historyByTrip.current);
+      pruneInactiveTripHistory(nextHistoryByTrip, activeTripIds);
       const points = await Promise.all((trips || []).map(async trip => {
-        const cachedHistory = historyByTrip.current.get(trip.id);
+        const cachedHistory = nextHistoryByTrip.get(trip.id);
         const historyQuery = cachedHistory
           ? Promise.resolve({ data: null, error: null })
           : supabase.from("trip_locations").select("latitude,longitude,recorded_at")
@@ -84,10 +85,11 @@ export default function FleetMapPage() {
           history.push({ latitude: loc.latitude, longitude: loc.longitude, recorded_at: loc.recorded_at });
           if (history.length > 3000) history.shift();
         }
-        historyByTrip.current.set(trip.id, history);
+        nextHistoryByTrip.set(trip.id, history);
         return { ...trip, ...loc, history, driver: driverResult.data?.full_name || "נהג", vehicle: vehicleResult.data?.registration_number || "רכב" };
       }));
       if (authGeneration !== authGenerationRef.current || requestGeneration !== locationRequestGenerationRef.current || activeFleetIdRef.current !== id) return;
+      historyByTrip.current = nextHistoryByTrip;
       setLocations(points.filter(Boolean));
       setError("");
     } catch (error) {
