@@ -17,7 +17,7 @@ create temporary table trucksafe_e2e_results (
   outcome text not null,
   detail text
 
- ) on commit drop;
+) on commit drop;
 
 do $public_schema_security_baseline_test$
 declare
