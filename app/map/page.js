@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
-import { ArrowRight, MapPin, RefreshCw, Truck } from "lucide-react";
+import { ArrowRight, MapPin, RefreshCw, Truck, AlertTriangle } from "lucide-react";
+import { getDemoRoadEvents, getVisibleDemoRoadEvents } from "../../lib/road-event-demo.mjs";
 
 export default function FleetMapPage() {
   const router = useRouter();
@@ -12,6 +13,8 @@ export default function FleetMapPage() {
   const mapInstance = useRef(null);
   const markers = useRef([]);
   const routeLines = useRef([]);
+  const roadEventMarkers = useRef([]);
+  const demoRoadEvents = getVisibleDemoRoadEvents(getDemoRoadEvents());
   const [session, setSession] = useState(null);
   const [fleetId, setFleetId] = useState(null);
   const [locations, setLocations] = useState([]);
@@ -115,6 +118,8 @@ export default function FleetMapPage() {
       cancelled = true;
       markers.current.forEach(marker => marker.remove());
       routeLines.current.forEach(line => line.remove());
+      roadEventMarkers.current.forEach(marker => marker.remove());
+      roadEventMarkers.current = [];
       markers.current = [];
       routeLines.current = [];
       if (mapInstance.current) {
@@ -154,6 +159,28 @@ export default function FleetMapPage() {
     if (layers.length) map.fitBounds(L.featureGroup(layers).getBounds().pad(0.2));
   }, [locations, mapReady]);
 
+  useEffect(() => {
+    const map = mapInstance.current;
+    const L = typeof window !== "undefined" ? window.L : null;
+    if (!mapReady || !map || !L) return;
+    roadEventMarkers.current.forEach(marker => marker.remove());
+    roadEventMarkers.current = demoRoadEvents.map(event => {
+      const color = event.severity === "high" ? "#dc2626" : event.severity === "medium" ? "#d97706" : "#2563eb";
+      const marker = L.circleMarker([event.latitude, event.longitude], {
+        radius: 9, color, weight: 2, fillColor: color, fillOpacity: 0.8
+      }).addTo(map);
+      marker.bindPopup(
+        "<b>" + escapeHtml(event.event_type === "road_hazard" ? "מפגע בדרך" : "חסימת נתיב") + "</b><br/>" +
+        escapeHtml(event.driver_message) + "<br/><b>" + escapeHtml(event.source_label) + "</b>"
+      );
+      return marker;
+    });
+    return () => {
+      roadEventMarkers.current.forEach(marker => marker.remove());
+      roadEventMarkers.current = [];
+    };
+  }, [mapReady]);
+
   return <main dir="rtl" style={{ minHeight: "100vh", padding: 24, background: "#f5f7fb", color: "#172338" }}>
     <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
       <div><h1 style={{ margin: 0 }}>מפת הנהגים</h1><p style={{ margin: "5px 0", color: "#718096" }}>מיקום הנהגים ומסלול הנסיעה שנשמר עד כה · רענון אוטומטי כל 15 שניות</p></div>
@@ -166,6 +193,14 @@ export default function FleetMapPage() {
     {loading ? <p>טוען נתונים...</p> : <>
       <section style={{ background: "white", borderRadius: 16, padding: 14, marginBottom: 14, boxShadow: "0 4px 20px #17233810" }}>
         <div ref={mapElement} style={{ height: "min(65vh, 620px)", minHeight: 340, borderRadius: 12, zIndex: 0 }} />
+      </section>
+      <section style={{ background: "white", borderRadius: 16, padding: 16, marginBottom: 14, border: "1px solid #f1d7a7" }}>
+        <h3 style={{ margin: "0 0 8px", display: "flex", alignItems: "center", gap: 8 }}><AlertTriangle size={18}/> התראות דרך — מצב הדגמה</h3>
+        <p style={{ margin: "0 0 12px", color: "#8a5a12", fontSize: 13 }}>האירועים במפה הם נתונים מדומים בלבד לצורך בדיקת הממשק. הם אינם דיווחי אמת, אינם הנחיות ניווט ואינם מעידים שהדרך פנויה.</p>
+        {demoRoadEvents.map(event => <div key={event.event_id} style={{ borderTop: "1px solid #f1f1f1", padding: "9px 0", display: "flex", gap: 10, alignItems: "flex-start" }}>
+          <span style={{ width: 9, height: 9, borderRadius: "50%", background: event.severity === "high" ? "#dc2626" : "#d97706", marginTop: 6, flex: "0 0 auto" }}/>
+          <div><b>{event.event_type === "road_hazard" ? "מפגע בדרך" : "חסימת נתיב"} · {event.severity === "high" ? "חומרה גבוהה" : "חומרה בינונית"}</b><div style={{ fontSize: 13, color: "#64748b" }}>{event.driver_message}</div><div style={{ fontSize: 12, color: event.verification_state === "authoritative" ? "#15803d" : "#a16207" }}>{event.source_label} · פג תוקף: {new Date(event.expires_at).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}</div></div>
+        </div>)}
       </section>
       <section style={{ background: "white", borderRadius: 16, padding: 18 }}>
         <h3 style={{ marginTop: 0 }}><Truck size={18} style={{ verticalAlign: "middle" }}/> נסיעות ומסלולים עם GPS ({locations.length})</h3>
