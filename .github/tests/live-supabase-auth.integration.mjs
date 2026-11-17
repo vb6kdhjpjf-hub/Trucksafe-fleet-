@@ -504,7 +504,13 @@ async function main() {
       throw new Error("Fleet B incident changed after cross-fleet update/delete attempts.");
     }
 
-    process.stdout.write("Live cross-fleet BOLA checks passed: Fleet A owner could not read, insert, update or delete Fleet B vehicle/incident records by identifier.\\n");
+    const maintenanceBAfterAttempts = await admin
+      .from("maintenance_records").select("id,description").eq("id", fleetBMaintenance.id).single();
+    if (maintenanceBAfterAttempts.error || maintenanceBAfterAttempts.data?.description !== "Synthetic Fleet B isolation fixture") {
+      throw new Error("Fleet B maintenance record changed after cross-fleet update/delete attempts.");
+    }
+
+    process.stdout.write("Live cross-fleet BOLA checks passed: Fleet A owner could not read, insert, update or delete Fleet B vehicle, incident and maintenance records by identifier.\\n");
 
     const additionalMembers = fixtures
       .filter(item => item.role === "fleet_manager" || item.role === "dispatcher" || item.role === "safety_manager" || item.role === "driver" || item.role === "ambiguous")
