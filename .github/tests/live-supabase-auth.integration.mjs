@@ -335,6 +335,7 @@ async function main() {
   const signedIn = [];
   let testError;
   let httpServer;
+  let incidentPhotoFixturePath = null;
 
   try {
     httpServer = await startLocalHttpServer(url, anonKey);
@@ -379,6 +380,73 @@ async function main() {
       .single();
     if (secondFleetError || !secondFleet?.id || secondFleet.name !== secondFleetName) {
       throw new Error("Unable to create the second marked Test fleet for the ambiguous-membership fixture.");
+    }
+
+    // Real Storage RLS test: Fleet A uploads and references a private incident
+    // photo. The Fleet B owner must not mint a signed URL, delete the object,
+    // or upload into Fleet A's folder by guessing its UUID.
+    incidentPhotoFixturePath = createdFleet.id + "/incidents/" + runId + ".jpg";
+    const photoBytes = Buffer.from("TruckSafe synthetic private incident photo fixture");
+    const { error: photoUploadError } = await ownerSession.client.storage
+      .from("incident-photos")
+      .upload(incidentPhotoFixturePath, photoBytes, {
+        contentType: "image/jpeg",
+        upsert: false
+      });
+    if (photoUploadError) {
+      throw new Error("Fleet A owner could not upload its private incident photo fixture: " + photoUploadError.message);
+    }
+
+    const { data: photoIncident, error: photoIncidentError } = await ownerSession.client
+      .from("incidents")
+      .insert({
+        fleet_id: createdFleet.id,
+        incident_type: "other",
+        description: "Synthetic private photo access fixture",
+        created_by: owner.user.id,
+        photo_path: incidentPhotoFixturePath,
+        status: "open"
+      })
+      .select("id,photo_path")
+      .single();
+    if (photoIncidentError || photoIncident?.photo_path !== incidentPhotoFixturePath) {
+      throw new Error("Fleet A incident could not reference its uploaded private photo.");
+    }
+
+    const ownerPhotoUrl = await ownerSession.client.storage
+      .from("incident-photos")
+      .createSignedUrl(incidentPhotoFixturePath, 60);
+    if (ownerPhotoUrl.error || !ownerPhotoUrl.data?.signedUrl) {
+      throw new Error("Fleet A owner could not create a short-lived signed URL for its own incident photo.");
+    }
+
+    const secondFleetOwner = fixtures.find(item => item.role === "ambiguous");
+    const secondFleetOwnerSession = await signInFixtureUser(url, anonKey, secondFleetOwner.user, secondFleetOwner.password);
+    signedIn.push(secondFleetOwnerSession);
+
+    const crossFleetPhotoUrl = await secondFleetOwnerSession.client.storage
+      .from("incident-photos")
+      .createSignedUrl(incidentPhotoFixturePath, 60);
+    assert.ok(crossFleetPhotoUrl.error, "Fleet B owner must not mint a signed URL for Fleet A's private incident photo");
+
+    const crossFleetPhotoDelete = await secondFleetOwnerSession.client.storage
+      .from("incident-photos")
+      .remove([incidentPhotoFixturePath]);
+    assert.ok(crossFleetPhotoDelete.error, "Fleet B owner must not delete Fleet A's private incident photo");
+
+    const crossFleetPhotoUpload = await secondFleetOwnerSession.client.storage
+      .from("incident-photos")
+      .upload(incidentPhotoFixturePath.replace(createdFleet.id, secondFleet.id), photoBytes, {
+        contentType: "image/jpeg",
+        upsert: false
+      });
+    assert.ok(crossFleetPhotoUpload.error, "Fleet B owner must not upload into Fleet A's folder using a guessed fleet UUID");
+
+    const ownerPhotoStillReadable = await ownerSession.client.storage
+      .from("incident-photos")
+      .createSignedUrl(incidentPhotoFixturePath, 60);
+    if (ownerPhotoStillReadable.error || !ownerPhotoStillReadable.data?.signedUrl) {
+      throw new Error("Fleet A incident photo became inaccessible after denied cross-fleet attempts.");
     }
 
     // Create a second-fleet vehicle and incident using only the dedicated Test
@@ -647,6 +715,14 @@ async function main() {
       await session.authClient.auth.signOut({ scope: "global" }).catch(() => {});
     }
     try {
+      if (incidentPhotoFixturePath) {
+        const { error: photoCleanupError } = await admin.storage
+          .from("incident-photos")
+          .remove([incidentPhotoFixturePath]);
+        if (photoCleanupError) {
+          throw new Error("Unable to remove the marked private incident photo fixture from Test Storage.");
+        }
+      }
       const removed = await cleanupMarkedFixtureUsers(admin);
       process.stdout.write(`Fixture cleanup completed; removed ${removed} marked Auth user(s) and their fleets.\n`);
     } catch (cleanupError) {
