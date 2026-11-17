@@ -37,13 +37,22 @@ export default function FleetMapPage() {
     return () => clearInterval(timer);
   }, []);
 
-  const loadingLocations = useRef(false);
+  const loadingLocations = useRef(new Map());
   const authGenerationRef = useRef(0);
+  const locationRequestGenerationRef = useRef(0);
+  const activeFleetIdRef = useRef(null);
   const historyByTrip = useRef(new Map());
 
   async function loadLocations(id, authGeneration = authGenerationRef.current) {
-    if (!id || loadingLocations.current) return;
-    loadingLocations.current = true;
+    if (!id) return;
+    if (activeFleetIdRef.current !== id) {
+      activeFleetIdRef.current = id;
+      locationRequestGenerationRef.current += 1;
+      historyByTrip.current.clear();
+    }
+    const requestGeneration = locationRequestGenerationRef.current;
+    if (loadingLocations.current.get(id) === requestGeneration) return;
+    loadingLocations.current.set(id, requestGeneration);
     try {
       const { data: trips, error: tripError } = await supabase.from("trips")
         .select("id,driver_id,vehicle_id,origin_address,destination_address,started_at")
@@ -78,14 +87,14 @@ export default function FleetMapPage() {
         historyByTrip.current.set(trip.id, history);
         return { ...trip, ...loc, history, driver: driverResult.data?.full_name || "נהג", vehicle: vehicleResult.data?.registration_number || "רכב" };
       }));
-      if (authGeneration !== authGenerationRef.current) return;
+      if (authGeneration !== authGenerationRef.current || requestGeneration !== locationRequestGenerationRef.current || activeFleetIdRef.current !== id) return;
       setLocations(points.filter(Boolean));
       setError("");
     } catch (error) {
-      if (authGeneration !== authGenerationRef.current) return;
+      if (authGeneration !== authGenerationRef.current || requestGeneration !== locationRequestGenerationRef.current || activeFleetIdRef.current !== id) return;
       setError("לא ניתן לרענן את מיקומי הנהגים: " + (error?.message || "שגיאה לא ידועה"));
     } finally {
-      loadingLocations.current = false;
+      if (loadingLocations.current.get(id) === requestGeneration) loadingLocations.current.delete(id);
     }
   }
 
@@ -95,6 +104,8 @@ export default function FleetMapPage() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (!nextSession) {
         authGenerationRef.current += 1;
+        locationRequestGenerationRef.current += 1;
+        activeFleetIdRef.current = null;
         historyByTrip.current.clear();
         setSession(null);
         setFleetId(null);
