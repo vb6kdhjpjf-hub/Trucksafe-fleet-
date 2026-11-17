@@ -1,6 +1,5 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://trucksafe.invalid/schemas/truck-poi-v1.json",
   "title": "TruckSafe normalized point of interest",
   "type": "object",
   "additionalProperties": false,
