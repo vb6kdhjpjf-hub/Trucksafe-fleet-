@@ -628,9 +628,10 @@ begin
       raise;
     end if;
   end;
-  -- Verified bridge negative-write tests. Reuse the synthetic CI fleet/user
-  -- already created above; the outer transaction always rolls every fixture back.
-  perform set_config('request.jwt.claim.role', 'service_role', true);
+  -- Test the table CHECK constraints independently of the separate verification
+  -- authority trigger. Disable only that trigger inside this rollback-only test
+  -- transaction; it is re-enabled before the transaction ends.
+  alter table public.road_restrictions disable trigger road_restrictions_guard_verification;
 
   begin
     insert into public.road_restrictions (
@@ -709,7 +710,7 @@ begin
        'Database CHECK rejected a verified height row without measurement_coverage');
   end;
 
-  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  alter table public.road_restrictions enable trigger road_restrictions_guard_verification;
 
 end
 $test$;
