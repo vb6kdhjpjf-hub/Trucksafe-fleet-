@@ -141,3 +141,31 @@ The March 2024 update to the Ministry's parking-design guidance includes Section
 ### Current decision
 
 These sources strengthen the product's safety rationale and future site-assessment methodology, but neither is an ingestible truck-parking POI feed. The operator-published Highway 6 candidates already documented above remain candidates requiring exact location/access verification and rights review. No nationwide truck-parking coverage is established. No files were downloaded, no data imported, no operator contacted, and no database, map, or production system changed.
+
+
+
+## Operator-source cross-check: Highway 6 heavy-vehicle facilities (2026-11-17)
+
+### Derech Eretz and Dor Alon — four service-centre candidates
+
+The operator's Highway 6 station page (https://www.kvish6.co.il/ContentPage.aspx?Id=125) identifies two Dor Alon stations near Naan, between Nesherim and Sorek interchanges, one on each side, and two near Magal, between Nitzanei Oz and Baqa interchanges, one on each side. It explicitly states that each has a commercial service centre, a truck-weighing area, and a rest area.
+
+Dor Alon's own operator page (https://www.doralon.co.il/מתחמי-התדלוק-והמסחר-בכביש-6/) independently describes the same four stations and explicitly states that each has separate parking and refuelling areas for heavy vehicles, alongside service/rest areas and toilets.
+
+**Evidence upgrade:** the truck-related facility claim now has corroborating statements from both the road operator and the fuel-station operator. These are credible operator-published candidate locations for heavy-vehicle refuelling/parking and rest. They still do not provide verified point coordinates, exact entrance/exit geometry, truck size/weight limits, diesel/AdBlue/high-flow product availability, live parking capacity, overnight permission, or a machine-readable availability feed. Do not turn the broad interchange-area descriptions into guessed pins. Treat each direction as a separate candidate, pending exact coordinate and access verification.
+
+### TransIsrael — southern rest lay-bys and emergency bays are different facility classes
+
+TransIsrael's official project page (https://www.transisrael.co.il/Project?projectID=64) currently states that two southern rest lay-bys are open. It describes the rest-lay-by design as approximately 1 km long, with approximately five truck spaces, three bus spaces, eight private-vehicle spaces, accessible/EV spaces, and planned/associated convenience/toilet/seating facilities. The page also separately lists five southern emergency lay-bys as open and says emergency lay-bys are for emergency stops, including trucks.
+
+**Important classification rule:** a *rest lay-by* and an *emergency lay-by* must never share the same POI category or user-facing promise. Emergency lay-bys are for emergency stopping; they must not be advertised as planned rest/overnight parking. The official page's five truck spaces are a design description, not live capacity or a guarantee that a space is available. The official page gives corridor-level status but not exact coordinates or direction-specific entrance geometry in the reviewed text.
+
+The road operator's map page (https://www.kvish6.co.il/MapAndRoute.aspx) provides interchange order and distances, but not verified coordinates for these rest lay-bys. It also states that road-operator responsibility changes by segment: Derech Eretz covers the central section to Sorek, while the southern segment beyond Sorek is under Netivei Israel. This matters for source ownership and future incident/reporting escalation.
+
+### Pilot readiness decision
+
+1. **Naan/Magal Dor Alon centres:** strongest current operator-evidenced heavy-vehicle service-centre candidates. Require four exact direction-specific locations, entrance geometry, vehicle limits, service verification and rights review before import or routing.
+2. **Two southern rest lay-bys:** confirmed open by TransIsrael at corridor level and intended to include truck parking. Require exact coordinates, direction, actual truck-bay count/operating status, access and facility inspection before map publication.
+3. **Five southern emergency lay-bys:** keep in a distinct emergency-only layer/category if later sourced with exact locations. Never treat as routine rest/parking POIs.
+
+No source licence or permission for bulk extraction/redistribution has been established for these operator pages. No coordinates were guessed, no data was downloaded/imported, no operator was contacted, and no database, map, API, or production system was changed.
