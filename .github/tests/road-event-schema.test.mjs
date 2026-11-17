@@ -35,7 +35,8 @@ test("road-event geometry is bounded to supported Israel coordinates", () => {
   assert.equal(variants.length, 2);
   const point = variants.find(item => item.properties.kind.const === "point");
   const segment = variants.find(item => item.properties.kind.const === "segment");
-  for (const coordinate of [point.properties, segment.properties.start.properties, segment.properties.end.properties]) {
+  const coordinateSchema = schema.$defs.coordinate.properties;
+  for (const coordinate of [point.properties, coordinateSchema, coordinateSchema]) {
     assert.equal(coordinate.latitude.minimum, 29);
     assert.equal(coordinate.latitude.maximum, 34);
     assert.equal(coordinate.longitude.minimum, 34);
