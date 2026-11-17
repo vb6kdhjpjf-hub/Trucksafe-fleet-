@@ -56,6 +56,8 @@ test("stale, unverified, expired and malformed events fail closed", () => {
   assert.equal(validateRoadEventForPublication({ ...baseEvent, expires_at: new Date(now).toISOString() }, now, freshnessPolicy).reason, "expired");
   assert.equal(validateRoadEventForPublication({ ...baseEvent, geometry: { kind: "point", latitude: 40, longitude: 35 } }, now, freshnessPolicy).reason, "invalid_geometry");
   assert.equal(validateRoadEventForPublication({ ...baseEvent, received_at: "not-a-date" }, now, freshnessPolicy).reason, "invalid_timestamps");
+  assert.equal(validateRoadEventForPublication({ ...baseEvent, observed_at: new Date(now + 60_000).toISOString() }, now, freshnessPolicy).reason, "inconsistent_timestamps");
+  assert.equal(validateRoadEventForPublication({ ...baseEvent, last_confirmed_at: new Date(now - 120_000).toISOString() }, now, freshnessPolicy).reason, "inconsistent_timestamps");
   assert.equal(validateRoadEventForPublication({ ...baseEvent, event_type: "checkpoint" }, now, freshnessPolicy).reason, "unsupported_classification");
   assert.equal(validateRoadEventForPublication({ ...baseEvent, driver_message: "<script>" + "x".repeat(300) }, now, freshnessPolicy).reason, "invalid_driver_payload");
 });
