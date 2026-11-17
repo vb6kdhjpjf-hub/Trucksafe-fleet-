@@ -117,3 +117,27 @@ TransIsrael states that two southern rest lay-bys have opened, while two central
 ### Implementation decision
 
 These operator sources are the best current leads found in this review for an initial Highway 6 pilot. They justify a source-validation work item, not immediate import. No licence for bulk extraction or redistribution was established from these operator webpages; treat them as human-review leads until written/explicit reuse terms, permitted refresh method, attribution, and caching conditions are confirmed. No authority or operator was contacted, no data was downloaded, no POI was imported, and no map or database was changed.
+
+
+
+## National truck-parking context and design-reference sources (2026-11-17)
+
+### State Comptroller — heavy-vehicle road safety audit
+
+Official report: https://library.mevaker.gov.il/sites/DigitalLibrary/Documents/2020/71A/2020-71A-208-Heavy-Vehicles.pdf
+
+The State Comptroller's 2020 report on heavy-vehicle road safety records that the 2002 Sagis Committee had identified a gap between demand and existing infrastructure for heavy transport safety, including rest/overnight truck parking and roadside parking bays. The report also records that, at the time of its audit (March–December 2019, with follow-up through March 2020), the Ministry of Transport's freight master plan had not been completed and a comprehensive national truck survey had not been conducted since 1990.
+
+**Evidence classification:** historical national-policy and safety context, not a current inventory of parking locations or a present-day count of available spaces. It supports treating the lack of a validated national truck-parking feed as a material discovery gap; it does not prove that no newer facilities have opened since the audit. Any current coverage claim still requires current operator/authority evidence.
+
+### Ministry of Transport — parking design guidelines, Chapter D
+
+Official document: https://www.gov.il/BlobFolder/policy/parking_planning_guidelines/he/%D7%93%D7%A4%D7%99%20%D7%A2%D7%93%D7%9B%D7%95%D7%9F%20%D7%94%D7%A0%D7%97%D7%יות%20%D7%חניה%20פרק%20ד%27-%20חניונים%20-%20עדכון%20מספר%202%20-%20מונגש.pdf
+
+The March 2024 update to the Ministry's parking-design guidance includes Section 16, “Parking dimensions for trucks and buses”, and truck design-vehicle dimensions and manoeuvring-space diagrams. The document is a planning/design reference. It does not identify actual public truck-parking sites, establish that a facility was built to these dimensions, grant truck access, or provide live availability.
+
+**Implementation implication:** use this document only as a design-reference input for future engineering review of truck-bay geometry and manoeuvring. Do not derive POI coordinates, site suitability, or routing permission from design diagrams. Actual facility suitability must be verified against site-specific as-built geometry, access controls, signage, and the active vehicle profile.
+
+### Current decision
+
+These sources strengthen the product's safety rationale and future site-assessment methodology, but neither is an ingestible truck-parking POI feed. The operator-published Highway 6 candidates already documented above remain candidates requiring exact location/access verification and rights review. No nationwide truck-parking coverage is established. No files were downloaded, no data imported, no operator contacted, and no database, map, or production system changed.
