@@ -169,3 +169,18 @@ The road operator's map page (https://www.kvish6.co.il/MapAndRoute.aspx) provide
 3. **Five southern emergency lay-bys:** keep in a distinct emergency-only layer/category if later sourced with exact locations. Never treat as routine rest/parking POIs.
 
 No source licence or permission for bulk extraction/redistribution has been established for these operator pages. No coordinates were guessed, no data was downloaded/imported, no operator was contacted, and no database, map, API, or production system was changed.
+
+### New cross-check — Dor Alon station directory, direction labels and listed services (2026-11-17)
+
+Dor Alon's current station directory (https://www.doralon.co.il/station/) lists the four Highway 6 stations individually and distinguishes their travel directions:
+
+- **Magal East:** south-to-north; listed as 24/7. The directory lists AdBlue/urea, a mini Alonit convenience store and other station services.
+- **Magal West:** north-to-south; listed as 24/7, with the same listed AdBlue/urea and mini-store indicators.
+- **Naan East:** south-to-north; listed as 24/7, with AdBlue/urea, mini Alonit and EV charging indicators.
+- **Naan West:** north-to-south; listed as 24/7, with the same listed AdBlue/urea, mini-store and EV charging indicators.
+
+The directory also supplies station contact numbers. These are useful operator-published identifiers and contact details for a future manual verification workflow. The separate Highway 6 operator page continues to support the heavy-vehicle weighing/rest-area claim, and Dor Alon's Highway 6 page supports separate heavy-vehicle parking/refuelling areas.
+
+**What this does and does not establish:** it improves the four candidates from vague interchange-area descriptions to four named, direction-labelled operator listings, and adds current listed hours and AdBlue/urea indicators. It does not provide verified coordinates or access-road geometry in the reviewed page, does not explicitly identify diesel or high-flow truck pumps, and does not establish truck dimensions/weight limits, actual live parking capacity, or overnight truck parking permission. Do not infer these attributes from the general service icons.
+
+**Data-use decision:** keep as source-reviewed candidate metadata only. Before bulk extraction, redistribution, or automated refresh, review the operator site's terms and any applicable rights. No coordinates or map pins were created from this listing.
