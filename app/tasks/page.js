@@ -34,6 +34,7 @@ export default function TasksPage() {
   const watchIdRef = useRef(null);
   const lastLocationWriteRef = useRef(0);
   const trackingGenerationRef = useRef(0);
+  const authGenerationRef = useRef(0);
 
   useEffect(() => () => {
     trackingGenerationRef.current += 1;
@@ -43,19 +44,36 @@ export default function TasksPage() {
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למסד הנתונים אינו מוגדר."); setLoading(false); return; }
     let alive = true;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => {
+      if (!next) {
+        authGenerationRef.current += 1;
+        trackingGenerationRef.current += 1;
+        if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+        setTrackingTripId(null);
+        setSession(null); setFleet(null); setTasks([]); setTrips([]); setInspections([]);
+        setDrivers([]); setVehicles([]); setCurrentDriverId(null);
+        setPreTripTask(null); setMessage("");
+        router.replace("/");
+      }
+    });
     supabase.auth.getSession().then(async ({ data, error }) => {
       if (!alive) return;
       if (error || !data.session) { router.replace("/"); return; }
       setSession(data.session);
       await loadWorkspace(data.session.user);
       if (alive) setLoading(false);
+    }).catch(error => {
+      if (!alive) return;
+      setMessage("לא הצלחנו לטעון את המשימות: " + (error?.message || "שגיאה לא ידועה"));
+      setLoading(false);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => { if (!next) router.replace("/"); });
-    return () => { alive = false; subscription.unsubscribe(); };
+    return () => { alive = false; authGenerationRef.current += 1; subscription.unsubscribe(); };
   }, [router]);
 
-  async function loadWorkspace(user) {
+  async function loadWorkspace(user, authGeneration = authGenerationRef.current) {
     const { data, error } = await resolveFleetWorkspace(supabase, user.id);
+    if (authGeneration !== authGenerationRef.current) return;
     if (error) {
       if (error.code === "AUTH_REQUIRED" || error.code === "NO_FLEET") router.replace("/");
       else setMessage("לא הצלחנו לאמת את הצי: " + error.message);
@@ -70,6 +88,7 @@ export default function TasksPage() {
       supabase.from("trips").select("id,task_id,driver_id,vehicle_id,status,origin_address,destination_address,started_at,ended_at").eq("fleet_id", current.id).order("created_at", { ascending: false }).limit(50),
       supabase.from("drivers").select("id").eq("fleet_id", current.id).eq("user_id", user.id).maybeSingle()
     ]);
+    if (authGeneration !== authGenerationRef.current) return;
     if (t.error) setMessage("שגיאה בטעינת המשימות: " + t.error.message); else setTasks(t.data || []);
     if (d.error) setMessage("שגיאה בטעינת הנהגים: " + d.error.message); else setDrivers(d.data || []);
     if (v.error) setMessage("שגיאה בטעינת כלי הרכב: " + v.error.message); else setVehicles(v.data || []);
@@ -77,6 +96,7 @@ export default function TasksPage() {
     setCurrentDriverId(currentDriver?.data?.id || null);
     if (currentDriver?.error) setMessage("לא הצלחנו לאמת את שיוך הנהג לחשבון. פעולות נסיעה יישארו חסומות עד לבדיקה.");
     const { data: inspectionRows, error: inspectionError } = await supabase.from("inspections").select("id,trip_id,vehicle_id,driver_id,inspection_type,checklist,defects,passed,inspected_at").eq("fleet_id", current.id).order("inspected_at", { ascending: false }).limit(30);
+    if (authGeneration !== authGenerationRef.current) return;
     if (inspectionError) setMessage("שגיאה בטעינת היסטוריית בדיקות הרכב: " + inspectionError.message); else setInspections(inspectionRows || []);
   }
 
