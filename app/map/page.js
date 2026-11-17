@@ -15,9 +15,11 @@ export default function FleetMapPage() {
   const routeLines = useRef([]);
   const roadEventMarkers = useRef([]);
   const demoEventsRef = useRef(null);
-  if (!demoEventsRef.current) demoEventsRef.current = getDemoRoadEvents();
-  const [demoNow, setDemoNow] = useState(Date.now());
-  const demoRoadEvents = useMemo(() => getVisibleDemoRoadEvents(demoEventsRef.current || [], demoNow), [demoNow]);
+  const [demoNow, setDemoNow] = useState(null);
+  const demoRoadEvents = useMemo(
+    () => demoNow == null ? [] : getVisibleDemoRoadEvents(demoEventsRef.current || [], demoNow),
+    [demoNow]
+  );
   const [session, setSession] = useState(null);
   const [fleetId, setFleetId] = useState(null);
   const [locations, setLocations] = useState([]);
@@ -27,6 +29,9 @@ export default function FleetMapPage() {
   const eventProximity = demoRoadEvents.map(event => ({ event, nearest: getNearestFreshVehicleLocation(event, locations) }));
 
   useEffect(() => {
+    const startedAt = Date.now();
+    demoEventsRef.current = getDemoRoadEvents(startedAt);
+    setDemoNow(startedAt);
     const timer = setInterval(() => setDemoNow(Date.now()), 30_000);
     return () => clearInterval(timer);
   }, []);
