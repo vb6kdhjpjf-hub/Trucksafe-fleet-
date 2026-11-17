@@ -336,6 +336,7 @@ async function main() {
   let testError;
   let httpServer;
   let incidentPhotoFixturePath = null;
+  let registrationDocumentFixturePath = null;
 
   try {
     httpServer = await startLocalHttpServer(url, anonKey);
@@ -453,6 +454,32 @@ async function main() {
       throw new Error("Fleet A incident photo became inaccessible after denied cross-fleet attempts.");
     }
 
+    const crossFleetRegistrationUrl = await secondFleetOwnerSession.client.storage
+      .from("vehicle-registrations")
+      .createSignedUrl(registrationDocumentFixturePath, 60);
+    assert.ok(crossFleetRegistrationUrl.error, "A non-manager from another fleet must not mint a signed URL for Fleet A's vehicle registration");
+
+    const crossFleetRegistrationDelete = await secondFleetOwnerSession.client.storage
+      .from("vehicle-registrations")
+      .remove([registrationDocumentFixturePath]);
+    assert.equal(crossFleetRegistrationDelete.error, null, "Storage may filter unauthorized registration deletes without an error");
+    assert.deepEqual(crossFleetRegistrationDelete.data, [], "A non-manager from another fleet must not delete Fleet A's registration document");
+
+    const crossFleetRegistrationUpload = await secondFleetOwnerSession.client.storage
+      .from("vehicle-registrations")
+      .upload(createdFleet.id + "/" + fleetAVehicle.id + "/" + runId + "-tamper.pdf", registrationBytes, {
+        contentType: "application/pdf",
+        upsert: false
+      });
+    assert.ok(crossFleetRegistrationUpload.error, "A non-manager from another fleet must not upload into Fleet A's vehicle registration folder");
+
+    const ownerRegistrationStillReadable = await ownerSession.client.storage
+      .from("vehicle-registrations")
+      .createSignedUrl(registrationDocumentFixturePath, 60);
+    if (ownerRegistrationStillReadable.error || !ownerRegistrationStillReadable.data?.signedUrl) {
+      throw new Error("Fleet A registration document became inaccessible after denied cross-fleet attempts.");
+    }
+
     // Create a second-fleet vehicle and incident using only the dedicated Test
     // service-role fixture client. The signed Fleet A owner then attempts BOLA
     // reads, updates, deletes and inserts against Fleet B identifiers.
@@ -468,6 +495,41 @@ async function main() {
       .single();
     if (fleetBVehicleError || !fleetBVehicle?.id || fleetBVehicle.fleet_id !== secondFleet.id) {
       throw new Error("Unable to create the uniquely marked Fleet B vehicle fixture.");
+    }
+
+    const { data: fleetAVehicle, error: fleetAVehicleError } = await admin
+      .from("vehicles")
+      .insert({
+        fleet_id: createdFleet.id,
+        registration_number: `CI-A-${runId.slice(0, 12)}`,
+        make: "Synthetic",
+        model: "Registration Storage Fixture"
+      })
+      .select("id,fleet_id,registration_number")
+      .single();
+    if (fleetAVehicleError || !fleetAVehicle?.id || fleetAVehicle.fleet_id !== createdFleet.id) {
+      throw new Error("Unable to create the uniquely marked Fleet A vehicle for registration Storage tests.");
+    }
+
+    // Registration documents are stored under fleet UUID / vehicle UUID / filename.
+    // Only owners and fleet managers of that same fleet may upload or read them.
+    registrationDocumentFixturePath = createdFleet.id + "/" + fleetAVehicle.id + "/" + runId + ".pdf";
+    const registrationBytes = Buffer.from("%PDF-1.4\\n% TruckSafe synthetic private registration fixture\\n");
+    const { error: registrationUploadError } = await ownerSession.client.storage
+      .from("vehicle-registrations")
+      .upload(registrationDocumentFixturePath, registrationBytes, {
+        contentType: "application/pdf",
+        upsert: false
+      });
+    if (registrationUploadError) {
+      throw new Error("Fleet A owner could not upload its private vehicle registration fixture: " + registrationUploadError.message);
+    }
+
+    const ownerRegistrationUrl = await ownerSession.client.storage
+      .from("vehicle-registrations")
+      .createSignedUrl(registrationDocumentFixturePath, 60);
+    if (ownerRegistrationUrl.error || !ownerRegistrationUrl.data?.signedUrl) {
+      throw new Error("Fleet A owner could not create a short-lived signed URL for its private registration document.");
     }
 
     const { data: fleetBIncident, error: fleetBIncidentError } = await admin
@@ -752,6 +814,14 @@ async function main() {
           .remove([incidentPhotoFixturePath]);
         if (photoCleanupError) {
           throw new Error("Unable to remove the marked private incident photo fixture from Test Storage.");
+        }
+      }
+      if (registrationDocumentFixturePath) {
+        const { error: registrationCleanupError } = await admin.storage
+          .from("vehicle-registrations")
+          .remove([registrationDocumentFixturePath]);
+        if (registrationCleanupError) {
+          throw new Error("Unable to remove the marked private vehicle registration fixture from Test Storage.");
         }
       }
       const removed = await cleanupMarkedFixtureUsers(admin);
