@@ -436,7 +436,7 @@ async function main() {
 
     const crossFleetPhotoUpload = await secondFleetOwnerSession.client.storage
       .from("incident-photos")
-      .upload(incidentPhotoFixturePath.replace(createdFleet.id, secondFleet.id), photoBytes, {
+      .upload(createdFleet.id + "/incidents/" + runId + "-tamper.jpg", photoBytes, {
         contentType: "image/jpeg",
         upsert: false
       });
