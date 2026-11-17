@@ -103,22 +103,23 @@ export default function FleetMapPage() {
         router.replace("/");
       }
     });
+    const initialAuthGeneration = authGenerationRef.current;
     supabase.auth.getSession().then(async ({ data, error: sessionError }) => {
-      if (!alive) return;
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (sessionError || !data.session) { router.replace("/"); return; }
       setSession(data.session);
       const { data: workspace, error: workspaceError } = await resolveFleetWorkspace(supabase, data.session.user.id);
-      if (!alive) return;
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (workspaceError) {
         if (workspaceError.code === "AUTH_REQUIRED" || workspaceError.code === "NO_FLEET") router.replace("/");
         else setError("לא הצלחנו לאמת את הצי: " + workspaceError.message);
         setLoading(false); return;
       }
       setFleetId(workspace.fleet.id);
-      await loadLocations(workspace.fleet.id);
-      if (alive) setLoading(false);
+      await loadLocations(workspace.fleet.id, initialAuthGeneration);
+      if (alive && initialAuthGeneration === authGenerationRef.current) setLoading(false);
     }).catch(error => {
-      if (!alive) return;
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       setError("לא הצלחנו לטעון את סביבת העבודה: " + (error?.message || "שגיאה לא ידועה"));
       setLoading(false);
     });
