@@ -50,3 +50,27 @@ test("nearest vehicle distance returns null for stale, future or out-of-bounds G
   assert.equal(getNearestFreshVehicleLocation(event, invalid, now), null);
   assert.equal(getNearestFreshVehicleLocation({ latitude: 40, longitude: 35 }, [], now), null);
 });
+
+
+test("visible demo events reject inconsistent trust labels, timestamps, confidence and payloads", () => {
+  const now = 1_800_000_000_000;
+  const base = getDemoRoadEvents(now)[0];
+  const invalidEvents = [
+    { ...base, verification_state: "unverified" },
+    { ...base, state: "corroborating", verification_state: "authoritative" },
+    { ...base, observed_at: new Date(now + 60_000).toISOString() },
+    { ...base, expires_at: new Date(now - 1).toISOString() },
+    { ...base, confidence: 101 },
+    { ...base, severity: "unknown" },
+    { ...base, event_type: "checkpoint" },
+    { ...base, driver_message: " " }
+  ];
+  for (const event of invalidEvents) {
+    assert.equal(getVisibleDemoRoadEvents([event], now).length, 0);
+  }
+});
+
+test("demo confidence follows the canonical integer percentage scale", () => {
+  const events = getDemoRoadEvents(1_800_000_000_000);
+  assert.deepEqual(events.map(event => event.confidence), [98, 72, 30]);
+});
