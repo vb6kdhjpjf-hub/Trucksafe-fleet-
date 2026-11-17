@@ -15,13 +15,13 @@ export default function FleetMapPage() {
   const routeLines = useRef([]);
   const roadEventMarkers = useRef([]);
   const demoRoadEvents = getVisibleDemoRoadEvents(getDemoRoadEvents());
-  const eventProximity = demoRoadEvents.map(event => ({ event, nearest: getNearestFreshVehicleLocation(event, locations) }));
   const [session, setSession] = useState(null);
   const [fleetId, setFleetId] = useState(null);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [mapReady, setMapReady] = useState(false);
   const [error, setError] = useState("");
+  const eventProximity = demoRoadEvents.map(event => ({ event, nearest: getNearestFreshVehicleLocation(event, locations) }));
 
   const loadingLocations = useRef(false);
   const historyByTrip = useRef(new Map());
