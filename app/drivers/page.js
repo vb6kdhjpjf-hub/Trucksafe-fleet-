@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
@@ -20,25 +20,36 @@ export default function DriversPage() {
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [message, setMessage] = useState("");
+  const authGenerationRef = useRef(0);
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למסד הנתונים אינו מוגדר."); setLoading(false); return; }
     let alive = true;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => {
+      if (!next) {
+        authGenerationRef.current += 1;
+        setSession(null); setFleet(null); setDrivers([]);
+        setEditing(null); setShowForm(false); setForm(emptyForm); setMessage("");
+        router.replace("/");
+      }
+    });
     supabase.auth.getSession().then(async ({ data, error }) => {
       if (!alive) return;
       if (error || !data.session) { router.replace("/"); return; }
       setSession(data.session);
       await loadWorkspace(data.session.user);
       if (alive) setLoading(false);
+    }).catch(error => {
+      if (!alive) return;
+      setMessage("לא הצלחנו לטעון את רשימת הנהגים: " + (error?.message || "שגיאה לא ידועה"));
+      setLoading(false);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => {
-      if (!next) router.replace("/");
-    });
-    return () => { alive = false; subscription.unsubscribe(); };
+    return () => { alive = false; authGenerationRef.current += 1; subscription.unsubscribe(); };
   }, [router]);
 
-  async function loadWorkspace(user) {
+  async function loadWorkspace(user, authGeneration = authGenerationRef.current) {
     const { data, error } = await resolveFleetWorkspace(supabase, user.id);
+    if (authGeneration !== authGenerationRef.current) return;
     if (error) {
       if (error.code === "AUTH_REQUIRED" || error.code === "NO_FLEET") router.replace("/");
       else setMessage("לא הצלחנו לאמת את הצי: " + error.message);
@@ -46,13 +57,14 @@ export default function DriversPage() {
     }
     const current = data.fleet;
     setFleet(current);
-    await loadDrivers(current.id);
+    await loadDrivers(current.id, authGeneration);
   }
 
-  async function loadDrivers(fleetId) {
+  async function loadDrivers(fleetId, authGeneration = authGenerationRef.current) {
     const { data, error } = await supabase.from("drivers")
       .select("id,full_name,phone,license_number,license_class,license_expires_at,status,created_at")
       .eq("fleet_id", fleetId).order("created_at", { ascending: false });
+    if (authGeneration !== authGenerationRef.current) return;
     if (error) setMessage("שגיאה בטעינת הנהגים: " + error.message);
     else setDrivers(data || []);
   }
