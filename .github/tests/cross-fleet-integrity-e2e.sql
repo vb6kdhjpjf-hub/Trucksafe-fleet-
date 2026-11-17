@@ -365,8 +365,8 @@ BEGIN
     'ff000000-0000-4000-8000-000000000002',
     'ff000000-0000-4000-8000-000000000003'
   );
-  IF visible_rows <> 2 THEN
-    RAISE EXCEPTION 'Driver RLS failure: driver should see only the two GPS points from own Fleet A trips; saw % rows', visible_rows;
+  IF visible_rows <> 1 THEN
+    RAISE EXCEPTION 'Driver RLS failure: driver should see only the remaining GPS point from own Fleet A trip; saw % rows', visible_rows;
   END IF;
 
   SELECT count(*) INTO visible_rows
