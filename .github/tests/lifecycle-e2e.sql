@@ -450,7 +450,8 @@ begin
   end if;
   if incident_read is null
      or position('incident-photos' in incident_read) = 0
-     or position('public.incidents' in incident_read) = 0 then
+     or position('from incidents i' in incident_read) = 0
+     or position('photo_path = objects.name' in incident_read) = 0 then
     raise exception 'Incident photo reads must be linked to an incident row protected by incident RLS';
   end if;
   if incident_delete is null
