@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isValidIsraelGpsPoint, pruneInactiveTripHistory } from "../../lib/map-location-safety.mjs";
+import { isFreshGpsTimestamp, isValidIsraelGpsCoordinates, isValidIsraelGpsPoint, pruneInactiveTripHistory } from "../../lib/map-location-safety.mjs";
 
 const now = Date.parse("2026-11-17T12:00:00.000Z");
 const validPoint = {
@@ -44,4 +44,20 @@ test("does not mutate a cache when inputs are not valid collections", () => {
   const cache = new Map([["trip", []]]);
   assert.equal(pruneInactiveTripHistory(cache, []), 0);
   assert.equal(cache.size, 1);
+});
+
+test("GPS capture accepts only coordinates inside the Israel operating bounds", () => {
+  assert.equal(isValidIsraelGpsCoordinates(32.8, 35.5), true);
+  assert.equal(isValidIsraelGpsCoordinates(28.9, 35.5), false);
+  assert.equal(isValidIsraelGpsCoordinates(32.8, 36.1), false);
+});
+
+test("GPS capture rejects stale, future, and malformed device timestamps", () => {
+  const nowMs = 1_800_000_000_000;
+  assert.equal(isFreshGpsTimestamp(nowMs, nowMs), true);
+  assert.equal(isFreshGpsTimestamp(nowMs - 60_000, nowMs), true);
+  assert.equal(isFreshGpsTimestamp(nowMs - 60_001, nowMs), false);
+  assert.equal(isFreshGpsTimestamp(nowMs + 30_000, nowMs), true);
+  assert.equal(isFreshGpsTimestamp(nowMs + 30_001, nowMs), false);
+  assert.equal(isFreshGpsTimestamp(NaN, nowMs), false);
 });
