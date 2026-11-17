@@ -10,6 +10,7 @@ begin;
 \ir ../../supabase/migrations/20261115100000_protect_referenced_private_evidence.sql
 \ir ../../supabase/migrations/20261115113000_guard_vehicle_registration_insert_verification.sql
 \ir ../../supabase/migrations/20261115120000_use_israel_local_date_for_trip_compliance.sql
+\ir ../../supabase/migrations/20261117165300_harden_verified_bridge_country_and_verifier.sql
 
 create temporary table trucksafe_e2e_results (
   scenario text not null,
