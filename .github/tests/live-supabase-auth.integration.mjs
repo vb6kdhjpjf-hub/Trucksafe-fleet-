@@ -413,6 +413,21 @@ async function main() {
       throw new Error("Unable to create the uniquely marked Fleet B incident fixture.");
     }
 
+    const { data: fleetBMaintenance, error: fleetBMaintenanceError } = await admin
+      .from("maintenance_records")
+      .insert({
+        fleet_id: secondFleet.id,
+        vehicle_id: fleetBVehicle.id,
+        maintenance_type: "routine",
+        description: "Synthetic Fleet B isolation fixture",
+        status: "scheduled"
+      })
+      .select("id,fleet_id,vehicle_id,description")
+      .single();
+    if (fleetBMaintenanceError || !fleetBMaintenance?.id || fleetBMaintenance.fleet_id !== secondFleet.id) {
+      throw new Error("Unable to create the uniquely marked Fleet B maintenance fixture.");
+    }
+
     const crossFleetVehicleRead = await ownerSession.client
       .from("vehicles").select("id,fleet_id").eq("id", fleetBVehicle.id);
     assert.equal(crossFleetVehicleRead.error, null, "cross-fleet vehicle read should be RLS-filtered, not leak an error");
@@ -422,6 +437,11 @@ async function main() {
       .from("incidents").select("id,fleet_id").eq("id", fleetBIncident.id);
     assert.equal(crossFleetIncidentRead.error, null, "cross-fleet incident read should be RLS-filtered");
     assert.deepEqual(crossFleetIncidentRead.data, [], "Fleet A owner must not read a Fleet B incident by guessed UUID");
+
+    const crossFleetMaintenanceRead = await ownerSession.client
+      .from("maintenance_records").select("id,fleet_id").eq("id", fleetBMaintenance.id);
+    assert.equal(crossFleetMaintenanceRead.error, null, "cross-fleet maintenance read should be RLS-filtered");
+    assert.deepEqual(crossFleetMaintenanceRead.data, [], "Fleet A owner must not read Fleet B maintenance by guessed UUID");
 
     const crossFleetVehicleUpdate = await ownerSession.client
       .from("vehicles").update({ notes: "unauthorized Fleet A mutation" })
@@ -435,6 +455,12 @@ async function main() {
     assert.equal(crossFleetIncidentUpdate.error, null);
     assert.deepEqual(crossFleetIncidentUpdate.data, [], "Fleet A owner must not update a Fleet B incident");
 
+    const crossFleetMaintenanceUpdate = await ownerSession.client
+      .from("maintenance_records").update({ description: "unauthorized Fleet A mutation" })
+      .eq("id", fleetBMaintenance.id).select("id");
+    assert.equal(crossFleetMaintenanceUpdate.error, null);
+    assert.deepEqual(crossFleetMaintenanceUpdate.data, [], "Fleet A owner must not update Fleet B maintenance");
+
     const crossFleetVehicleDelete = await ownerSession.client
       .from("vehicles").delete().eq("id", fleetBVehicle.id).select("id");
     assert.equal(crossFleetVehicleDelete.error, null);
@@ -444,6 +470,11 @@ async function main() {
       .from("incidents").delete().eq("id", fleetBIncident.id).select("id");
     assert.equal(crossFleetIncidentDelete.error, null);
     assert.deepEqual(crossFleetIncidentDelete.data, [], "Fleet A owner must not delete a Fleet B incident");
+
+    const crossFleetMaintenanceDelete = await ownerSession.client
+      .from("maintenance_records").delete().eq("id", fleetBMaintenance.id).select("id");
+    assert.equal(crossFleetMaintenanceDelete.error, null);
+    assert.deepEqual(crossFleetMaintenanceDelete.data, [], "Fleet A owner must not delete Fleet B maintenance");
 
     const crossFleetVehicleInsert = await ownerSession.client
       .from("vehicles").insert({
