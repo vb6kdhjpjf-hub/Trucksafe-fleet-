@@ -33,6 +33,7 @@ export default function TasksPage() {
   const preTripItems = ["צמיגים ולחץ אוויר תקינים","בלמים ובלם חניה תקינים","אורות, איתותים וצופר תקינים","מראות, שמשות ומגבים תקינים","אין נזילות או נזק גלוי","המטען מאובטח והמשקל מתאים","מסמכי רכב ורישיון נהיגה בתוקף"];
   const watchIdRef = useRef(null);
   const lastLocationWriteRef = useRef(0);
+  const locationWriteInFlightRef = useRef(false);
   const trackingGenerationRef = useRef(0);
   const authGenerationRef = useRef(0);
 
@@ -241,7 +242,7 @@ export default function TasksPage() {
     watchIdRef.current = navigator.geolocation.watchPosition(async position => {
       if (generation !== trackingGenerationRef.current) return;
       const now = Date.now();
-      if (now - lastLocationWriteRef.current < 10000) return;
+      if (locationWriteInFlightRef.current || now - lastLocationWriteRef.current < 10000) return;
       const { latitude, longitude, speed, heading, accuracy } = position.coords;
       if (!isValidIsraelGpsCoordinates(latitude, longitude)
         || !isFreshGpsTimestamp(position.timestamp, now)
@@ -249,18 +250,27 @@ export default function TasksPage() {
         setMessage("נקודת GPS לא נשמרה: המיקום מחוץ לאזור הפעילות, הנתון ישן או שהדיוק אינו מספיק.");
         return;
       }
+      locationWriteInFlightRef.current = true;
       lastLocationWriteRef.current = now;
-      const { error } = await supabase.from("trip_locations").insert({
-        trip_id: trip.id, driver_id: trip.driver_id, latitude, longitude,
-        speed_kmh: speed == null || !Number.isFinite(speed) || speed < 0 ? null : Math.round(speed * 3.6 * 10) / 10,
-        heading_degrees: heading == null || !Number.isFinite(heading) || heading < 0 || heading > 360 ? null : heading
-      });
-      if (generation !== trackingGenerationRef.current) return;
-      if (error) {
+      try {
+        const { error } = await supabase.from("trip_locations").insert({
+          trip_id: trip.id, driver_id: trip.driver_id, latitude, longitude,
+          speed_kmh: speed == null || !Number.isFinite(speed) || speed < 0 ? null : Math.round(speed * 3.6 * 10) / 10,
+          heading_degrees: heading == null || !Number.isFinite(heading) || heading < 0 || heading > 360 ? null : heading
+        });
+        if (generation !== trackingGenerationRef.current) return;
+        if (error) {
+          lastLocationWriteRef.current = 0;
+          setMessage("המעקב פעיל אך שמירת נקודת מיקום נכשלה: " + error.message);
+        } else {
+          setMessage("מעקב GPS פעיל — נקודת מיקום נשמרה. דיוק משוער: " + Math.round(accuracy) + " מטר.");
+        }
+      } catch (error) {
+        if (generation !== trackingGenerationRef.current) return;
         lastLocationWriteRef.current = 0;
-        setMessage("המעקב פעיל אך שמירת נקודת מיקום נכשלה: " + error.message);
-      } else {
-        setMessage("מעקב GPS פעיל — נקודת מיקום נשמרה. דיוק משוער: " + Math.round(accuracy) + " מטר.");
+        setMessage("המעקב פעיל אך שמירת נקודת מיקום נכשלה: " + (error?.message || "שגיאה לא ידועה"));
+      } finally {
+        locationWriteInFlightRef.current = false;
       }
     }, error => {
       if (generation !== trackingGenerationRef.current) return;
