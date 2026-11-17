@@ -113,3 +113,13 @@ test("stale map responses cannot mutate shared GPS history before generation val
   assert.ok(historyCommit > generationGuard);
   assert.ok(source.indexOf("nextHistoryByTrip.set(trip.id, history)") > localHistory);
 });
+
+
+test("map clears private state and reloads when authenticated identity changes", async () => {
+  const source = await readFile("app/map/page.js", "utf8");
+  assert.match(source, /const authUserIdRef = useRef\(null\)/);
+  assert.match(source, /nextUserId !== authUserIdRef\.current/);
+  assert.match(source, /authUserIdRef\.current = nextUserId/);
+  assert.match(source, /if \(typeof window !== "undefined"\) window\.location\.reload\(\)/);
+  assert.match(source, /if \(!nextSession\) \{\s*authUserIdRef\.current = null/);
+});
