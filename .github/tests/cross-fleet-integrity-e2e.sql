@@ -359,6 +359,24 @@ BEGIN
   END IF;
 
   SELECT count(*) INTO visible_rows
+  FROM public.trip_locations
+  WHERE trip_id IN (
+    'ff000000-0000-4000-8000-000000000001',
+    'ff000000-0000-4000-8000-000000000002',
+    'ff000000-0000-4000-8000-000000000003'
+  );
+  IF visible_rows <> 2 THEN
+    RAISE EXCEPTION 'Driver RLS failure: driver should see only the two GPS points from own Fleet A trips; saw % rows', visible_rows;
+  END IF;
+
+  SELECT count(*) INTO visible_rows
+  FROM public.trip_locations
+  WHERE trip_id = 'ff000000-0000-4000-8000-000000000002';
+  IF visible_rows <> 0 THEN
+    RAISE EXCEPTION 'Driver RLS failure: driver can see Fleet B GPS locations';
+  END IF;
+
+  SELECT count(*) INTO visible_rows
   FROM public.inspections
   WHERE id IN (
     '22000000-0000-4000-8000-000000000001',
