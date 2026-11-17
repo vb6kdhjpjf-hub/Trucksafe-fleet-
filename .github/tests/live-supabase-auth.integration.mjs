@@ -332,7 +332,7 @@ async function main() {
   const fleetName = `${FIXTURE_FLEET_PREFIX}${runId}`;
   const roles = ["owner", "fleet_manager", "dispatcher", "safety_manager", "driver", "ambiguous", "unassigned"];
   const fixtures = [];
-  const signedIn = [];
+  const sessionsByUserId = new Map();
   let testError;
   let httpServer;
   let incidentPhotoFixturePath = null;
@@ -349,7 +349,7 @@ async function main() {
 
     const owner = fixtures.find(item => item.role === "owner");
     const ownerSession = await signInFixtureUser(url, anonKey, owner.user, owner.password);
-    signedIn.push(ownerSession);
+    sessionsByUserId.set(owner.user.id, ownerSession);
 
     // Create only the uniquely marked fixture fleet with the dedicated Test service-role client.
     // The owner membership trigger runs in the database; all authorization assertions below use real signed user JWTs.
@@ -423,7 +423,7 @@ async function main() {
 
     const secondFleetOwner = fixtures.find(item => item.role === "ambiguous");
     const secondFleetOwnerSession = await signInFixtureUser(url, anonKey, secondFleetOwner.user, secondFleetOwner.password);
-    signedIn.push(secondFleetOwnerSession);
+    sessionsByUserId.set(secondFleetOwner.user.id, secondFleetOwnerSession);
 
     const crossFleetPhotoUrl = await secondFleetOwnerSession.client.storage
       .from("incident-photos")
@@ -658,7 +658,7 @@ async function main() {
       const session = fixture.role === "owner"
         ? ownerSession
         : await signInFixtureUser(url, anonKey, fixture.user, fixture.password);
-      if (fixture.role !== "owner") signedIn.push(session);
+      sessionsByUserId.set(fixture.user.id, session);
       if (fixture.role !== "unassigned" && fixture.role !== "ambiguous") {
         await assertMembershipAccess({
           ...session,
@@ -699,7 +699,8 @@ async function main() {
     // Membership is re-read from Test Postgres on every API request: removing a row
     // must revoke an otherwise valid, still-signed JWT without requiring re-login.
     const dispatcher = fixtures.find(item => item.role === "dispatcher");
-    const dispatcherSession = signedIn[fixtures.indexOf(dispatcher)];
+    const dispatcherSession = sessionsByUserId.get(dispatcher.user.id);
+    if (!dispatcherSession) throw new Error("Missing signed Auth session for the dispatcher revocation fixture.");
     const { data: removedMembership, error: removeMembershipError } = await admin
       .from("fleet_members")
       .delete()
@@ -744,7 +745,8 @@ async function main() {
 
     // A manager demotion must also take effect for the same signed JWT immediately.
     const manager = fixtures.find(item => item.role === "fleet_manager");
-    const managerSession = signedIn[fixtures.indexOf(manager)];
+    const managerSession = sessionsByUserId.get(manager.user.id);
+    if (!managerSession) throw new Error("Missing signed Auth session for the manager demotion fixture.");
     const { data: demotedRows, error: demotionError } = await admin
       .from("fleet_members")
       .update({ role: "driver" })
