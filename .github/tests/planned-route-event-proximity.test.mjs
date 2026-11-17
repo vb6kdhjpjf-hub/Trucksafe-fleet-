@@ -5,6 +5,9 @@ import { getEventPositionOnPlannedRoute } from "../../lib/planned-route-event-pr
 const route = {
   kind: "planned_route",
   coordinateOrder: "origin_to_destination",
+  providerId: "synthetic-route-fixture",
+  routeId: "synthetic-route-001",
+  fetchedAt: new Date(Date.now() - 60_000).toISOString(),
   coordinates: [
     { latitude: 32.8000, longitude: 35.5000 },
     { latitude: 32.8100, longitude: 35.5000 },
@@ -72,6 +75,7 @@ test("rejects progress outside the planned route length", () => {
 
 test("fails closed when an event matches two distant positions at a route crossing", () => {
   const crossingRoute = {
+    ...route,
     kind: "planned_route",
     coordinateOrder: "origin_to_destination",
     coordinates: [
@@ -96,4 +100,26 @@ test("rejects GPS history and routes without explicit origin-to-destination orde
   assert.equal(getEventPositionOnPlannedRoute(event, gpsHistory, 0.5), null);
   assert.equal(getEventPositionOnPlannedRoute(event, unorderedRoute, 0.5), null);
   assert.equal(getEventPositionOnPlannedRoute(event, reverseOrUnknownRoute, 0.5), null);
+});
+
+test("rejects stale, future-dated, or unidentified planned-route sources", () => {
+  const event = { latitude: 32.8150, longitude: 35.5000 };
+  const now = Date.parse("2026-11-17T12:00:00.000Z");
+  const fresh = {
+    ...route,
+    fetchedAt: "2026-11-17T11:59:00.000Z"
+  };
+  assert.ok(getEventPositionOnPlannedRoute(event, fresh, 0.5, 2, now));
+  assert.equal(getEventPositionOnPlannedRoute(event, {
+    ...fresh, fetchedAt: "2026-11-17T11:30:00.000Z"
+  }, 0.5, 2, now), null);
+  assert.equal(getEventPositionOnPlannedRoute(event, {
+    ...fresh, fetchedAt: "2026-11-17T12:01:00.000Z"
+  }, 0.5, 2, now), null);
+  assert.equal(getEventPositionOnPlannedRoute(event, {
+    ...fresh, providerId: ""
+  }, 0.5, 2, now), null);
+  assert.equal(getEventPositionOnPlannedRoute(event, {
+    ...fresh, routeId: ""
+  }, 0.5, 2, now), null);
 });
