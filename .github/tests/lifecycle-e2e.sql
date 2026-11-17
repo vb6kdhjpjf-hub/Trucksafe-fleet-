@@ -329,6 +329,83 @@ begin
 end
 $guard_test$;
 
+
+do $trip_location_security_test$
+declare
+  insert_policy text;
+  select_policy text;
+begin
+  if not exists (
+    select 1
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = 'trip_locations'
+      and c.relrowsecurity
+  ) then
+    raise exception 'Trip location rows must have RLS enabled';
+  end if;
+
+  select lower(with_check) into insert_policy
+  from pg_policies
+  where schemaname = 'public'
+    and tablename = 'trip_locations'
+    and policyname = 'trip_locations_insert_authorized'
+    and cmd = 'INSERT'
+    and roles @> array['authenticated']::name[];
+
+  if insert_policy is null
+     or position('t.status = ''active''' in insert_policy) = 0
+     or position('t.driver_id = trip_locations.driver_id' in insert_policy) = 0
+     or position('d.user_id' in insert_policy) = 0
+     or position('auth.uid()' in insert_policy) = 0
+     or position('d.status = ''active''' in insert_policy) = 0
+     or position('private.is_fleet_member' in insert_policy) = 0 then
+    raise exception 'Trip location INSERT policy must require the assigned active driver, active trip, and fleet membership';
+  end if;
+
+  select lower(qual) into select_policy
+  from pg_policies
+  where schemaname = 'public'
+    and tablename = 'trip_locations'
+    and policyname = 'trip_locations_select_member'
+    and cmd = 'SELECT'
+    and roles @> array['authenticated']::name[];
+
+  if select_policy is null
+     or position('private.has_fleet_role' in select_policy) = 0
+     or position('private.is_fleet_member' in select_policy) = 0
+     or position('auth.uid()' in select_policy) = 0 then
+    raise exception 'Trip location SELECT policy must restrict access to fleet managers and the assigned driver';
+  end if;
+
+  if exists (
+    select 1
+    from pg_policies p
+    cross join lateral unnest(p.roles) as role_name
+    where p.schemaname = 'public'
+      and p.tablename = 'trip_locations'
+      and role_name::text in ('anon', 'public')
+  ) then
+    raise exception 'Trip locations must not be exposed to anon or PUBLIC policies';
+  end if;
+
+  if has_function_privilege('anon', 'public.finish_trip(uuid,uuid)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.start_trip_with_inspection(uuid,uuid,uuid,uuid,text,text,jsonb)', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'public.finish_trip(uuid,uuid)', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'public.start_trip_with_inspection(uuid,uuid,uuid,uuid,text,text,jsonb)', 'EXECUTE') then
+    raise exception 'Trip lifecycle RPC grants must deny anon and permit authenticated callers';
+  end if;
+
+  insert into pg_temp.trucksafe_e2e_results values
+    ('trip GPS location row-level security', 'PASS',
+     'Only the assigned active driver can insert GPS points; only authorized fleet roles and that driver can read them');
+  insert into pg_temp.trucksafe_e2e_results values
+    ('trip lifecycle RPC grants', 'PASS',
+     'Anonymous execution is denied and authenticated execution is granted');
+end
+$trip_location_security_test$;
+
 do $test$
 declare
   -- Successful lifecycle fixture
