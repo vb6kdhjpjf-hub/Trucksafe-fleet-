@@ -71,3 +71,12 @@ test("map bootstrap cannot restore fleet data after an auth-generation change", 
   assert.match(source, /await loadLocations\(workspace\.fleet\.id, initialAuthGeneration\)/);
   assert.match(source, /if \(alive && initialAuthGeneration === authGenerationRef\.current\) setLoading\(false\)/);
 });
+
+
+test("GPS capture prevents overlapping asynchronous location writes", async () => {
+  const source = await readFile("app/tasks/page.js", "utf8");
+  assert.match(source, /const locationWriteInFlightRef = useRef\(false\)/);
+  assert.match(source, /if \(locationWriteInFlightRef\.current \|\| now - lastLocationWriteRef\.current < 10000\) return/);
+  assert.match(source, /locationWriteInFlightRef\.current = true/);
+  assert.match(source, /finally \{\s*locationWriteInFlightRef\.current = false;\s*\}/);
+});
