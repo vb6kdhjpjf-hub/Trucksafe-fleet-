@@ -46,7 +46,6 @@ alter table public.road_restrictions
       and measurement_document_url ~* '^https://[^[:space:]]+$'
       and verified_at is not null
       and verified_by is not null
-      and char_length(btrim(coalesce(verified_by, ''))) between 2 and 200
       and source_last_checked_at is not null
       and char_length(btrim(coalesce(verification_note, ''))) between 5 and 4000
       and posted_clearance_status is not null
