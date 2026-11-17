@@ -553,3 +553,21 @@ test("requires posted sign data to remain separate from physical measured cleara
   assert.equal(result.validated, false);
   assert.equal(result.unresolved[0].reason, "height_clearance_evidence_incomplete");
 });
+
+
+test("validates bridge measurement dates using Israel local time near UTC midnight", () => {
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [verifiedRestriction({
+      max_height_m: 4.5,
+      measurement_date: "2026-11-10"
+    })],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now: new Date("2026-11-09T22:30:00.000Z")
+  });
+  assert.equal(result.validated, true);
+  assert.deepEqual(result.conflicts, []);
+  assert.deepEqual(result.unresolved, []);
+});
