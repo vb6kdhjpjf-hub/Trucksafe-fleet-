@@ -57,8 +57,8 @@ Keep POIs, live road events, private fleet incidents, and legal truck restrictio
 
 1. Keep this contract and category taxonomy as design-only until a source is selected.
 2. Compare candidate sources and licences; measure coverage for Israel and truck-specific attributes.
-3. Define a normalized POI schema and source-specific freshness policies for review.
-4. Build offline tests with synthetic fixtures only.
+3. Define a normalized POI schema and source-specific freshness policies for review. The version-1 schema is now documented in `truck-poi.schema.json`; it separates source licensing, truck-access evidence, vehicle limits, capabilities, opening hours, and live parking availability.
+4. Build offline tests with synthetic fixtures only. Initial contract and schema-shape tests are included in CI; they do not yet validate provider payloads or connect to a database.
 5. After explicit approval, implement an isolated Test-only read path and access-control tests.
 6. Only after separate approval, run a bounded pilot using one approved source, with attribution, monitoring, rate limits, correction handling, and a kill switch.
 
