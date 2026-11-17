@@ -92,3 +92,28 @@ The catalogue metadata reports 5,826 records, data last updated 2018-05-17, and 
 ### Source-search conclusion
 
 No reviewed source in this follow-up qualifies as a validated national truck-parking/rest-area feed. The bus-terminal layer is a licensed bus-infrastructure dataset, not a truck dataset; the general parking-lot layer has no provided licence and is stale. Keep the TruckSafe truck-parking category empty of purportedly verified national coverage until a suitable, licensed source and truck-specific evidence are established. No files were downloaded, no data imported, and no database or map changed.
+
+
+## Operator-published truck-stop candidates on Highway 6 (2026-11-17)
+
+This review found two stronger, operator-published candidate sources. They are suitable for a narrowly scoped, human-verified pilot proposal, but not yet for automatic nationwide ingestion or live truck-routing decisions.
+
+### Derech Eretz / Kvish 6 — fuel and service centres at Naan and Magal
+
+Operator information page: https://www.kvish6.co.il/ContentPage.aspx?Id=125
+
+The road operator's current public page lists four Dor Alon fuel stations along Highway 6: two at Naan, between Nesherim and Sorek interchanges (one on each side), and two at Magal, between Nitzanei Oz and Baqa interchanges (one on each side). The operator describes each as including a commercial service centre, a truck-weighing area, and a rest/recreation area.
+
+**Evidence classification:** operator-published location/amenity claims for four service-centre candidates. This is materially stronger than a generic parking-lot point, but the page does not identify exact coordinates or entrance geometry, current parking capacity, diesel/AdBlue/high-flow availability, overnight permission, truck dimensions accepted, opening hours, or live occupancy. Do not infer these fields. Preserve the operator page URL and observation timestamp if a later approved pilot is undertaken. Confirm current station identity and access before routing a specific truck.
+
+### TransIsrael — two southern Highway 6 rest lay-bys
+
+Official project page: https://www.transisrael.co.il/Project?projectID=64
+
+TransIsrael states that two southern rest lay-bys have opened, while two central-section rest lay-bys remain planned. The page describes a rest lay-by as approximately 1 km long and specifies a design mix of approximately five truck spaces, three bus spaces and eight private-vehicle spaces, alongside accessible and EV spaces and planned/associated driver facilities. A May 7, 2026 report of the Ministry of Transport / TransIsrael opening announcement locates the two southern facilities between Sorek interchange and Kiryat Gat and says they include designated truck parking: https://www.rashuiot.co.il/html5/ARCLookup.taf?G=8702&SM=&_ID=75878&_function=details&did=1118
+
+**Evidence classification:** strong evidence that two truck-capable rest lay-bys were opened in the southern Highway 6 corridor. The official page does not provide a machine-readable coordinate or exact entrance/exit geometry in the reviewed content. The five truck spaces are a published design description, not a live occupancy feed or guarantee of an available space. Do not create map pins from guessed mileposts or image captions. Before any pilot record, obtain exact location/chainage and travel-direction access from an authoritative operator source, verify present operating status, and record vehicle-size limits and facilities separately.
+
+### Implementation decision
+
+These operator sources are the best current leads found in this review for an initial Highway 6 pilot. They justify a source-validation work item, not immediate import. No licence for bulk extraction or redistribution was established from these operator webpages; treat them as human-review leads until written/explicit reuse terms, permitted refresh method, attribution, and caching conditions are confirmed. No authority or operator was contacted, no data was downloaded, no POI was imported, and no map or database was changed.
