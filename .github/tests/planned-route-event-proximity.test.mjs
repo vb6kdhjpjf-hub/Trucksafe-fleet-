@@ -123,3 +123,19 @@ test("rejects stale, future-dated, or unidentified planned-route sources", () =>
     ...fresh, routeId: ""
   }, 0.5, 2, now), null);
 });
+
+test("enforces the route freshness and clock-skew boundaries exactly", () => {
+  const event = { latitude: 32.8150, longitude: 35.5000 };
+  const now = Date.parse("2026-11-17T12:00:00.000Z");
+  const atBoundary = { ...route, fetchedAt: new Date(now - 15 * 60_000).toISOString() };
+  const justStale = { ...route, fetchedAt: new Date(now - 15 * 60_000 - 1).toISOString() };
+  const futureBoundary = { ...route, fetchedAt: new Date(now + 30_000).toISOString() };
+  const futureInvalid = { ...route, fetchedAt: new Date(now + 30_001).toISOString() };
+  assert.ok(getEventPositionOnPlannedRoute(event, atBoundary, 0.5, 2, now));
+  assert.equal(getEventPositionOnPlannedRoute(event, justStale, 0.5, 2, now), null);
+  assert.ok(getEventPositionOnPlannedRoute(event, futureBoundary, 0.5, 2, now));
+  assert.equal(getEventPositionOnPlannedRoute(event, futureInvalid, 0.5, 2, now), null);
+  assert.equal(getEventPositionOnPlannedRoute(event, {
+    ...route, fetchedAt: "not-a-date"
+  }, 0.5, 2, now), null);
+});
