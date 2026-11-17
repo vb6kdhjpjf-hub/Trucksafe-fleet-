@@ -381,6 +381,100 @@ async function main() {
       throw new Error("Unable to create the second marked Test fleet for the ambiguous-membership fixture.");
     }
 
+    // Create a second-fleet vehicle and incident using only the dedicated Test
+    // service-role fixture client. The signed Fleet A owner then attempts BOLA
+    // reads, updates, deletes and inserts against Fleet B identifiers.
+    const { data: fleetBVehicle, error: fleetBVehicleError } = await admin
+      .from("vehicles")
+      .insert({
+        fleet_id: secondFleet.id,
+        registration_number: `CI-B-${runId.slice(0, 12)}`,
+        make: "Synthetic",
+        model: "Isolation Fixture"
+      })
+      .select("id,fleet_id,registration_number")
+      .single();
+    if (fleetBVehicleError || !fleetBVehicle?.id || fleetBVehicle.fleet_id !== secondFleet.id) {
+      throw new Error("Unable to create the uniquely marked Fleet B vehicle fixture.");
+    }
+
+    const { data: fleetBIncident, error: fleetBIncidentError } = await admin
+      .from("incidents")
+      .insert({
+        fleet_id: secondFleet.id,
+        incident_type: "other",
+        description: "Synthetic Fleet B isolation fixture",
+        created_by: ambiguous.user.id,
+        status: "open"
+      })
+      .select("id,fleet_id,description")
+      .single();
+    if (fleetBIncidentError || !fleetBIncident?.id || fleetBIncident.fleet_id !== secondFleet.id) {
+      throw new Error("Unable to create the uniquely marked Fleet B incident fixture.");
+    }
+
+    const crossFleetVehicleRead = await ownerSession.client
+      .from("vehicles").select("id,fleet_id").eq("id", fleetBVehicle.id);
+    assert.equal(crossFleetVehicleRead.error, null, "cross-fleet vehicle read should be RLS-filtered, not leak an error");
+    assert.deepEqual(crossFleetVehicleRead.data, [], "Fleet A owner must not read a Fleet B vehicle by guessed UUID");
+
+    const crossFleetIncidentRead = await ownerSession.client
+      .from("incidents").select("id,fleet_id").eq("id", fleetBIncident.id);
+    assert.equal(crossFleetIncidentRead.error, null, "cross-fleet incident read should be RLS-filtered");
+    assert.deepEqual(crossFleetIncidentRead.data, [], "Fleet A owner must not read a Fleet B incident by guessed UUID");
+
+    const crossFleetVehicleUpdate = await ownerSession.client
+      .from("vehicles").update({ notes: "unauthorized Fleet A mutation" })
+      .eq("id", fleetBVehicle.id).select("id");
+    assert.equal(crossFleetVehicleUpdate.error, null);
+    assert.deepEqual(crossFleetVehicleUpdate.data, [], "Fleet A owner must not update a Fleet B vehicle");
+
+    const crossFleetIncidentUpdate = await ownerSession.client
+      .from("incidents").update({ description: "unauthorized Fleet A mutation" })
+      .eq("id", fleetBIncident.id).select("id");
+    assert.equal(crossFleetIncidentUpdate.error, null);
+    assert.deepEqual(crossFleetIncidentUpdate.data, [], "Fleet A owner must not update a Fleet B incident");
+
+    const crossFleetVehicleDelete = await ownerSession.client
+      .from("vehicles").delete().eq("id", fleetBVehicle.id).select("id");
+    assert.equal(crossFleetVehicleDelete.error, null);
+    assert.deepEqual(crossFleetVehicleDelete.data, [], "Fleet A owner must not delete a Fleet B vehicle");
+
+    const crossFleetIncidentDelete = await ownerSession.client
+      .from("incidents").delete().eq("id", fleetBIncident.id).select("id");
+    assert.equal(crossFleetIncidentDelete.error, null);
+    assert.deepEqual(crossFleetIncidentDelete.data, [], "Fleet A owner must not delete a Fleet B incident");
+
+    const crossFleetVehicleInsert = await ownerSession.client
+      .from("vehicles").insert({
+        fleet_id: secondFleet.id,
+        registration_number: `CI-X-${runId.slice(0, 12)}`
+      }).select("id");
+    assert.ok(crossFleetVehicleInsert.error, "Fleet A owner must not insert a vehicle into Fleet B");
+
+    const crossFleetIncidentInsert = await ownerSession.client
+      .from("incidents").insert({
+        fleet_id: secondFleet.id,
+        incident_type: "other",
+        description: "unauthorized cross-fleet insert",
+        created_by: owner.user.id,
+        status: "open"
+      }).select("id");
+    assert.ok(crossFleetIncidentInsert.error, "Fleet A owner must not insert an incident into Fleet B");
+
+    const fleetBAfterAttempts = await admin
+      .from("vehicles").select("id,notes").eq("id", fleetBVehicle.id).single();
+    if (fleetBAfterAttempts.error || fleetBAfterAttempts.data?.notes != null) {
+      throw new Error("Fleet B vehicle changed after cross-fleet update/delete attempts.");
+    }
+    const incidentBAfterAttempts = await admin
+      .from("incidents").select("id,description").eq("id", fleetBIncident.id).single();
+    if (incidentBAfterAttempts.error || incidentBAfterAttempts.data?.description !== "Synthetic Fleet B isolation fixture") {
+      throw new Error("Fleet B incident changed after cross-fleet update/delete attempts.");
+    }
+
+    process.stdout.write("Live cross-fleet BOLA checks passed: Fleet A owner could not read, insert, update or delete Fleet B vehicle/incident records by identifier.\\n");
+
     const additionalMembers = fixtures
       .filter(item => item.role === "fleet_manager" || item.role === "dispatcher" || item.role === "safety_manager" || item.role === "driver" || item.role === "ambiguous")
       .map(item => ({ fleet_id: createdFleet.id, user_id: item.user.id, role: item.role === "ambiguous" ? "driver" : item.role }));
