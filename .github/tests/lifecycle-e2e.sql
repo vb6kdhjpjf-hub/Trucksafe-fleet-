@@ -406,6 +406,107 @@ begin
 end
 $trip_location_security_test$;
 
+do $private_storage_policy_test$
+declare
+  incident_upload text;
+  incident_read text;
+  incident_delete text;
+  registration_upload text;
+  registration_read text;
+  registration_delete text;
+begin
+  if not exists (
+    select 1 from storage.buckets
+    where id = 'incident-photos' and public = false
+      and file_size_limit = 5242880
+      and allowed_mime_types @> array['image/jpeg','image/png','image/webp']::text[]
+  ) then
+    raise exception 'Incident photo bucket must be private, limited to 5MB, and restricted to approved image MIME types';
+  end if;
+
+  if not exists (
+    select 1 from storage.buckets
+    where id = 'vehicle-registrations' and public = false
+      and file_size_limit = 8388608
+      and allowed_mime_types @> array['application/pdf','image/jpeg','image/png','image/webp']::text[]
+  ) then
+    raise exception 'Vehicle registration bucket must be private, limited to 8MB, and restricted to approved document MIME types';
+  end if;
+
+  select lower(with_check) into incident_upload
+  from pg_policies where schemaname = 'storage' and tablename = 'objects'
+    and policyname = 'incident_photos_member_upload' and cmd = 'INSERT';
+  select lower(qual) into incident_read
+  from pg_policies where schemaname = 'storage' and tablename = 'objects'
+    and policyname = 'incident_photos_member_read' and cmd = 'SELECT';
+  select lower(qual) into incident_delete
+  from pg_policies where schemaname = 'storage' and tablename = 'objects'
+    and policyname = 'incident_photos_member_delete_own' and cmd = 'DELETE';
+
+  if incident_upload is null
+     or position('incident-photos' in incident_upload) = 0
+     or position('private.is_fleet_member' in incident_upload) = 0 then
+    raise exception 'Incident photo uploads must be restricted to authenticated fleet members';
+  end if;
+  if incident_read is null
+     or position('incident-photos' in incident_read) = 0
+     or position('public.incidents' in incident_read) = 0 then
+    raise exception 'Incident photo reads must be linked to an incident row protected by incident RLS';
+  end if;
+  if incident_delete is null
+     or position('auth.uid()' in incident_delete) = 0
+     or position('private.is_fleet_member' in incident_delete) = 0
+     or position('storage_object_is_referenced' in incident_delete) = 0 then
+    raise exception 'Incident photo deletion must require ownership, fleet membership, and no remaining evidence reference';
+  end if;
+
+  select lower(with_check) into registration_upload
+  from pg_policies where schemaname = 'storage' and tablename = 'objects'
+    and policyname = 'vehicle_registrations_manager_upload' and cmd = 'INSERT';
+  select lower(qual) into registration_read
+  from pg_policies where schemaname = 'storage' and tablename = 'objects'
+    and policyname = 'vehicle_registrations_manager_read' and cmd = 'SELECT';
+  select lower(qual) into registration_delete
+  from pg_policies where schemaname = 'storage' and tablename = 'objects'
+    and policyname = 'vehicle_registrations_manager_delete' and cmd = 'DELETE';
+
+  if registration_upload is null or registration_read is null or registration_delete is null
+     or position('vehicle-registrations' in registration_upload) = 0
+     or position('vehicle-registrations' in registration_read) = 0
+     or position('vehicle-registrations' in registration_delete) = 0
+     or position('private.has_fleet_role' in registration_upload) = 0
+     or position('private.has_fleet_role' in registration_read) = 0
+     or position('private.has_fleet_role' in registration_delete) = 0
+     or position('owner' in registration_upload) = 0
+     or position('fleet_manager' in registration_upload) = 0
+     or position('array_length' in registration_upload) = 0
+     or position('array_length' in registration_read) = 0
+     or position('storage_object_is_referenced' in registration_delete) = 0 then
+    raise exception 'Vehicle registration object access must be fleet-manager scoped, path-structured, and reference-protected on delete';
+  end if;
+
+  if exists (
+    select 1 from pg_policies p
+    cross join lateral unnest(p.roles) as role_name
+    where p.schemaname = 'storage' and p.tablename = 'objects'
+      and role_name::text in ('anon','public')
+  ) then
+    raise exception 'Private evidence storage must not have anon or PUBLIC policies';
+  end if;
+
+  if not exists (
+    select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'incidents' and c.relrowsecurity
+  ) then
+    raise exception 'Incident rows backing photo access must have RLS enabled';
+  end if;
+
+  insert into pg_temp.trucksafe_e2e_results values
+    ('private evidence storage access control', 'PASS',
+     'Both evidence buckets are private and bounded; uploads, reads and deletes are role/fleet scoped with referenced evidence protected');
+end
+$private_storage_policy_test$;
+
 do $test$
 declare
   -- Successful lifecycle fixture
