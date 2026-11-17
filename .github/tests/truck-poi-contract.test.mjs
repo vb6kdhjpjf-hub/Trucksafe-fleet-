@@ -26,7 +26,7 @@ test("the POI taxonomy covers truck stops and driver essentials", () => {
 
 test("fresh trusted evidence is required for truck-route eligibility", () => {
   assert.deepEqual(assessTruckPoi(base, now), {
-    valid: true, displayable: true, truckRouteEligible: true, reason: "truck_access_confirmed"
+    valid: true, displayable: true, truckAccessEvidenceCurrent: true, reason: "truck_access_confirmed"
   });
 });
 
@@ -35,7 +35,7 @@ test("unknown, restricted, and not-applicable access remain visible but are not 
     const result = assessTruckPoi({ ...base, truck_access_status: status }, now);
     assert.equal(result.valid, true);
     assert.equal(result.displayable, true);
-    assert.equal(result.truckRouteEligible, false);
+    assert.equal(result.truckAccessEvidenceCurrent, false);
     assert.equal(result.reason, status);
   }
 });
@@ -51,7 +51,7 @@ test("missing, expired, non-HTTPS, or untrusted access evidence fails closed", (
     const result = assessTruckPoi({ ...base, truck_access_evidence: evidence }, now);
     assert.equal(result.valid, true);
     assert.equal(result.displayable, true);
-    assert.equal(result.truckRouteEligible, false);
+    assert.equal(result.truckAccessEvidenceCurrent, false);
     assert.equal(result.reason, "access_evidence_missing_or_stale");
   }
 });
@@ -71,5 +71,5 @@ test("future verification timestamps beyond clock tolerance fail closed", () => 
       verified_at: "2026-11-17T18:01:00.000Z"
     }
   };
-  assert.equal(assessTruckPoi(poi, now).truckRouteEligible, false);
+  assert.equal(assessTruckPoi(poi, now).truckAccessEvidenceCurrent, false);
 });
