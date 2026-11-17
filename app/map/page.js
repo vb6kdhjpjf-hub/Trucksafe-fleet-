@@ -39,6 +39,7 @@ export default function FleetMapPage() {
 
   const loadingLocations = useRef(new Map());
   const authGenerationRef = useRef(0);
+  const authUserIdRef = useRef(null);
   const locationRequestGenerationRef = useRef(0);
   const activeFleetIdRef = useRef(null);
   const historyByTrip = useRef(new Map());
@@ -104,7 +105,23 @@ export default function FleetMapPage() {
     if (!isSupabaseConfigured) { setLoading(false); return; }
     let alive = true;
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user?.id || null;
+      if (nextUserId && authUserIdRef.current && nextUserId !== authUserIdRef.current) {
+        authGenerationRef.current += 1;
+        locationRequestGenerationRef.current += 1;
+        activeFleetIdRef.current = null;
+        historyByTrip.current.clear();
+        setSession(null);
+        setFleetId(null);
+        setLocations([]);
+        setError("");
+        authUserIdRef.current = nextUserId;
+        if (typeof window !== "undefined") window.location.reload();
+        return;
+      }
+      if (nextUserId) authUserIdRef.current = nextUserId;
       if (!nextSession) {
+        authUserIdRef.current = null;
         authGenerationRef.current += 1;
         locationRequestGenerationRef.current += 1;
         activeFleetIdRef.current = null;
@@ -120,6 +137,7 @@ export default function FleetMapPage() {
     supabase.auth.getSession().then(async ({ data, error: sessionError }) => {
       if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (sessionError || !data.session) { router.replace("/"); return; }
+      authUserIdRef.current = data.session.user.id;
       setSession(data.session);
       const { data: workspace, error: workspaceError } = await resolveFleetWorkspace(supabase, data.session.user.id);
       if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
