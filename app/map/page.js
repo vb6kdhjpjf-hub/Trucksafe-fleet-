@@ -38,9 +38,10 @@ export default function FleetMapPage() {
   }, []);
 
   const loadingLocations = useRef(false);
+  const authGenerationRef = useRef(0);
   const historyByTrip = useRef(new Map());
 
-  async function loadLocations(id) {
+  async function loadLocations(id, authGeneration = authGenerationRef.current) {
     if (!id || loadingLocations.current) return;
     loadingLocations.current = true;
     try {
@@ -77,9 +78,11 @@ export default function FleetMapPage() {
         historyByTrip.current.set(trip.id, history);
         return { ...trip, ...loc, history, driver: driverResult.data?.full_name || "נהג", vehicle: vehicleResult.data?.registration_number || "רכב" };
       }));
+      if (authGeneration !== authGenerationRef.current) return;
       setLocations(points.filter(Boolean));
       setError("");
     } catch (error) {
+      if (authGeneration !== authGenerationRef.current) return;
       setError("לא ניתן לרענן את מיקומי הנהגים: " + (error?.message || "שגיאה לא ידועה"));
     } finally {
       loadingLocations.current = false;
@@ -88,10 +91,24 @@ export default function FleetMapPage() {
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setLoading(false); return; }
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!data.session) { router.replace("/"); return; }
+    let alive = true;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!nextSession) {
+        authGenerationRef.current += 1;
+        historyByTrip.current.clear();
+        setSession(null);
+        setFleetId(null);
+        setLocations([]);
+        setError("");
+        router.replace("/");
+      }
+    });
+    supabase.auth.getSession().then(async ({ data, error: sessionError }) => {
+      if (!alive) return;
+      if (sessionError || !data.session) { router.replace("/"); return; }
       setSession(data.session);
       const { data: workspace, error: workspaceError } = await resolveFleetWorkspace(supabase, data.session.user.id);
+      if (!alive) return;
       if (workspaceError) {
         if (workspaceError.code === "AUTH_REQUIRED" || workspaceError.code === "NO_FLEET") router.replace("/");
         else setError("לא הצלחנו לאמת את הצי: " + workspaceError.message);
@@ -99,8 +116,17 @@ export default function FleetMapPage() {
       }
       setFleetId(workspace.fleet.id);
       await loadLocations(workspace.fleet.id);
+      if (alive) setLoading(false);
+    }).catch(error => {
+      if (!alive) return;
+      setError("לא הצלחנו לטעון את סביבת העבודה: " + (error?.message || "שגיאה לא ידועה"));
       setLoading(false);
     });
+    return () => {
+      alive = false;
+      subscription.unsubscribe();
+      authGenerationRef.current += 1;
+    };
   }, [router]);
 
   useEffect(() => {
