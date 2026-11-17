@@ -10,11 +10,11 @@ export default function RoadRestrictionSourcesPage() {
     <a href="/road-restrictions" style={{ color: "#315bd6", textDecoration: "none" }}>← חזרה למגבלות דרך</a>
     <header style={{ margin: "20px 0" }}>
       <h1 style={{ marginBottom: 8 }}>מקורות מידע ואימות</h1>
-      <p style={{ color: "#64748b", lineHeight: 1.7 }}>רשימת המקורות הרשמית שאותרה עד כה. מקור שמסייע לאתר גשר אינו מוכיח שקיימת בו מגבלת גובה, ולכן לא יועבר אוטומטית למנוע ניווט.</p>
+      <p style={{ color: "#64748b", lineHeight: 1.7 }}>רשימת מקורות, שכבות GIS והפניות שאותרו עד כה. חלקם רשמיים וחלקם מקורות משניים או הפניות לבירור; מקור שמסייע לאתר גשר אינו מוכיח שקיימת בו מגבלת גובה, ולכן לא יועבר אוטומטית למנוע ניווט.</p>
     </header>
     <section style={{ background: "#fff7e6", border: "1px solid #f0d6a2", borderRadius: 12, padding: 16, marginBottom: 18 }}>
       <strong>כלל בטיחות מחייב</strong>
-      <p style={{ marginBottom: 0, lineHeight: 1.7 }}>נתוני איתור נשמרים כמועמדים בלבד. רק מגבלה עם מיקום, מקור רשמי, מדידה ותיעוד מתאימים, שאומתה על ידי בעל צי או מנהל צי, יכולה לקבל סטטוס מאומת. אין להשתמש ברשימה זו כתחליף לתמרורים ולהנחיות הדרך.</p>
+      <p style={{ marginBottom: 0, lineHeight: 1.7 }}>נתוני איתור נשמרים כמועמדים בלבד. סטטוס מאומת מחייב מקור מוסמך, התאמה למיקום/כיוון/נתיב, ראיות ומדידות לפי סוג המגבלה, תוקף ועדכניות, וביקורת בהתאם לדרישות המערכת. אישור משתמש לבדו אינו הופך נתון חסר או לא מוסמך למגבלה מאומתת. אין להשתמש ברשימה זו כתחליף לתמרורים ולהנחיות הדרך.</p>
     </section>
     {ROAD_RESTRICTION_SOURCES.map(source => <article key={source.id} style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 18, marginBottom: 14, background: "white" }}>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -24,7 +24,7 @@ export default function RoadRestrictionSourcesPage() {
       <p style={{ color: "#64748b", margin: "8px 0" }}>מפרסם: {source.publisher}{source.lastPublished ? " · עדכון/פרסום: " + source.lastPublished : ""}</p>
       <p style={{ lineHeight: 1.7 }}>{source.limitations}</p>
       <p style={{ marginBottom: 0 }}>סוגי מידע: {source.dataTypes.join(" · ")}</p>
-      <p style={{ marginBottom: 0, marginTop: 12 }}><a href={source.url} target="_blank" rel="noreferrer" style={{ color: "#315bd6" }}>פתיחת המקור הרשמי ↗</a></p>
+      <p style={{ marginBottom: 0, marginTop: 12 }}><a href={source.url} target="_blank" rel="noreferrer" style={{ color: "#315bd6" }}>פתיחת המקור / ההפניה ↗</a></p>
       {source.contact && <p style={{ marginBottom: 0, marginTop: 8 }}>איש קשר למאגר: <a href={"mailto:" + source.contact}>{source.contact}</a></p>}
       <p style={{ fontSize: 12, color: "#9a3412", marginBottom: 0, marginTop: 12 }}>זכאות לניווט: לא — לא משמש כמגבלת דרך מאומתת.</p>
     </article>)}
