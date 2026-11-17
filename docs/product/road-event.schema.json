@@ -1,0 +1,275 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trucksafe.invalid/schemas/road-event.schema.json",
+  "title": "TruckSafe road event envelope",
+  "description": "Design-only canonical event payload. Not currently accepted by any production endpoint.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_type",
+    "state",
+    "verification_state",
+    "source_class",
+    "geometry",
+    "observed_at",
+    "received_at",
+    "expires_at",
+    "confidence",
+    "severity",
+    "driver_message"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "event_type": {
+      "enum": [
+        "crash",
+        "road_hazard",
+        "weather_hazard",
+        "roadworks",
+        "lane_closure",
+        "road_closure",
+        "temporary_truck_restriction",
+        "traffic_control"
+      ]
+    },
+    "state": {
+      "enum": [
+        "reported",
+        "corroborating",
+        "verified",
+        "expired",
+        "rejected",
+        "withdrawn"
+      ]
+    },
+    "verification_state": {
+      "enum": [
+        "unverified",
+        "corroborated",
+        "authoritative",
+        "rejected"
+      ]
+    },
+    "source_class": {
+      "enum": [
+        "official_authority",
+        "licensed_provider",
+        "fleet_dispatcher",
+        "driver_report"
+      ]
+    },
+    "source_reference": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 500
+    },
+    "geometry": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "latitude",
+            "longitude"
+          ],
+          "properties": {
+            "kind": {
+              "const": "point"
+            },
+            "latitude": {
+              "type": "number",
+              "minimum": 29,
+              "maximum": 34
+            },
+            "longitude": {
+              "type": "number",
+              "minimum": 34,
+              "maximum": 36
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "start",
+            "end"
+          ],
+          "properties": {
+            "kind": {
+              "const": "segment"
+            },
+            "start": {
+              "$ref": "#/$defs/coordinate"
+            },
+            "end": {
+              "$ref": "#/$defs/coordinate"
+            },
+            "road_segment_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 200
+            },
+            "direction": {
+              "enum": [
+                "forward",
+                "backward",
+                "both",
+                "unknown"
+              ]
+            },
+            "lane_reference": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 100
+            }
+          }
+        }
+      ]
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "received_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_confirmed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "confidence": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "severity": {
+      "enum": [
+        "low",
+        "moderate",
+        "high",
+        "critical"
+      ]
+    },
+    "driver_message": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 240
+    },
+    "safe_action_code": {
+      "enum": [
+        "caution",
+        "reduce_speed",
+        "change_lane_if_safe",
+        "avoid_segment",
+        "follow_official_detour",
+        "stop_when_safe",
+        "information_only"
+      ]
+    },
+    "vehicle_applicability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "vehicle_classes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "truck",
+              "bus",
+              "van",
+              "all"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "min_height_cm": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 2000
+        },
+        "max_height_cm": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 2000
+        },
+        "min_width_cm": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 500
+        },
+        "max_width_cm": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 500
+        },
+        "max_gross_weight_kg": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 1000000
+        }
+      }
+    }
+  },
+  "$defs": {
+    "coordinate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "latitude",
+        "longitude"
+      ],
+      "properties": {
+        "latitude": {
+          "type": "number",
+          "minimum": 29,
+          "maximum": 34
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": 34,
+          "maximum": 36
+        }
+      }
+    }
+  }
+}
