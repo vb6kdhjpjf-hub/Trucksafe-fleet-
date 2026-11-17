@@ -79,5 +79,5 @@ test("demo confidence follows the canonical integer percentage scale", () => {
 test("demo feed never labels synthetic events as official-source reports", () => {
   const events = getDemoRoadEvents(1_800_000_000_000);
   assert.ok(events.every(event => !/מקור רשמי/.test(event.source_label)));
-  assert.ok(events.every(event => /הדגמה|מדומה|לא מאומת/.test(event.source_label)));
+  assert.ok(events.every(event => /הדגמה|מדומה|דוגמה|לא מאומת/.test(event.source_label)));
 });
