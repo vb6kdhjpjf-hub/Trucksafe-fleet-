@@ -435,6 +435,8 @@ async function main() {
     // Supabase Storage may return an empty successful DELETE when RLS filters
     // the object rather than returning a policy error. Verify the object remains
     // readable by its owning fleet below instead of requiring an error object.
+    assert.equal(crossFleetPhotoDelete.error, null, "RLS-filtered Storage deletion should not expose a provider error");
+    assert.deepEqual(crossFleetPhotoDelete.data, [], "Fleet B owner must not delete Fleet A's private incident photo");
 
     const crossFleetPhotoUpload = await secondFleetOwnerSession.client.storage
       .from("incident-photos")
