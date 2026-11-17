@@ -46,6 +46,18 @@ Only `verified` events may be presented as verified. `reported` and `corroborati
 
 Events must not assert that a road is clear when no event is present. Expiry removes an event from active alert results but does not erase its audit history.
 
+## Pure lifecycle policy (implemented, not connected)
+
+The repository includes `lib/road-event-lifecycle.mjs` as a side-effect-free policy helper. It does not create, store, ingest, publish, or subscribe to events and is not wired to an API route or database.
+
+- It allows publication only for schema-version-1 events in the `verified` state, with bounded Israel geometry, valid timestamps, an unexpired event, a non-empty recent confirmation, and a server-supplied positive `maxConfirmationAgeMs` policy.
+- An `authoritative` event must originate from `official_authority` or `licensed_provider`; driver and dispatcher payloads cannot self-declare authority.
+- A `corroborated` event requires a server-derived independent corroboration count of at least two. That count and the freshness window are passed as policy evidence, not accepted as client event fields.
+- Lifecycle transitions are forward-only; expired, rejected, and withdrawn states are terminal. Expiry is enforced for active states.
+- The helper assumes the closed JSON Schema is validated by the caller first. It is not an authentication, authorization, source-verification, or persistence boundary.
+
+The caller must choose a category-specific freshness window from a reviewed server policy; this helper deliberately does not invent a universal event TTL.
+
 ## Trust and source rules
 
 - `official_authority`: only a source whose authority, scope, terms, update cadence, and data rights have been reviewed.
