@@ -6,6 +6,7 @@ import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 import { ArrowRight, MapPin, RefreshCw, Truck, AlertTriangle } from "lucide-react";
 import { getDemoRoadEvents, getVisibleDemoRoadEvents, getNearestFreshVehicleLocation } from "../../lib/road-event-demo.mjs";
+import { isValidIsraelGpsPoint, pruneInactiveTripHistory } from "../../lib/map-location-safety.mjs";
 
 export default function FleetMapPage() {
   const router = useRouter();
@@ -47,6 +48,8 @@ export default function FleetMapPage() {
         .select("id,driver_id,vehicle_id,origin_address,destination_address,started_at")
         .eq("fleet_id", id).eq("status", "active");
       if (tripError) throw tripError;
+      const activeTripIds = new Set((trips || []).map(trip => trip.id));
+      pruneInactiveTripHistory(historyByTrip.current, activeTripIds);
       const points = await Promise.all((trips || []).map(async trip => {
         const cachedHistory = historyByTrip.current.get(trip.id);
         const historyQuery = cachedHistory
@@ -63,8 +66,9 @@ export default function FleetMapPage() {
         const childError = latest.error || historyResult.error || driverResult.error || vehicleResult.error;
         if (childError) throw childError;
         const loc = latest.data;
-        if (!loc) return null;
-        const history = cachedHistory || (historyResult.data || []).reverse();
+        if (!loc || !isValidIsraelGpsPoint(loc)) return null;
+        const history = (cachedHistory || (historyResult.data || []).reverse())
+          .filter(point => isValidIsraelGpsPoint(point));
         const lastPoint = history[history.length - 1];
         if (!lastPoint || lastPoint.recorded_at !== loc.recorded_at) {
           history.push({ latitude: loc.latitude, longitude: loc.longitude, recorded_at: loc.recorded_at });
@@ -153,10 +157,7 @@ export default function FleetMapPage() {
     if (!mapReady || !map || !L) return;
     markers.current.forEach(marker => marker.remove());
     routeLines.current.forEach(line => line.remove());
-    const validLocations = locations.filter(loc => {
-      const lat = Number(loc.latitude), lng = Number(loc.longitude);
-      return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
-    });
+    const validLocations = locations.filter(loc => isValidIsraelGpsPoint(loc));
     markers.current = validLocations.map(loc => {
       const marker = L.marker([Number(loc.latitude), Number(loc.longitude)]).addTo(map);
       const updatedAt = new Date(loc.recorded_at);
@@ -169,8 +170,8 @@ export default function FleetMapPage() {
     const colors = ["#2563eb", "#16a34a", "#d97706", "#9333ea", "#dc2626"];
     routeLines.current = validLocations.map((loc, i) => {
       const path = (loc.history || [])
-        .map(p => [Number(p.latitude), Number(p.longitude)])
-        .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180);
+        .filter(point => isValidIsraelGpsPoint(point))
+        .map(point => [Number(point.latitude), Number(point.longitude)]);
       return path.length > 1 ? L.polyline(path, { color: colors[i % colors.length], weight: 5, opacity: 0.8 }).addTo(map) : null;
     }).filter(Boolean);
     const layers = [...markers.current, ...routeLines.current];
