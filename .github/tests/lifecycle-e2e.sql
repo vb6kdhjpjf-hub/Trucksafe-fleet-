@@ -17,7 +17,54 @@ create temporary table trucksafe_e2e_results (
   outcome text not null,
   detail text
 
-) on commit drop;
+ ) on commit drop;
+
+do $public_schema_security_baseline_test$
+declare
+  unprotected_objects text[];
+  anonymous_policies text[];
+  anonymous_definers text[];
+begin
+  select array_agg(format('%I (%s)', c.relname, c.relkind) order by c.relname)
+  into unprotected_objects
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relkind in ('r', 'p')
+    and not c.relrowsecurity;
+
+  if unprotected_objects is not null then
+    raise exception 'Public tables exposed through the Data API must have RLS enabled: %', unprotected_objects;
+  end if;
+
+  select array_agg(format('%I.%I [%s]', p.schemaname, p.tablename, p.policyname) order by p.tablename, p.policyname)
+  into anonymous_policies
+  from pg_policies p
+  where p.schemaname = 'public'
+    and p.roles && array['anon', 'public']::name[];
+
+  if anonymous_policies is not null then
+    raise exception 'Public schema must not define anonymous or PUBLIC row policies: %', anonymous_policies;
+  end if;
+
+  select array_agg(p.oid::regprocedure::text order by p.proname)
+  into anonymous_definers
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and p.prokind = 'f'
+    and p.prosecdef
+    and has_function_privilege('anon', p.oid, 'EXECUTE');
+
+  if anonymous_definers is not null then
+    raise exception 'SECURITY DEFINER functions in exposed public schema must not be executable by anon: %', anonymous_definers;
+  end if;
+
+  insert into pg_temp.trucksafe_e2e_results values
+    ('public Data API RLS and anonymous privilege baseline', 'PASS',
+     'All public tables have RLS; no anon/PUBLIC row policies or anon-executable public SECURITY DEFINER functions exist');
+end
+$public_schema_security_baseline_test$;
 
 do $road_restriction_evidence_schema_test$
 declare
