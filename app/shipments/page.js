@@ -221,14 +221,17 @@ export default function ShipmentsPage(){
   const [selectedNote,setSelectedNote]=useState(null);
   const [settingsForm,setSettingsForm]=useState({issuer_name:"",business_id:"",address:"",phone:"",email:"",number_prefix:"DL"});
   const [showSettings,setShowSettings]=useState(false);
+  const authGenerationRef=useRef(0);
   const role=fleet?.role||"";
   const canManage=["owner","fleet_manager","dispatcher"].includes(role);
   const canOverride=["owner","fleet_manager"].includes(role);
   const notify=(text,kind="info")=>{setMessage(text);setMessageKind(kind);};
-  const loadData=useCallback(async(currentUser)=>{
+  const loadData=useCallback(async(currentUser,authGeneration=authGenerationRef.current)=>{
+    const isCurrent=()=>authGeneration===authGenerationRef.current;
     const {data,error}=await resolveFleetWorkspace(supabase,currentUser.id);
+    if(!isCurrent())return;
     if(error){if(["AUTH_REQUIRED","NO_FLEET"].includes(error.code))router.replace("/");else notify("לא ניתן לאמת את סביבת הצי: "+error.message,"error");return;}
-    const currentFleet=data.fleet;setFleet(currentFleet);
+    const currentFleet=data.fleet;if(!isCurrent())return;setFleet(currentFleet);
     const [ship,drv,veh,lines,stops,stopLines,doc,config,adjustments]=await Promise.all([
       supabase.from("shipments").select("id,fleet_id,customer_name,customer_reference,delivery_reference,status,scheduled_at,assigned_driver_id,assigned_vehicle_id,notes,created_at").eq("fleet_id",currentFleet.id).order("created_at",{ascending:false}).limit(100),
       supabase.from("drivers").select("id,full_name,status").eq("fleet_id",currentFleet.id).order("full_name"),
@@ -240,6 +243,7 @@ export default function ShipmentsPage(){
       supabase.from("delivery_note_settings").select("issuer_name,issuer_business_id,issuer_address,issuer_phone,issuer_email,number_prefix,next_number").eq("fleet_id",currentFleet.id).maybeSingle(),
       supabase.from("delivery_note_adjustments").select("id,delivery_note_id,adjustment_type,reason,payload,created_at").eq("fleet_id",currentFleet.id).order("created_at",{ascending:false})
     ]);
+    if(!isCurrent())return;
     for(const r of [ship,drv,veh,lines,stops,stopLines,doc,config,adjustments])if(r.error){notify("שגיאה בטעינת נתוני משלוחים: "+r.error.message,"error");return;}
     const lineMap=new Map((lines.data||[]).map(x=>[x.id,x]));
     const adjustmentMap=new Map();
@@ -253,6 +257,7 @@ export default function ShipmentsPage(){
         deliveryNote:noteMap.get(st.id)||null
       }))
     }));
+    if(!isCurrent())return;
     setShipments(built);setDrivers(drv.data||[]);setVehicles(veh.data||[]);setNotes(enrichedNotes);
     setSettings(config.data||null);
     if(config.data)setSettingsForm({issuer_name:config.data.issuer_name||"",business_id:config.data.issuer_business_id||"",address:config.data.issuer_address||"",phone:config.data.issuer_phone||"",email:config.data.issuer_email||"",number_prefix:config.data.number_prefix||"DL"});
@@ -261,11 +266,21 @@ export default function ShipmentsPage(){
   useEffect(()=>{
     if(!isSupabaseConfigured){notify("החיבור למסד הנתונים אינו מוגדר.","error");setLoading(false);return;}
     let alive=true;
+    const clearPrivateState=()=>{
+      authGenerationRef.current+=1;
+      setUser(null);setFleet(null);setShipments([]);setDrivers([]);setVehicles([]);setNotes([]);setSettings(null);
+      setResults({});setSelectedNote(null);setShowForm(false);setShowSettings(false);setForm(emptyForm());
+      setMessage("");setLoading(false);
+    };
     supabase.auth.getSession().then(async({data,error})=>{
-      if(!alive)return;if(error||!data.session){router.replace("/");return;}
-      setUser(data.session.user);await loadData(data.session.user);if(alive)setLoading(false);
+      if(!alive)return;
+      if(error||!data.session){clearPrivateState();router.replace("/");return;}
+      const generation=authGenerationRef.current;
+      setUser(data.session.user);await loadData(data.session.user,generation);if(alive&&generation===authGenerationRef.current)setLoading(false);
+    }).catch(()=>{if(alive){clearPrivateState();router.replace("/");}});
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,next)=>{
+      if(!next){clearPrivateState();router.replace("/");}
     });
-    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,next)=>{if(!next)router.replace("/");});
     return()=>{alive=false;subscription.unsubscribe();};
   },[router,loadData]);
 
