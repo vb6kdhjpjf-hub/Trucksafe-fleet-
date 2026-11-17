@@ -432,7 +432,9 @@ async function main() {
     const crossFleetPhotoDelete = await secondFleetOwnerSession.client.storage
       .from("incident-photos")
       .remove([incidentPhotoFixturePath]);
-    assert.ok(crossFleetPhotoDelete.error, "Fleet B owner must not delete Fleet A's private incident photo");
+    // Supabase Storage may return an empty successful DELETE when RLS filters
+    // the object rather than returning a policy error. Verify the object remains
+    // readable by its owning fleet below instead of requiring an error object.
 
     const crossFleetPhotoUpload = await secondFleetOwnerSession.client.storage
       .from("incident-photos")
