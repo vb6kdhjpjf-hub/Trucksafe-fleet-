@@ -69,3 +69,26 @@ The resource page for the Ministry of Energy register by station number (https:/
 The Ministry's public register page (https://www.gov.il/he/Departments/DynamicCollectors/fuel_station) explains that listed public stations meet the statutory conditions for inclusion in the register, but expressly says listing does not establish that a station operates in accordance with every applicable legal requirement. Therefore, even after lawful reuse is confirmed, this register can serve only as a registration/listing cross-check. It cannot be displayed as proof of current operation, business licensing compliance, truck access, available fuel types, high-flow pumps, parking, or safe truck manoeuvring.
 
 **Current source decision remains unchanged:** neither Ministry dataset is approved for ingestion. The geospatial dataset remains a candidate for legal review and sample validation only; the station-number register remains a potential cross-check only, with its licence unresolved. No file was downloaded or imported, and no database, map, provider, or production system was changed.
+
+
+## Additional parking and rest-facility candidates checked (2026-11-17)
+
+### Ministry of Transport — existing bus terminals and infrastructure facilities
+
+Official resource: https://data.gov.il/he/datasets/ministry_of_transport/bus_terminal_fcl
+
+The Data.gov.il resource page identifies the publisher as the Ministry of Transport and Road Safety, lists Creative Commons Attribution, and shows a resource update date of 2026-07-12. Its description is specifically infrastructure for **public bus transportation**. The published catalogue summary reports 296 facilities and 14,813 bus parking positions; associated attributes include bus-terminal operations, bus overnight parking, driver rooms and public toilets.
+
+**Decision: not a truck-parking source.** The licence appears reusable subject to CC BY attribution, but the facility type and parking positions are explicitly bus-oriented. Nothing reviewed establishes truck access, truck-sized bays, turning geometry, overnight truck permission, security, or compatibility with any TruckSafe vehicle profile. Do not relabel these records as truck stops or truck parking. At most, a future separately approved research layer could retain them as bus-only facilities, clearly separated from truck POIs.
+
+### Survey of Israel / ArcGIS — “מגרשי חניה” parking lots
+
+Catalogue page reviewed: https://data-israeldata.opendata.arcgis.com/datasets/47e920790e1f49a1a1768e72dfab80ac_0/about
+
+The catalogue metadata reports 5,826 records, data last updated 2018-05-17, and **No License Provided**. Its “Authoritative” catalogue label does not resolve ownership, reuse permission, currentness, or truck suitability.
+
+**Decision: reject for ingestion and display** until the data owner supplies explicit reuse terms and a currentness assessment. The age and missing licence are independent blockers; a generic parking-lot point would not prove truck capacity or safe manoeuvring.
+
+### Source-search conclusion
+
+No reviewed source in this follow-up qualifies as a validated national truck-parking/rest-area feed. The bus-terminal layer is a licensed bus-infrastructure dataset, not a truck dataset; the general parking-lot layer has no provided licence and is stale. Keep the TruckSafe truck-parking category empty of purportedly verified national coverage until a suitable, licensed source and truck-specific evidence are established. No files were downloaded, no data imported, and no database or map changed.
