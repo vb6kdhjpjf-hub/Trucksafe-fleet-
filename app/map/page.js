@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 import { ArrowRight, MapPin, RefreshCw, Truck, AlertTriangle } from "lucide-react";
-import { getDemoRoadEvents, getVisibleDemoRoadEvents } from "../../lib/road-event-demo.mjs";
+import { getDemoRoadEvents, getVisibleDemoRoadEvents, getNearestFreshVehicleLocation } from "../../lib/road-event-demo.mjs";
 
 export default function FleetMapPage() {
   const router = useRouter();
@@ -15,6 +15,7 @@ export default function FleetMapPage() {
   const routeLines = useRef([]);
   const roadEventMarkers = useRef([]);
   const demoRoadEvents = getVisibleDemoRoadEvents(getDemoRoadEvents());
+  const eventProximity = demoRoadEvents.map(event => ({ event, nearest: getNearestFreshVehicleLocation(event, locations) }));
   const [session, setSession] = useState(null);
   const [fleetId, setFleetId] = useState(null);
   const [locations, setLocations] = useState([]);
@@ -197,9 +198,9 @@ export default function FleetMapPage() {
       <section style={{ background: "white", borderRadius: 16, padding: 16, marginBottom: 14, border: "1px solid #f1d7a7" }}>
         <h3 style={{ margin: "0 0 8px", display: "flex", alignItems: "center", gap: 8 }}><AlertTriangle size={18}/> התראות דרך — מצב הדגמה</h3>
         <p style={{ margin: "0 0 12px", color: "#8a5a12", fontSize: 13 }}>האירועים במפה הם נתונים מדומים בלבד לצורך בדיקת הממשק. הם אינם דיווחי אמת, אינם הנחיות ניווט ואינם מעידים שהדרך פנויה.</p>
-        {demoRoadEvents.map(event => <div key={event.event_id} style={{ borderTop: "1px solid #f1f1f1", padding: "9px 0", display: "flex", gap: 10, alignItems: "flex-start" }}>
+        {eventProximity.map(({ event, nearest }) => <div key={event.event_id} style={{ borderTop: "1px solid #f1f1f1", padding: "9px 0", display: "flex", gap: 10, alignItems: "flex-start" }}>
           <span style={{ width: 9, height: 9, borderRadius: "50%", background: event.severity === "high" ? "#dc2626" : "#d97706", marginTop: 6, flex: "0 0 auto" }}/>
-          <div><b>{event.event_type === "road_hazard" ? "מפגע בדרך" : "חסימת נתיב"} · {event.severity === "high" ? "חומרה גבוהה" : "חומרה בינונית"}</b><div style={{ fontSize: 13, color: "#64748b" }}>{event.driver_message}</div><div style={{ fontSize: 12, color: event.verification_state === "authoritative" ? "#15803d" : "#a16207" }}>{event.source_label} · פג תוקף: {new Date(event.expires_at).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}</div></div>
+          <div><b>{event.event_type === "road_hazard" ? "מפגע בדרך" : "חסימת נתיב"} · {event.severity === "high" ? "חומרה גבוהה" : "חומרה בינונית"}</b><div style={{ fontSize: 13, color: "#64748b" }}>{event.driver_message}</div><div style={{ fontSize: 12, color: event.verification_state === "authoritative" ? "#15803d" : "#a16207" }}>{event.source_label} · פג תוקף: {new Date(event.expires_at).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}</div><div style={{ fontSize: 12, color: "#475569" }}>{nearest ? `מרחק מנקודת ה־GPS האחרונה של ${nearest.driver} (${nearest.vehicle}): ${nearest.distanceKm.toFixed(1)} ק״מ` : "אין כרגע מיקום GPS עדכני בקרבת האירוע"}</div></div>
         </div>)}
       </section>
       <section style={{ background: "white", borderRadius: 16, padding: 18 }}>
