@@ -67,7 +67,7 @@ export default function IncidentsPage() {
     else {
       const rows = await Promise.all((data||[]).map(async item => {
         if (!item.photo_path) return item;
-        const {data:photo} = await supabase.storage.from("incident-photos").createSignedUrl(item.photo_path,3600);
+        const {data:photo} = await supabase.storage.from("incident-photos").createSignedUrl(item.photo_path,60);
         return {...item,photo_url:photo?.signedUrl||null};
       }));
       setIncidents(rows);
