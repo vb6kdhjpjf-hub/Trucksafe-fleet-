@@ -80,3 +80,12 @@ test("GPS capture prevents overlapping asynchronous location writes", async () =
   assert.match(source, /locationWriteInFlightRef\.current = true/);
   assert.match(source, /finally \{\s*locationWriteInFlightRef\.current = false;\s*\}/);
 });
+
+
+test("tasks bootstrap cannot restore private data after an auth-generation change", async () => {
+  const source = await readFile("app/tasks/page.js", "utf8");
+  assert.match(source, /const initialAuthGeneration = authGenerationRef\.current/);
+  assert.match(source, /if \(!alive \|\| initialAuthGeneration !== authGenerationRef\.current\) return/);
+  assert.match(source, /await loadWorkspace\(data\.session\.user, initialAuthGeneration\)/);
+  assert.match(source, /if \(alive && initialAuthGeneration === authGenerationRef\.current\) setLoading\(false\)/);
+});
