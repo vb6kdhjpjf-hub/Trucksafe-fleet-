@@ -188,3 +188,19 @@ The directory also supplies station contact numbers. These are useful operator-p
 ### Southern rest lay-by imagery review (2026-11-17)
 
 The TransIsrael project page links to a visualisation image of a rest lay-by. The image is an illustrative rendering, not a georeferenced map or as-built survey. It helps understand the intended separation of truck and passenger-vehicle circulation, but cannot establish the real site's coordinates, direction, entrance geometry, completed construction details, or current bay availability. A second linked image was unavailable (404) during review. No coordinates or access claims were derived from either image.
+
+
+### Station-directory operational identifiers and data caveats (2026-11-17)
+
+A fresh read of Dor Alon's current station directory adds exact operator-listed station identifiers and contact numbers for the four Highway 6 candidates:
+
+- Magal East (south-to-north): 054-5438036; listed 24/7.
+- Magal West (north-to-south): 054-5438039; listed 24/7.
+- Naan East (south-to-north): 08-6286195; listed 24/7.
+- Naan West (north-to-south): 08-6286212; listed 24/7.
+
+The directory marks AdBlue/urea at all four stations and shows a fuel-98 icon, mini Alonit, and EV charging. These icons must be stored as operator-listed attributes only: the fuel-98 icon does **not** establish diesel availability, and the AdBlue/urea icon does not prove high-flow truck dispensing, nozzle compatibility, price, or current stock. The directory itself warns that security conditions may change station hours; a 24/7 listing is therefore a published schedule, not a live-open guarantee.
+
+The directory page exposes a “navigate to station” link for each entry, but the retrieved page content does not expose a stable coordinate pair or machine-readable entrance geometry. The map control on the directory is not itself coordinate evidence. Do not create POI coordinates by geocoding the broad road/interchange description or by guessing from the map display. A later exact-location review should capture the destination URL behind each station-specific navigation link and independently verify its pin and truck entrance against operator/road geometry; this is still a manual research task, not permission to ingest or redistribute the destination data.
+
+**Decision unchanged:** retain the four stations as direction-specific operator-reviewed candidates only. No coordinates were added, no diesel/high-flow claims were made, no source was bulk-downloaded, and no POI/API/database/map/production integration was performed.
