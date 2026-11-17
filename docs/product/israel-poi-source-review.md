@@ -184,3 +184,7 @@ The directory also supplies station contact numbers. These are useful operator-p
 **What this does and does not establish:** it improves the four candidates from vague interchange-area descriptions to four named, direction-labelled operator listings, and adds current listed hours and AdBlue/urea indicators. It does not provide verified coordinates or access-road geometry in the reviewed page, does not explicitly identify diesel or high-flow truck pumps, and does not establish truck dimensions/weight limits, actual live parking capacity, or overnight truck parking permission. Do not infer these attributes from the general service icons.
 
 **Data-use decision:** keep as source-reviewed candidate metadata only. Before bulk extraction, redistribution, or automated refresh, review the operator site's terms and any applicable rights. No coordinates or map pins were created from this listing.
+
+### Southern rest lay-by imagery review (2026-11-17)
+
+The TransIsrael project page links to a visualisation image of a rest lay-by. The image is an illustrative rendering, not a georeferenced map or as-built survey. It helps understand the intended separation of truck and passenger-vehicle circulation, but cannot establish the real site's coordinates, direction, entrance geometry, completed construction details, or current bay availability. A second linked image was unavailable (404) during review. No coordinates or access claims were derived from either image.
