@@ -58,14 +58,15 @@ export default function TasksPage() {
         router.replace("/");
       }
     });
+    const initialAuthGeneration = authGenerationRef.current;
     supabase.auth.getSession().then(async ({ data, error }) => {
-      if (!alive) return;
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (error || !data.session) { router.replace("/"); return; }
       setSession(data.session);
-      await loadWorkspace(data.session.user);
-      if (alive) setLoading(false);
+      await loadWorkspace(data.session.user, initialAuthGeneration);
+      if (alive && initialAuthGeneration === authGenerationRef.current) setLoading(false);
     }).catch(error => {
-      if (!alive) return;
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       setMessage("לא הצלחנו לטעון את המשימות: " + (error?.message || "שגיאה לא ידועה"));
       setLoading(false);
     });
