@@ -89,3 +89,15 @@ test("tasks bootstrap cannot restore private data after an auth-generation chang
   assert.match(source, /await loadWorkspace\(data\.session\.user, initialAuthGeneration\)/);
   assert.match(source, /if \(alive && initialAuthGeneration === authGenerationRef\.current\) setLoading\(false\)/);
 });
+
+
+test("map location refreshes are isolated across fleet and auth generations", async () => {
+  const source = await readFile("app/map/page.js", "utf8");
+  assert.match(source, /const loadingLocations = useRef\(new Map\(\)\)/);
+  assert.match(source, /const locationRequestGenerationRef = useRef\(0\)/);
+  assert.match(source, /const activeFleetIdRef = useRef\(null\)/);
+  assert.match(source, /if \(activeFleetIdRef\.current !== id\)/);
+  assert.match(source, /requestGeneration !== locationRequestGenerationRef\.current \|\| activeFleetIdRef\.current !== id/);
+  assert.match(source, /if \(loadingLocations\.current\.get\(id\) === requestGeneration\) loadingLocations\.current\.delete\(id\)/);
+  assert.match(source, /locationRequestGenerationRef\.current \+= 1;\s*activeFleetIdRef\.current = null;\s*historyByTrip\.current\.clear\(\)/);
+});
