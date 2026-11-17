@@ -454,32 +454,6 @@ async function main() {
       throw new Error("Fleet A incident photo became inaccessible after denied cross-fleet attempts.");
     }
 
-    const crossFleetRegistrationUrl = await secondFleetOwnerSession.client.storage
-      .from("vehicle-registrations")
-      .createSignedUrl(registrationDocumentFixturePath, 60);
-    assert.ok(crossFleetRegistrationUrl.error, "A non-manager from another fleet must not mint a signed URL for Fleet A's vehicle registration");
-
-    const crossFleetRegistrationDelete = await secondFleetOwnerSession.client.storage
-      .from("vehicle-registrations")
-      .remove([registrationDocumentFixturePath]);
-    assert.equal(crossFleetRegistrationDelete.error, null, "Storage may filter unauthorized registration deletes without an error");
-    assert.deepEqual(crossFleetRegistrationDelete.data, [], "A non-manager from another fleet must not delete Fleet A's registration document");
-
-    const crossFleetRegistrationUpload = await secondFleetOwnerSession.client.storage
-      .from("vehicle-registrations")
-      .upload(createdFleet.id + "/" + fleetAVehicle.id + "/" + runId + "-tamper.pdf", registrationBytes, {
-        contentType: "application/pdf",
-        upsert: false
-      });
-    assert.ok(crossFleetRegistrationUpload.error, "A non-manager from another fleet must not upload into Fleet A's vehicle registration folder");
-
-    const ownerRegistrationStillReadable = await ownerSession.client.storage
-      .from("vehicle-registrations")
-      .createSignedUrl(registrationDocumentFixturePath, 60);
-    if (ownerRegistrationStillReadable.error || !ownerRegistrationStillReadable.data?.signedUrl) {
-      throw new Error("Fleet A registration document became inaccessible after denied cross-fleet attempts.");
-    }
-
     // Create a second-fleet vehicle and incident using only the dedicated Test
     // service-role fixture client. The signed Fleet A owner then attempts BOLA
     // reads, updates, deletes and inserts against Fleet B identifiers.
@@ -531,6 +505,33 @@ async function main() {
     if (ownerRegistrationUrl.error || !ownerRegistrationUrl.data?.signedUrl) {
       throw new Error("Fleet A owner could not create a short-lived signed URL for its private registration document.");
     }
+
+    const crossFleetRegistrationUrl = await secondFleetOwnerSession.client.storage
+      .from("vehicle-registrations")
+      .createSignedUrl(registrationDocumentFixturePath, 60);
+    assert.ok(crossFleetRegistrationUrl.error, "A non-manager from another fleet must not mint a signed URL for Fleet A's vehicle registration");
+
+    const crossFleetRegistrationDelete = await secondFleetOwnerSession.client.storage
+      .from("vehicle-registrations")
+      .remove([registrationDocumentFixturePath]);
+    assert.equal(crossFleetRegistrationDelete.error, null, "Storage may filter unauthorized registration deletes without an error");
+    assert.deepEqual(crossFleetRegistrationDelete.data, [], "A non-manager from another fleet must not delete Fleet A's registration document");
+
+    const crossFleetRegistrationUpload = await secondFleetOwnerSession.client.storage
+      .from("vehicle-registrations")
+      .upload(createdFleet.id + "/" + fleetAVehicle.id + "/" + runId + "-tamper.pdf", registrationBytes, {
+        contentType: "application/pdf",
+        upsert: false
+      });
+    assert.ok(crossFleetRegistrationUpload.error, "A non-manager from another fleet must not upload into Fleet A's vehicle registration folder");
+
+    const ownerRegistrationStillReadable = await ownerSession.client.storage
+      .from("vehicle-registrations")
+      .createSignedUrl(registrationDocumentFixturePath, 60);
+    if (ownerRegistrationStillReadable.error || !ownerRegistrationStillReadable.data?.signedUrl) {
+      throw new Error("Fleet A registration document became inaccessible after denied cross-fleet attempts.");
+    }
+
 
     const { data: fleetBIncident, error: fleetBIncidentError } = await admin
       .from("incidents")
@@ -806,7 +807,7 @@ async function main() {
   } catch (error) {
     testError = error;
   } finally {
-    for (const session of signedIn) {
+    for (const session of sessionsByUserId.values()) {
       await session.authClient.auth.signOut({ scope: "global" }).catch(() => {});
     }
     try {
