@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { getEventPositionOnPlannedRoute } from "../../lib/planned-route-event-proximity.mjs";
 
 const route = {
+  kind: "planned_route",
+  coordinateOrder: "origin_to_destination",
   coordinates: [
     { latitude: 32.8000, longitude: 35.5000 },
     { latitude: 32.8100, longitude: 35.5000 },
@@ -48,11 +50,11 @@ test("rejects events outside the route corridor", () => {
 
 test("rejects GPS history-like, malformed, and out-of-bounds route inputs", () => {
   assert.equal(getEventPositionOnPlannedRoute(
-    { latitude: 32.8150, longitude: 35.5000 }, { coordinates: [] }, 0
+    { latitude: 32.8150, longitude: 35.5000 }, { kind: "planned_route", coordinateOrder: "origin_to_destination", coordinates: [] }, 0
   ), null);
   assert.equal(getEventPositionOnPlannedRoute(
     { latitude: 32.8150, longitude: 35.5000 },
-    { coordinates: [{ latitude: 32.8, longitude: 35.5 }, { latitude: 35, longitude: 35.5 }] }, 0
+    { kind: "planned_route", coordinateOrder: "origin_to_destination", coordinates: [{ latitude: 32.8, longitude: 35.5 }, { latitude: 35, longitude: 35.5 }] }, 0
   ), null);
   assert.equal(getEventPositionOnPlannedRoute(
     { latitude: 32.8150, longitude: 35.5000 }, route, 0, 30
@@ -70,6 +72,8 @@ test("rejects progress outside the planned route length", () => {
 
 test("fails closed when an event matches two distant positions at a route crossing", () => {
   const crossingRoute = {
+    kind: "planned_route",
+    coordinateOrder: "origin_to_destination",
     coordinates: [
       { latitude: 32.8000, longitude: 35.5000 },
       { latitude: 32.8200, longitude: 35.5200 },
@@ -80,4 +84,16 @@ test("fails closed when an event matches two distant positions at a route crossi
   assert.equal(getEventPositionOnPlannedRoute(
     { latitude: 32.8100, longitude: 35.5100 }, crossingRoute, 0.2
   ), null);
+});
+
+test("rejects GPS history and routes without explicit origin-to-destination ordering", () => {
+  const gpsHistory = { kind: "gps_history", coordinates: route.coordinates };
+  const unorderedRoute = { kind: "planned_route", coordinates: route.coordinates };
+  const reverseOrUnknownRoute = {
+    kind: "planned_route", coordinateOrder: "unknown", coordinates: route.coordinates
+  };
+  const event = { latitude: 32.8150, longitude: 35.5000 };
+  assert.equal(getEventPositionOnPlannedRoute(event, gpsHistory, 0.5), null);
+  assert.equal(getEventPositionOnPlannedRoute(event, unorderedRoute, 0.5), null);
+  assert.equal(getEventPositionOnPlannedRoute(event, reverseOrUnknownRoute, 0.5), null);
 });
