@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 import { buildPreTripChecklist } from "../../lib/pre-trip-checklist.mjs";
+import { isFreshGpsTimestamp, isValidIsraelGpsCoordinates } from "../../lib/map-location-safety.mjs";
 import { Truck, ArrowRight, Plus, ClipboardList, MapPin, CalendarClock, Play, CheckCircle2, LogOut } from "lucide-react";
 
 const emptyForm = { title: "", description: "", pickup_address: "", delivery_address: "", scheduled_at: "", assigned_driver_id: "", assigned_vehicle_id: "" };
@@ -32,8 +33,10 @@ export default function TasksPage() {
   const preTripItems = ["צמיגים ולחץ אוויר תקינים","בלמים ובלם חניה תקינים","אורות, איתותים וצופר תקינים","מראות, שמשות ומגבים תקינים","אין נזילות או נזק גלוי","המטען מאובטח והמשקל מתאים","מסמכי רכב ורישיון נהיגה בתוקף"];
   const watchIdRef = useRef(null);
   const lastLocationWriteRef = useRef(0);
+  const trackingGenerationRef = useRef(0);
 
   useEffect(() => () => {
+    trackingGenerationRef.current += 1;
     if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
   }, []);
 
@@ -185,6 +188,7 @@ export default function TasksPage() {
         return;
       }
       if (trackingTripId === trip.id) {
+        trackingGenerationRef.current += 1;
         if (watchIdRef.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
         setTrackingTripId(null);
@@ -199,6 +203,7 @@ export default function TasksPage() {
   }
 
   function stopTracking() {
+    trackingGenerationRef.current += 1;
     if (watchIdRef.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
     watchIdRef.current = null;
     setTrackingTripId(null);
@@ -208,23 +213,29 @@ export default function TasksPage() {
   function startTracking(trip) {
     if (!isAssignedDriver(trip?.driver_id)) { setMessage("מעקב GPS יכול להתחיל רק ממכשיר הנהג המשויך לנסיעה."); return; }
     if (!navigator.geolocation) { setMessage("המכשיר או הדפדפן אינם תומכים בשיתוף מיקום."); return; }
+    trackingGenerationRef.current += 1;
+    const generation = trackingGenerationRef.current;
     if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
     setMessage("מבקש הרשאת מיקום ומתחיל מעקב...");
     lastLocationWriteRef.current = 0;
     watchIdRef.current = navigator.geolocation.watchPosition(async position => {
+      if (generation !== trackingGenerationRef.current) return;
       const now = Date.now();
       if (now - lastLocationWriteRef.current < 10000) return;
-      lastLocationWriteRef.current = now;
       const { latitude, longitude, speed, heading, accuracy } = position.coords;
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180 || !Number.isFinite(accuracy) || accuracy > 500) {
-        setMessage("נקודת GPS לא נשמרה: הנתונים אינם תקינים או שדיוק המיקום נמוך מדי.");
+      if (!isValidIsraelGpsCoordinates(latitude, longitude)
+        || !isFreshGpsTimestamp(position.timestamp, now)
+        || !Number.isFinite(accuracy) || accuracy < 0 || accuracy > 500) {
+        setMessage("נקודת GPS לא נשמרה: המיקום מחוץ לאזור הפעילות, הנתון ישן או שהדיוק אינו מספיק.");
         return;
       }
+      lastLocationWriteRef.current = now;
       const { error } = await supabase.from("trip_locations").insert({
         trip_id: trip.id, driver_id: trip.driver_id, latitude, longitude,
         speed_kmh: speed == null || !Number.isFinite(speed) || speed < 0 ? null : Math.round(speed * 3.6 * 10) / 10,
         heading_degrees: heading == null || !Number.isFinite(heading) || heading < 0 || heading > 360 ? null : heading
       });
+      if (generation !== trackingGenerationRef.current) return;
       if (error) {
         lastLocationWriteRef.current = 0;
         setMessage("המעקב פעיל אך שמירת נקודת מיקום נכשלה: " + error.message);
@@ -232,9 +243,11 @@ export default function TasksPage() {
         setMessage("מעקב GPS פעיל — נקודת מיקום נשמרה. דיוק משוער: " + Math.round(accuracy) + " מטר.");
       }
     }, error => {
+      if (generation !== trackingGenerationRef.current) return;
       setMessage(error.code === 1 ? "לא אושרה הרשאת מיקום. יש לאשר מיקום בדפדפן כדי להתחיל מעקב." : "שגיאה בקבלת מיקום GPS. בדוק שהמיקום מופעל במכשיר.");
       if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
+      trackingGenerationRef.current += 1;
       setTrackingTripId(null);
     }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
     setTrackingTripId(trip.id);
