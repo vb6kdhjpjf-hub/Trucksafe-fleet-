@@ -647,11 +647,38 @@ async function main() {
     if (removeMembershipError || removedMembership?.length !== 1) {
       throw new Error("Test-only membership revocation fixture did not remove exactly one dispatcher membership.");
     }
-    const revokedAccess = await resolveFleetApiAccess(dispatcherSession.client, dispatcherSession.token);
+
+    const { data: adminMembershipAfterRemoval, error: adminReadAfterRemovalError } = await admin
+      .from("fleet_members")
+      .select("fleet_id,role")
+      .eq("fleet_id", createdFleet.id)
+      .eq("user_id", dispatcher.user.id);
+    if (adminReadAfterRemovalError || adminMembershipAfterRemoval?.length !== 0) {
+      throw new Error("Test-only membership revocation did not persist: the service-role read still sees the dispatcher membership.");
+    }
+
+    const { data: verifiedDispatcher, error: verifyDispatcherError } = await dispatcherSession.authClient.auth.getUser(dispatcherSession.token);
+    if (verifyDispatcherError || verifiedDispatcher?.user?.id !== dispatcher.user.id) {
+      throw new Error("Membership revocation test session no longer resolves to the expected dispatcher identity.");
+    }
+
+    // Use a new PostgREST client after the mutation to ensure this assertion
+    // models a new API request rather than relying on any prior client state.
+    const revokedSession = await signInFixtureUser(url, anonKey, dispatcher.user, dispatcher.password);
+    const { data: dispatcherMembershipAfterRemoval, error: dispatcherReadAfterRemovalError } = await revokedSession.client
+      .from("fleet_members")
+      .select("fleet_id,role")
+      .eq("user_id", dispatcher.user.id)
+      .limit(2);
+    if (dispatcherReadAfterRemovalError || dispatcherMembershipAfterRemoval?.length !== 0) {
+      throw new Error("Dispatcher's still-valid JWT can still read a fleet_members row after service-role membership removal.");
+    }
+
+    const revokedAccess = await resolveFleetApiAccess(revokedSession.client, revokedSession.token);
     assert.equal(revokedAccess.status, 403, "a valid JWT must lose fleet access immediately after membership removal");
     assert.equal(revokedAccess.reason, "fleet_membership_required");
-    await assertActualRouteAuthorization({ url, anonKey, token: dispatcherSession.token, role: "unassigned" });
-    await assertActualHttpAuthorization({ baseUrl: httpServer.baseUrl, token: dispatcherSession.token, role: "unassigned" });
+    await assertActualRouteAuthorization({ url, anonKey, token: revokedSession.token, role: "unassigned" });
+    await assertActualHttpAuthorization({ baseUrl: httpServer.baseUrl, token: revokedSession.token, role: "unassigned" });
 
     // A manager demotion must also take effect for the same signed JWT immediately.
     const manager = fixtures.find(item => item.role === "fleet_manager");
