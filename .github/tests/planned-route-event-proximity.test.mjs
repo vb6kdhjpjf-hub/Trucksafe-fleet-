@@ -67,3 +67,17 @@ test("rejects progress outside the planned route length", () => {
   assert.equal(result.routeProgressKnown, false);
   assert.equal(result.isAhead, null);
 });
+
+test("fails closed when an event matches two distant positions at a route crossing", () => {
+  const crossingRoute = {
+    coordinates: [
+      { latitude: 32.8000, longitude: 35.5000 },
+      { latitude: 32.8200, longitude: 35.5200 },
+      { latitude: 32.8000, longitude: 35.5200 },
+      { latitude: 32.8200, longitude: 35.5000 }
+    ]
+  };
+  assert.equal(getEventPositionOnPlannedRoute(
+    { latitude: 32.8100, longitude: 35.5100 }, crossingRoute, 0.2
+  ), null);
+});
