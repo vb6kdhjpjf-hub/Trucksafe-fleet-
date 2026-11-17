@@ -148,6 +148,30 @@ test("rejects incomplete or out-of-Israel linear restriction geometry", () => {
   })), null);
 });
 
+test("fails closed for zero-length and implausibly long restriction segments", () => {
+  const zeroLength = verifiedRestriction({
+    latitude: null, longitude: null,
+    start_latitude: 32.84, start_longitude: 35.505,
+    end_latitude: 32.84, end_longitude: 35.505
+  });
+  const overlong = verifiedRestriction({
+    latitude: null, longitude: null,
+    start_latitude: 32.0, start_longitude: 35.5,
+    end_latitude: 33.2, end_longitude: 35.5
+  });
+  assert.equal(routePassesNearRestriction(sections, zeroLength), null);
+  assert.equal(routePassesNearRestriction(sections, overlong), null);
+});
+
+test("rejects invalid proximity radii rather than silently widening the search", () => {
+  for (const radius_m of [9, 1001, 0, -25, "not-a-number"]) {
+    assert.equal(routePassesNearRestriction(
+      sections,
+      verifiedRestriction({ radius_m })
+    ), null);
+  }
+});
+
 test("uses exact segment distance for parallel restrictions near the route", () => {
   const nearSegment = verifiedRestriction({
     latitude: null, longitude: null,
