@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
@@ -14,7 +14,10 @@ export default function FleetMapPage() {
   const markers = useRef([]);
   const routeLines = useRef([]);
   const roadEventMarkers = useRef([]);
-  const demoRoadEvents = getVisibleDemoRoadEvents(getDemoRoadEvents());
+  const demoEventsRef = useRef(null);
+  if (!demoEventsRef.current) demoEventsRef.current = getDemoRoadEvents();
+  const [demoNow, setDemoNow] = useState(Date.now());
+  const demoRoadEvents = useMemo(() => getVisibleDemoRoadEvents(demoEventsRef.current || [], demoNow), [demoNow]);
   const [session, setSession] = useState(null);
   const [fleetId, setFleetId] = useState(null);
   const [locations, setLocations] = useState([]);
@@ -22,6 +25,11 @@ export default function FleetMapPage() {
   const [mapReady, setMapReady] = useState(false);
   const [error, setError] = useState("");
   const eventProximity = demoRoadEvents.map(event => ({ event, nearest: getNearestFreshVehicleLocation(event, locations) }));
+
+  useEffect(() => {
+    const timer = setInterval(() => setDemoNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const loadingLocations = useRef(false);
   const historyByTrip = useRef(new Map());
@@ -180,7 +188,7 @@ export default function FleetMapPage() {
       roadEventMarkers.current.forEach(marker => marker.remove());
       roadEventMarkers.current = [];
     };
-  }, [mapReady]);
+  }, [mapReady, demoRoadEvents]);
 
   return <main dir="rtl" style={{ minHeight: "100vh", padding: 24, background: "#f5f7fb", color: "#172338" }}>
     <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
