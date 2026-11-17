@@ -628,6 +628,89 @@ begin
       raise;
     end if;
   end;
+  -- Verified bridge negative-write tests. Reuse the synthetic CI fleet/user
+  -- already created above; the outer transaction always rolls every fixture back.
+  perform set_config('request.jwt.claim.role', 'service_role', true);
+
+  begin
+    insert into public.road_restrictions (
+      fleet_id, road_name, restriction_type, direction, max_height_m,
+      is_active, country_code, verification_status, structure_id, road_segment_id,
+      lane_id, passage_length_m, measured_clearance_m, measurement_date,
+      measurement_accuracy_cm, measurement_method, measurement_location_note,
+      measurement_document_url, verified_at, verified_by, source_name, source_url,
+      source_last_checked_at, verification_note, posted_clearance_status,
+      posted_clearance_m, surveyor, measurement_coverage
+    ) values (
+      f1, 'CI bridge missing verifier', 'height', 'forward', 4.00,
+      true, 'IL', 'verified', 'CI-STRUCTURE-001', 'CI-SEGMENT-001',
+      'lane-1', 15.00, 4.25, current_date,
+      0.5, 'laser survey', 'CI synthetic bridge measurement location',
+      'https://example.invalid/measurement.pdf', now(), null, 'CI test authority',
+      'https://example.invalid/bridge', now(), 'CI synthetic evidence fixture',
+      'not_posted', null, 'CI surveyor',
+      '{"both_sides_measured":true,"lane_center_measured":true,"left_edge_measured":true,"right_edge_measured":true,"hanging_installations_checked":true,"passage_center_measured":false}'::jsonb
+    );
+    raise exception 'Verified bridge without verifier unexpectedly inserted';
+  exception when check_violation then
+    insert into pg_temp.trucksafe_e2e_results values
+      ('verified bridge requires verifier identity', 'PASS',
+       'Database CHECK rejected a verified height row with verified_by NULL');
+  end;
+
+  begin
+    insert into public.road_restrictions (
+      fleet_id, road_name, restriction_type, direction, max_height_m,
+      is_active, country_code, verification_status, structure_id, road_segment_id,
+      lane_id, passage_length_m, measured_clearance_m, measurement_date,
+      measurement_accuracy_cm, measurement_method, measurement_location_note,
+      measurement_document_url, verified_at, verified_by, source_name, source_url,
+      source_last_checked_at, verification_note, posted_clearance_status,
+      posted_clearance_m, surveyor, measurement_coverage
+    ) values (
+      f1, 'CI bridge future measurement', 'height', 'forward', 4.00,
+      true, 'IL', 'verified', 'CI-STRUCTURE-002', 'CI-SEGMENT-002',
+      'lane-1', 15.00, 4.25, current_date + 1,
+      0.5, 'laser survey', 'CI synthetic bridge measurement location',
+      'https://example.invalid/measurement.pdf', now(), u1, 'CI test authority',
+      'https://example.invalid/bridge', now(), 'CI synthetic evidence fixture',
+      'not_posted', null, 'CI surveyor',
+      '{"both_sides_measured":true,"lane_center_measured":true,"left_edge_measured":true,"right_edge_measured":true,"hanging_installations_checked":true,"passage_center_measured":false}'::jsonb
+    );
+    raise exception 'Verified bridge with future measurement date unexpectedly inserted';
+  exception when check_violation then
+    insert into pg_temp.trucksafe_e2e_results values
+      ('verified bridge rejects future measurement date', 'PASS',
+       'Database CHECK rejected a verified height row measured after the Israel-local current date');
+  end;
+
+  begin
+    insert into public.road_restrictions (
+      fleet_id, road_name, restriction_type, direction, max_height_m,
+      is_active, country_code, verification_status, structure_id, road_segment_id,
+      lane_id, passage_length_m, measured_clearance_m, measurement_date,
+      measurement_accuracy_cm, measurement_method, measurement_location_note,
+      measurement_document_url, verified_at, verified_by, source_name, source_url,
+      source_last_checked_at, verification_note, posted_clearance_status,
+      posted_clearance_m, surveyor, measurement_coverage
+    ) values (
+      f1, 'CI bridge missing coverage', 'height', 'forward', 4.00,
+      true, 'IL', 'verified', 'CI-STRUCTURE-003', 'CI-SEGMENT-003',
+      'lane-1', 15.00, 4.25, current_date,
+      0.5, 'laser survey', 'CI synthetic bridge measurement location',
+      'https://example.invalid/measurement.pdf', now(), u1, 'CI test authority',
+      'https://example.invalid/bridge', now(), 'CI synthetic evidence fixture',
+      'not_posted', null, 'CI surveyor', null
+    );
+    raise exception 'Verified bridge without measurement coverage unexpectedly inserted';
+  exception when check_violation then
+    insert into pg_temp.trucksafe_e2e_results values
+      ('verified bridge requires complete measurement coverage', 'PASS',
+       'Database CHECK rejected a verified height row without measurement_coverage');
+  end;
+
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+
 end
 $test$;
 
