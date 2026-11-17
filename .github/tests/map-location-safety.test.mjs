@@ -1,4 +1,5 @@
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 import { isFreshGpsTimestamp, isValidIsraelGpsCoordinates, isValidIsraelGpsPoint, pruneInactiveTripHistory } from "../../lib/map-location-safety.mjs";
 
@@ -60,4 +61,13 @@ test("GPS capture rejects stale, future, and malformed device timestamps", () =>
   assert.equal(isFreshGpsTimestamp(nowMs + 30_000, nowMs), true);
   assert.equal(isFreshGpsTimestamp(nowMs + 30_001, nowMs), false);
   assert.equal(isFreshGpsTimestamp(NaN, nowMs), false);
+});
+
+
+test("map bootstrap cannot restore fleet data after an auth-generation change", async () => {
+  const source = await readFile("app/map/page.js", "utf8");
+  assert.match(source, /const initialAuthGeneration = authGenerationRef\.current/);
+  assert.match(source, /if \(!alive \|\| initialAuthGeneration !== authGenerationRef\.current\) return/);
+  assert.match(source, /await loadLocations\(workspace\.fleet\.id, initialAuthGeneration\)/);
+  assert.match(source, /if \(alive && initialAuthGeneration === authGenerationRef\.current\) setLoading\(false\)/);
 });
