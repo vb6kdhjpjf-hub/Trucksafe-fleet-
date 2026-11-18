@@ -179,6 +179,17 @@ async function cleanupMarkedSqlFixtureUsers(admin) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     remaining = await listMarkedSqlFixtureUsers(admin);
     if (remaining.length === 0) return users.length;
+    // Re-issue deletion for any still-visible marked identities. This also
+    // catches fixtures left by a cancelled sibling run; final verification
+    // remains mandatory and no unmarked account can enter this path.
+    for (const user of remaining) {
+      const fixtureFile = user.app_metadata?.fixture_file;
+      const email = user.email ?? "";
+      if (!FIXTURE_FILES.has(fixtureFile) || !/@example\.(?:invalid|com)$/i.test(email)) {
+        throw new Error("Refusing SQL fixture cleanup retry: a marked user has an unexpected file or email identity.");
+      }
+      await admin.auth.admin.deleteUser(user.id);
+    }
     await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
   }
   throw new Error("SQL Auth fixture cleanup verification failed; marked Test users remain.");
