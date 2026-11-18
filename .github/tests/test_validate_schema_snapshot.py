@@ -2,7 +2,7 @@ import importlib.util
 import unittest
 from pathlib import Path
 
-MODULE = Path(__file__).with_name("validate_schema_snapshot.py")
+MODULE = Path(__file__).resolve().parents[1] / "scripts" / "validate_schema_snapshot.py"
 SPEC = importlib.util.spec_from_file_location("snapshot_validator", MODULE)
 validator = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(validator)
@@ -17,7 +17,7 @@ class SnapshotValidatorTests(unittest.TestCase):
         validator.validate_schema_only_snapshot(sql)
 
     def test_rejects_copy_data_block(self):
-        self.rejects("COPY public.items (id) FROM stdin;\n1\n\\.\n")
+        self.rejects("COPY public.items (id) FROM stdin;\n1\n\\\\.\n")
 
     def test_rejects_insert_statement(self):
         self.rejects("INSERT INTO public.items VALUES (1);")
@@ -44,7 +44,8 @@ $body$ LANGUAGE plpgsql;""")
         self.accepts("SELECT 'INSERT INTO t VALUES (1); COPY t FROM stdin;';")
 
     def test_ignores_keywords_in_escape_strings(self):
-        self.accepts("SELECT E'quote: \\' INSERT INTO t VALUES (1);';")
+        sql = "SELECT E'quote: " + chr(92) + "' INSERT INTO t VALUES (1);';"
+        self.accepts(sql)
 
     def test_ignores_line_and_nested_block_comments(self):
         self.accepts("-- INSERT INTO t VALUES (1);\n/* outer /* COPY t FROM stdin; */ end */ SELECT 1;")
@@ -59,6 +60,12 @@ $body$ LANGUAGE plpgsql;""")
 
     def test_rejects_empty_snapshot(self):
         self.rejects("  -- empty schema\n")
+
+    def test_does_not_treat_identifier_dollar_as_quote(self):
+        self.accepts("SELECT column$tag$ FROM public.items;")
+
+    def test_requires_exact_dollar_quote_tag(self):
+        self.rejects("SELECT $tag$ harmless $other$; INSERT INTO t VALUES (1);")
 
 
 if __name__ == "__main__":
