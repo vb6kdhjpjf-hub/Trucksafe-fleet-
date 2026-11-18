@@ -151,6 +151,8 @@ test("shipment management invalidates in-flight private data on auth identity ch
   assert.match(source, /nextUserId!==authUserIdRef\\.current/);
   assert.match(source, /authUserIdRef\\.current=nextUserId/);
   assert.match(source, /clearPrivateState\\(\\);\\s*authUserIdRef\\.current=nextUserId/);
+  assert.match(source, /const initialAuthGeneration=authGenerationRef\\.current/);
+  assert.match(source, /initialAuthGeneration!==authGenerationRef\\.current/);
   assert.match(source, /if\\(typeof window!=="undefined"\\)window\\.location\\.reload\\(\\)/);
 });
 
