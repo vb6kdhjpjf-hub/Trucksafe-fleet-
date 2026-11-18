@@ -631,10 +631,14 @@ begin
   insert into storage.objects (bucket_id, name, metadata) values
     ('vehicle-registrations', f1::text || '/' || v1::text || '/ci-registration.pdf', '{"mimetype":"application/pdf","size":128}'::jsonb),
     ('vehicle-registrations', f1::text || '/' || v1b::text || '/ci-registration.pdf', '{"mimetype":"application/pdf","size":128}'::jsonb);
+  -- Model the real two-stage flow: attach evidence first (which invalidates prior approval),
+  -- then record the independent review without changing the vehicle identity/evidence path.
+  update public.vehicles
+  set registration_document_path = fleet_id::text || '/' || id::text || '/ci-registration.pdf',
+      registration_document_uploaded_at = now()
+  where id in (v1, v1b) and fleet_id = f1;
   update public.vehicles
   set registration_verification_status = 'verified',
-      registration_document_path = fleet_id::text || '/' || id::text || '/ci-registration.pdf',
-      registration_document_uploaded_at = now(),
       registration_verified_at = now(),
       registration_verified_by = u1,
       registration_verification_note = 'CI synthetic registration review'
@@ -857,9 +861,11 @@ begin
     ('vehicle-registrations', f2::text || '/' || v2b::text || '/ci-registration.pdf', '{"mimetype":"application/pdf","size":128}'::jsonb),
     ('vehicle-registrations', f2::text || '/' || v2c::text || '/ci-registration.pdf', '{"mimetype":"application/pdf","size":128}'::jsonb);
   update public.vehicles
+  set registration_document_path = fleet_id::text || '/' || id::text || '/ci-registration.pdf',
+      registration_document_uploaded_at = now()
+  where id in (v2a, v2b, v2c) and fleet_id = f2;
+  update public.vehicles
   set registration_verification_status = 'verified',
-      registration_document_path = fleet_id::text || '/' || id::text || '/ci-registration.pdf',
-      registration_document_uploaded_at = now(),
       registration_verified_at = now(),
       registration_verified_by = u2,
       registration_verification_note = 'CI synthetic registration review'
