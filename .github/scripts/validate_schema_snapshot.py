@@ -128,6 +128,8 @@ def validate_schema_only_snapshot(sql: str) -> None:
         raise SnapshotValidationError("Snapshot is empty")
 
     code = _blank_sql_literals_and_comments(sql)
+    if not code.strip():
+        raise SnapshotValidationError("Snapshot contains no SQL statements")
 
     # Inspect each top-level SQL statement independently. The lexical pass
     # preserves semicolons/newlines but blanks all non-executable text.
@@ -136,7 +138,7 @@ def validate_schema_only_snapshot(sql: str) -> None:
         if not normalized:
             continue
         if re.match(r"(?is)^COPY\b", normalized) and re.search(
-            r"(?is)\bFROM\s+STDIN\s*$", normalized
+            r"(?is)\bFROM\s+STDIN\b", normalized
         ):
             raise SnapshotValidationError("Snapshot contains a COPY ... FROM stdin data block")
         if re.match(r"(?is)^INSERT\s+INTO\b", normalized):
