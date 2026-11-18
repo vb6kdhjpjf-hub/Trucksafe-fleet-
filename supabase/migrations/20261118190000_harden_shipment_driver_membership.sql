@@ -31,7 +31,7 @@ begin
  if not found or v_shipment.status in ('cancelled','delivered') then raise exception 'Shipment is not available for stop completion'; end if;
  if not private.has_fleet_role(p_fleet_id,array['owner','fleet_manager','dispatcher']::text[])
   and not private.is_active_assigned_fleet_driver(p_fleet_id,v_shipment.assigned_driver_id) then
-  raise exception 'Only the assigned driver or an authorized dispatcher may complete this stop';
+  raise exception 'Only the active assigned fleet driver or an authorized dispatcher may complete this stop';
  end if;
  if exists(select 1 from public.shipment_stop_events e where e.shipment_id=p_shipment_id and e.event_key=p_event_key) then raise exception 'Duplicate shipment stop event'; end if;
  select s.* into v_stop from public.shipment_stops s where s.id=p_stop_id and s.shipment_id=p_shipment_id and s.fleet_id=p_fleet_id for update;
