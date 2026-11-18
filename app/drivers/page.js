@@ -195,6 +195,7 @@ export default function DriversPage() {
       <h3>רשימת נהגים</h3><p>פרטי קשר, רישיון וסטטוס העסקה</p></div>{canManageDrivers && <button className="primary-btn" onClick={startAdd}><Plus size={16}/> הוספת נהג</button>}</div>
         {showForm && canManageDrivers && <form className="driver-form" onSubmit={saveDriver}>
           <div className="driver-form-title">{editing ? "עריכת פרטי נהג" : "הוספת נהג חדש"}</div>
+          <div className="auth-message" role="note">חשוב: פרטי דרגת הרישיון ותאריך התוקף הם רישום בלבד. המערכת עדיין אינה מאמתת מסמכי רישיון או התאמה חוקית בין הנהג, הרכב והנגרר. יש לבדוק את המסמכים המקוריים מול גורם מוסמך לפני שיבוץ לנסיעה.</div>
           <div className="driver-form-grid">
             <label>שם מלא *<input required value={form.full_name} onChange={e=>setForm({...form,full_name:e.target.value})} placeholder="שם הנהג"/></label>
             <label>טלפון<input type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="050-0000000"/></label>
