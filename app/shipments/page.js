@@ -222,6 +222,7 @@ export default function ShipmentsPage(){
   const [settingsForm,setSettingsForm]=useState({issuer_name:"",business_id:"",address:"",phone:"",email:"",number_prefix:"DL"});
   const [showSettings,setShowSettings]=useState(false);
   const authGenerationRef=useRef(0);
+  const authUserIdRef=useRef(null);
   const role=fleet?.role||"";
   const canManage=["owner","fleet_manager","dispatcher"].includes(role);
   const canOverride=["owner","fleet_manager"].includes(role);
