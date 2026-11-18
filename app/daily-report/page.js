@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
@@ -23,14 +23,17 @@ export default function DailyReportPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [day, setDay] = useState("");
+  const authGenerationRef = useRef(0);
+  const authUserIdRef = useRef(null);
 
-  const load = useCallback(async (fleetId) => {
+  const load = useCallback(async (fleetId, authGeneration = authGenerationRef.current) => {
     const range = localDayRange(); setDay(range.label); setError("");
     const [t, i, m] = await Promise.all([
       supabase.from("trips").select("id,driver_id,vehicle_id,status,origin_address,destination_address,started_at,ended_at").eq("fleet_id", fleetId).gte("started_at", range.start).lt("started_at", range.end).order("started_at", { ascending: false }),
       supabase.from("incidents").select("id,severity,incident_type,description,status,reported_at").eq("fleet_id", fleetId).gte("reported_at", range.start).lt("reported_at", range.end).order("reported_at", { ascending: false }),
       supabase.from("maintenance_records").select("id,maintenance_type,description,cost,status,completed_at,scheduled_at").eq("fleet_id", fleetId).gte("created_at", range.start).lt("created_at", range.end).order("created_at", { ascending: false })
     ]);
+    if (authGeneration !== authGenerationRef.current) return;
     const errors = [t.error, i.error, m.error].filter(Boolean);
     if (errors.length) setError("חלק מהנתונים לא נטענו: " + errors.map(x => x.message).join(" · "));
     setTrips(t.data || []); setIncidents(i.data || []); setMaintenance(m.data || []);
@@ -39,22 +42,39 @@ export default function DailyReportPage() {
   useEffect(() => {
     if (!isSupabaseConfigured) { setError("החיבור למסד הנתונים אינו מוגדר."); setLoading(false); return; }
     let alive = true;
+    const clearPrivateState = () => {
+      authGenerationRef.current += 1;
+      setFleet(null); setTrips([]); setIncidents([]); setMaintenance([]); setDay(""); setError("");
+    };
+    const initialAuthGeneration = authGenerationRef.current;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user?.id || null;
+      if (nextUserId && authUserIdRef.current && nextUserId !== authUserIdRef.current) {
+        clearPrivateState(); authUserIdRef.current = nextUserId;
+        if (typeof window !== "undefined") window.location.reload();
+        return;
+      }
+      if (nextUserId) authUserIdRef.current = nextUserId;
+      if (!nextSession) {
+        authUserIdRef.current = null; clearPrivateState(); router.replace("/");
+      }
+    });
     supabase.auth.getSession().then(async ({ data, error: authError }) => {
-      if (!alive) return;
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (authError || !data.session) { router.replace("/"); return; }
+      authUserIdRef.current = data.session.user.id;
       const { data: workspace, error: workspaceError } = await resolveFleetWorkspace(supabase, data.session.user.id);
-      if (!alive) return;
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (workspaceError) {
         if (workspaceError.code === "AUTH_REQUIRED" || workspaceError.code === "NO_FLEET") router.replace("/");
         else setError("לא הצלחנו לאמת את הצי: " + workspaceError.message);
         setLoading(false); return;
       }
       setFleet(workspace.fleet);
-      await load(workspace.fleet.id);
-      if (alive) setLoading(false);
-    }).catch(e => { if (alive) { setError(e.message); setLoading(false); } });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => { if (!session) router.replace("/"); });
-    return () => { alive = false; subscription.unsubscribe(); };
+      await load(workspace.fleet.id, initialAuthGeneration);
+      if (alive && initialAuthGeneration === authGenerationRef.current) setLoading(false);
+    }).catch(e => { if (alive && initialAuthGeneration === authGenerationRef.current) { setError(e.message); setLoading(false); } });
+    return () => { alive = false; authGenerationRef.current += 1; subscription.unsubscribe(); };
   }, [router, load]);
 
   function exportCsv() {
