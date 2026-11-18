@@ -107,7 +107,7 @@ jobs:
                   in_dollar = tag
                   continue
               outside.append(line)
-          if re.search(r"(?im)^\s*INSERT\s+INTO\\b", "\n".join(outside)):
+          if re.search(r"(?im)^\s*INSERT\s+INTO\b", "\n".join(outside)):
               raise SystemExit("Snapshot contains a top-level INSERT statement. Refusing to restore.")
           print("Schema snapshot present; no COPY data blocks or top-level INSERT statements found.")
           PY
