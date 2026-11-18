@@ -179,6 +179,17 @@ export default function TasksPage() {
         return;
       }
     }
+    if (Boolean(form.assigned_driver_id) !== Boolean(form.assigned_vehicle_id)) {
+      setMessage("כדי לשבץ משימה יש לבחור גם נהג וגם רכב, או להשאיר את שניהם ללא שיבוץ.");
+      return;
+    }
+    if (form.assigned_vehicle_id) {
+      const selectedVehicle = vehicles.find(vehicle => vehicle.id === form.assigned_vehicle_id);
+      if (!selectedVehicle || selectedVehicle.is_demo || !["available", "assigned"].includes(selectedVehicle.status)) {
+        setMessage(selectedVehicle ? `לא ניתן לשבץ את הרכב: ${vehicleAssignmentLabel(selectedVehicle)}.` : "הרכב שנבחר אינו נמצא ברשימת הרכבים של הצי. יש לרענן ולבחור רכב זמין.");
+        return;
+      }
+    }
     setBusy(true); setMessage("");
     try {
       const payload = {
