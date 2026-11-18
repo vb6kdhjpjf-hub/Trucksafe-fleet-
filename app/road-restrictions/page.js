@@ -164,8 +164,8 @@ export default function RoadRestrictionsPage() {
       if (error) { setMessage("שמירת המגבלה נכשלה: " + error.message); return; }
       setForm(blank); setShowForm(false); await load(fleet.id, authGeneration); if (authGeneration === authGenerationRef.current) setMessage("מגבלת הדרך נשמרה.");
     } catch (error) {
-      setMessage("שמירת המגבלה נכשלה: " + (error?.message || "שגיאה לא ידועה"));
-    } finally { setBusy(false); }
+      if (authGeneration === authGenerationRef.current) setMessage("שמירת המגבלה נכשלה: " + (error?.message || "שגיאה לא ידועה"));
+    } finally { if (authGeneration === authGenerationRef.current) setBusy(false); }
   }
 
   async function toggle(row) {
@@ -277,7 +277,7 @@ export default function RoadRestrictionsPage() {
       if (authGeneration !== authGenerationRef.current) return;
       setMessage(decision === "verified" ? "המגבלה אומתה ונרשם תיעוד הבדיקה." : "המגבלה נדחתה ונשמר תיעוד הבדיקה.");
     } catch (error) {
-      setMessage("שגיאה בשמירת האימות: " + (error?.message || "שגיאה לא ידועה"));
+      if (authGeneration === authGenerationRef.current) setMessage("שגיאה בשמירת האימות: " + (error?.message || "שגיאה לא ידועה"));
     } finally {
       if (authGeneration === authGenerationRef.current) setReviewBusy(null);
     }
