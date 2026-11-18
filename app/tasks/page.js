@@ -6,6 +6,7 @@ import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 import { buildPreTripChecklist } from "../../lib/pre-trip-checklist.mjs";
 import { isDriverEligibleForVehicleAssignment } from "../../lib/driver-eligibility.mjs";
+import { getIsraelCalendarDate } from "../../lib/israel-date.mjs";
 import { isFreshGpsTimestamp, isValidIsraelGpsCoordinates } from "../../lib/map-location-safety.mjs";
 import { Truck, ArrowRight, Plus, ClipboardList, MapPin, CalendarClock, Play, CheckCircle2, LogOut } from "lucide-react";
 
@@ -133,6 +134,14 @@ export default function TasksPage() {
   const canManageTasks = ["owner", "fleet_manager", "dispatcher"].includes(fleet?.role);
   const isAssignedDriver = driverId => Boolean(currentDriverId && currentDriverId === driverId);
   const canOperateTrip = trip => canManageTasks || isAssignedDriver(trip?.driver_id);
+  function driverAssignmentLabel(driver) {
+    if (isDriverEligibleForVehicleAssignment(driver)) return `${driver.full_name} · פעיל, תוקף רשום תקין`;
+    if (driver?.status !== "active") return `${driver?.full_name || "נהג ללא שם"} · לא זמין: הנהג אינו פעיל`;
+    const expiry = typeof driver?.license_expires_at === "string" ? driver.license_expires_at : "";
+    if (!expiry) return `${driver?.full_name || "נהג ללא שם"} · לא זמין: חסר תאריך תוקף לרישיון`;
+    if (expiry < getIsraelCalendarDate()) return `${driver?.full_name || "נהג ללא שם"} · לא זמין: תוקף הרישיון הרשום פג`;
+    return `${driver?.full_name || "נהג ללא שם"} · לא זמין: תאריך התוקף אינו תקין`;
+  }
 
   async function saveTask(e) {
     e.preventDefault();
@@ -374,7 +383,7 @@ export default function TasksPage() {
             <label>כתובת איסוף<input value={form.pickup_address} onChange={e=>setForm({...form,pickup_address:e.target.value})} placeholder="כתובת או נקודת איסוף"/></label>
             <label>כתובת יעד<input value={form.delivery_address} onChange={e=>setForm({...form,delivery_address:e.target.value})} placeholder="כתובת היעד"/></label>
             <label>מועד מתוכנן<input type="datetime-local" value={form.scheduled_at} onChange={e=>setForm({...form,scheduled_at:e.target.value})}/></label>
-            <label>שיוך נהג<select value={form.assigned_driver_id} onChange={e=>setForm({...form,assigned_driver_id:e.target.value})}><option value="">ללא נהג</option>{drivers.filter(d=>isDriverEligibleForVehicleAssignment(d)).map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label>
+            <label>שיוך נהג<select value={form.assigned_driver_id} onChange={e=>setForm({...form,assigned_driver_id:e.target.value})}><option value="">ללא נהג</option>{drivers.map(d=><option key={d.id} value={d.id} disabled={!isDriverEligibleForVehicleAssignment(d)}>{driverAssignmentLabel(d)}</option>)}</select></label>
             <label>שיוך רכב<select value={form.assigned_vehicle_id} onChange={e=>setForm({...form,assigned_vehicle_id:e.target.value})}><option value="">ללא רכב</option>{vehicles.filter(v=>v.status==="available" || v.status==="assigned").map(v=><option key={v.id} value={v.id}>{v.registration_number} · {v.make || v.vehicle_type}</option>)}</select></label>
             <label className="task-wide">הערות / תיאור<textarea rows="3" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="פרטים נוספים לנהג או למנהל הצי"/></label>
           </div>
