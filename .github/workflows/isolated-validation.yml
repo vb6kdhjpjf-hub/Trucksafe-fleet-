@@ -120,6 +120,7 @@ jobs:
 
 
   auth-integration:
+    needs: database-integration
     concurrency:
       group: isolated-supabase-test-project
       cancel-in-progress: false
