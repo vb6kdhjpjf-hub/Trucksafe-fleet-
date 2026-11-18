@@ -196,6 +196,15 @@ test("daily work plans clear private forms and reject stale fleet queries after 
   assert.ok(source.includes("window.location.reload()"));
 });
 
+test("daily work mutations ignore stale RPC results after auth changes", async () => {
+  const source = await readFile("app/daily-work/page.js", "utf8");
+  assert.equal((source.match(/const actionAuthGeneration = authGenerationRef\.current/g) || []).length, 3);
+  assert.ok(source.includes("if (actionAuthGeneration !== authGenerationRef.current) return;"));
+  assert.ok(source.includes("await loadData(session.user, actionAuthGeneration)"));
+  assert.ok(source.includes("if (actionAuthGeneration === authGenerationRef.current) notify("));
+  assert.ok(source.includes("if (actionAuthGeneration === authGenerationRef.current) setBusy(false)"));
+});
+
 test("maintenance clears private fleet records and rejects stale queries after auth changes", async () => {
   const source = await readFile("app/maintenance/page.js", "utf8");
   assert.ok(source.includes("authUserIdRef=useRef(null)"));
