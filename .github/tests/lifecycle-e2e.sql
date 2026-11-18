@@ -568,6 +568,7 @@ declare
   t1 uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf11';
   t1b uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf16';
   t1c uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf17';
+  t1d uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf18';
   v_trip_id uuid;
   affected_rows integer;
   driver_deactivation_blocked boolean := false;
@@ -783,7 +784,7 @@ begin
   -- A driver may start another trip after the previous trip has completed.
   insert into public.tasks (id, fleet_id, title, pickup_address, delivery_address,
     assigned_driver_id, assigned_vehicle_id, status, created_by)
-    values (t1b, f1, 'CI second trip after completion', 'Test origin', 'Test destination',
+    values (t1d, f1, 'CI second trip after completion', 'Test origin', 'Test destination',
       d1, v1, 'assigned', u1);
   v_trip_id := public.start_trip_with_inspection(
     f1, t1b, d1, v1, 'Test origin', 'Test destination', good_checklist
