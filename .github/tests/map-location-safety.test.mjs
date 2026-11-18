@@ -179,7 +179,9 @@ test("fleet reports clear private aggregates and reject stale queries after auth
   const source = await readFile("app/reports/page.js", "utf8");
   assert.ok(source.includes("const authUserIdRef = useRef(null)"));
   assert.ok(source.includes("nextUserId !== authUserIdRef.current"));
-  assert.ok(source.includes("authGeneration !== authGenerationRef.current"));
+  assert.ok(source.includes("authGeneration === authGenerationRef.current"));
+  assert.ok(source.includes("const isCurrent = () => authGeneration === authGenerationRef.current && requestGeneration === reportRequestGenerationRef.current"));
+  assert.ok(source.includes("if (!isCurrent()) return;"));
   assert.ok(source.includes("setTrips([]); setMaintenance([]); setIncidents([])"));
   assert.ok(source.includes("window.location.reload()"));
 });
