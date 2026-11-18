@@ -59,6 +59,9 @@ jobs:
       contents: read
     env:
       SUPABASE_TEST_DB_URL: ${{ secrets.SUPABASE_TEST_DB_URL }}
+      SUPABASE_TEST_URL: ${{ secrets.SUPABASE_TEST_URL }}
+      SUPABASE_TEST_ANON_KEY: ${{ secrets.SUPABASE_TEST_ANON_KEY }}
+      SUPABASE_TEST_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
     steps:
       - name: Check out code
         uses: actions/checkout@v7
@@ -66,9 +69,9 @@ jobs:
         id: test-db
         shell: bash
         run: |
-          if [ -z "$SUPABASE_TEST_DB_URL" ]; then
+          if [ -z "$SUPABASE_TEST_DB_URL" ] || [ -z "$SUPABASE_TEST_URL" ] || [ -z "$SUPABASE_TEST_ANON_KEY" ] || [ -z "$SUPABASE_TEST_SERVICE_ROLE_KEY" ]; then
             echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Database integration tests skipped because SUPABASE_TEST_DB_URL is not configured."
+            echo "::notice::Database integration tests skipped because the dedicated Test DB/Auth secrets are not all configured."
           else
             echo "available=true" >> "$GITHUB_OUTPUT"
           fi
