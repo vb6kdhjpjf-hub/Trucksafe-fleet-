@@ -104,7 +104,9 @@ begin
   or not has_table_privilege('authenticated','public.shipments','SELECT')
   or not has_function_privilege('authenticated','public.create_shipment(uuid,text,text,text,timestamptz,uuid,uuid,text,jsonb,jsonb)','EXECUTE')
   or not has_function_privilege('authenticated','public.record_shipment_stop_result(uuid,uuid,uuid,uuid,jsonb,text)','EXECUTE')
-  or has_function_privilege('anon','public.create_shipment(uuid,text,text,text,timestamptz,uuid,uuid,text,jsonb,jsonb)','EXECUTE') then
+  or has_function_privilege('anon','public.create_shipment(uuid,text,text,text,timestamptz,uuid,uuid,text,jsonb,jsonb)','EXECUTE')
+  or has_function_privilege('anon','private.is_active_assigned_fleet_driver(uuid,uuid)','EXECUTE')
+  or not has_function_privilege('authenticated','private.is_active_assigned_fleet_driver(uuid,uuid)','EXECUTE') then
   raise exception 'Shipment write privileges are not safely scoped';
  end if;
  insert into pg_temp.shipment_test_results values('shipment tables are read-only to browser clients and writes use authenticated RPCs','PASS');
