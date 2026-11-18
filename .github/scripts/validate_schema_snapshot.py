@@ -131,18 +131,19 @@ def validate_schema_only_snapshot(sql: str) -> None:
     if not code.strip():
         raise SnapshotValidationError("Snapshot contains no SQL statements")
 
-    # Inspect each top-level SQL statement independently. The lexical pass
-    # preserves semicolons/newlines but blanks all non-executable text.
-    for statement in code.split(";"):
-        normalized = statement.strip()
-        if not normalized:
-            continue
-        if re.match(r"(?is)^COPY\b", normalized) and re.search(
-            r"(?is)\bFROM\s+STDIN\b", normalized
-        ):
-            raise SnapshotValidationError("Snapshot contains a COPY ... FROM stdin data block")
-        if re.match(r"(?is)^INSERT\s+INTO\b", normalized):
-            raise SnapshotValidationError("Snapshot contains a top-level INSERT INTO statement")
+    # PostgreSQL has defaulted standard_conforming_strings to on for years.
+    # A dump that explicitly disables it changes string-literal tokenization;
+    # reject it rather than attempting to interpret a different lexical mode.
+    if re.search(r"(?im)^\s*SET\s+standard_conforming_strings\s*=\s*off\b", code):
+        raise SnapshotValidationError("Snapshot disables standard_conforming_strings; refusing ambiguous SQL")
+
+    # Schema-only snapshots must not contain data-copy or data-insertion
+    # commands. Scan executable SQL after comments/literals/function bodies
+    # have been blanked, including data-modifying CTEs.
+    if re.search(r"(?is)\bCOPY\b", code):
+        raise SnapshotValidationError("Snapshot contains a COPY statement")
+    if re.search(r"(?is)\bINSERT\s+INTO\b", code):
+        raise SnapshotValidationError("Snapshot contains an INSERT INTO statement")
 
 
 def main() -> int:
