@@ -210,6 +210,7 @@ const files = [
   ".github/tests/cross-fleet-preflight-detects-anomalies.sql",
   ".github/tests/query-plan-performance-e2e.sql",
   ".github/tests/vehicle-special-equipment-schema-e2e.sql",
+  ".github/tests/task-assignment-eligibility-e2e.sql",
 ];
 
 const { databaseUrl: verifiedDatabaseUrl, url, anonKey, serviceRoleKey } = readConfig();
