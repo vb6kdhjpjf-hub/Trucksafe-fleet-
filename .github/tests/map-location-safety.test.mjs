@@ -229,7 +229,10 @@ test("daily reports clear private aggregates and reject stale results after auth
   const source = await readFile("app/daily-report/page.js", "utf8");
   assert.ok(source.includes("const authUserIdRef = useRef(null)"));
   assert.ok(source.includes("nextUserId !== authUserIdRef.current"));
-  assert.ok(source.includes("authGeneration !== authGenerationRef.current"));
+  assert.ok(source.includes("authGeneration === authGenerationRef.current"));
+  assert.ok(source.includes("requestGeneration === reportRequestGenerationRef.current"));
+  assert.ok(source.includes("if (!isCurrent()) return;"));
+  assert.ok(source.includes("reportRequestGenerationRef.current += 1"));
   assert.ok(source.includes("setTrips([]); setIncidents([]); setMaintenance([])"));
   assert.ok(source.includes("window.location.reload()"));
 });
