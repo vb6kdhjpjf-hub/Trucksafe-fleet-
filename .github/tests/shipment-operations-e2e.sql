@@ -2,6 +2,7 @@
 begin;
 \ir ../../supabase/migrations/20261112150000_add_shipments_and_cargo_operations.sql
 \ir ../../supabase/migrations/20261112160000_add_delivery_notes_and_proof_of_delivery.sql
+\ir ../../supabase/migrations/20261118190000_harden_shipment_driver_membership.sql
 create temporary table shipment_test_results(scenario text primary key,outcome text not null) on commit drop;
 create temporary table shipment_test_fixture(fleet_id uuid,shipment_id uuid,stop_id uuid,owner_id uuid,driver_user_id uuid) on commit drop;
 do $test$
