@@ -9,20 +9,26 @@ const empty={vehicle_id:"",equipment_kind:"crane",manufacturer:"",model:"",seria
 
 export default function SpecialEquipmentPage(){
  const [fleet,setFleet]=useState(null),[vehicles,setVehicles]=useState([]),[rows,setRows]=useState([]),[form,setForm]=useState(empty),[chart,setChart]=useState(null),[manual,setManual]=useState(null),[busy,setBusy]=useState(false),[message,setMessage]=useState(""),[notes,setNotes]=useState({});
- async function load(){
+ const authGenerationRef=useRef(0),authUserIdRef=useRef(null);
+ async function load(authGeneration=authGenerationRef.current){
   const {data:{user},error:authError}=await supabase.auth.getUser();
+  if(authGeneration!==authGenerationRef.current)return;
   if(authError||!user){setMessage("יש להתחבר למערכת כדי לנהל ציוד מיוחד.");return;}
+  authUserIdRef.current=user.id;
   const {data:members,error:memberError}=await supabase.from("fleet_members").select("fleet_id,role").eq("user_id",user.id).limit(2);
+  if(authGeneration!==authGenerationRef.current)return;
   if(memberError||!members?.length){setMessage("לא נמצא צי משויך לחשבון.");return;}
   if(members.length!==1){setMessage("לחשבון משויכים כמה ציים. יש לבחור צי במפורש לפני המשך.");return;}
   if(!["owner","fleet_manager"].includes(members[0].role)){setMessage("רק בעלים או מנהל צי יכולים לנהל ציוד מיוחד.");return;}
   const {data:f,error:fError}=await supabase.from("fleets").select("id,name").eq("id",members[0].fleet_id).single();
+  if(authGeneration!==authGenerationRef.current)return;
   if(fError){setMessage("לא ניתן לטעון את הצי.");return;}
   setFleet({...f,role:members[0].role});
   const [v,e]=await Promise.all([
    supabase.from("vehicles").select("id,registration_number,body_type,is_demo,registration_verification_status").eq("fleet_id",f.id).order("registration_number"),
    supabase.from("vehicle_special_equipment").select("*").eq("fleet_id",f.id).order("updated_at",{ascending:false})
   ]);
+  if(authGeneration!==authGenerationRef.current)return;
   if(v.error||e.error){setMessage("לא ניתן לטעון כלי רכב או ציוד מיוחד. בדוק הרשאות ומסד נתונים.");return;}
   setVehicles(v.data||[]);
   const rowsWithChartLinks=await Promise.all((e.data||[]).map(async row=>{
@@ -32,9 +38,21 @@ export default function SpecialEquipmentPage(){
    ]);
    return {...row,chartUrl:chartResult.error?null:chartResult.data?.signedUrl||null,manualUrl:manualResult.error?null:manualResult.data?.signedUrl||null};
   }));
+  if(authGeneration!==authGenerationRef.current)return;
   setRows(rowsWithChartLinks);
  }
- useEffect(()=>{load();},[]);
+ useEffect(()=>{
+  const clearPrivateState=()=>{authGenerationRef.current+=1;setFleet(null);setVehicles([]);setRows([]);setForm(empty);setChart(null);setManual(null);setNotes({});setBusy(false);setMessage("");};
+  const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,nextSession)=>{
+   const nextUserId=nextSession?.user?.id||null;
+   if(nextUserId&&authUserIdRef.current&&nextUserId!==authUserIdRef.current){clearPrivateState();authUserIdRef.current=nextUserId;if(typeof window!=="undefined")window.location.reload();return;}
+   if(nextUserId)authUserIdRef.current=nextUserId;
+   if(!nextSession){authUserIdRef.current=null;clearPrivateState();}
+  });
+  const initialAuthGeneration=authGenerationRef.current;
+  load(initialAuthGeneration).catch(error=>{if(initialAuthGeneration===authGenerationRef.current)setMessage("לא ניתן לטעון ציוד מיוחד: "+(error?.message||"שגיאה לא ידועה"));});
+  return ()=>{authGenerationRef.current+=1;subscription.unsubscribe();};
+ },[]);
  function chooseVehicle(id){
   const vehicle=vehicles.find(v=>v.id===id);
   const expectedKind=vehicle?.body_type==="aerial_platform"?"aerial_platform":vehicle?.body_type==="concrete_pump"?"concrete_pump":(vehicle?.body_type==="other_special"||vehicle?.body_type==="low_loader")?"other_special":"crane";
@@ -46,6 +64,7 @@ export default function SpecialEquipmentPage(){
  const field=(label,key,props={})=><label style={{display:"grid",gap:5}}>{label}<input type={props.type||"text"} min={props.min} max={props.max} step={props.step} required={props.required||false} value={form[key]} onChange={e=>update(key,e.target.value)}/></label>;
  async function save(event){
   event.preventDefault();
+  const authGeneration=authGenerationRef.current;
   if(!fleet||!form.vehicle_id)return;
   const vehicle=vehicles.find(v=>v.id===form.vehicle_id);
   if(!vehicle||vehicle.is_demo){setMessage("לא ניתן לשמור ציוד לרכב הדגמה או לרכב שאינו בצי.");return;}
@@ -70,22 +89,27 @@ export default function SpecialEquipmentPage(){
    if(chart)chartPath=await uploadEvidence(chart,"תרשים היצרן","lifting-chart.pdf");
    if(manual)manualPath=await uploadEvidence(manual,"מדריך ההפעלה","operating-manual.pdf");
    const payload={fleet_id:fleet.id,vehicle_id:vehicle.id,equipment_kind:form.equipment_kind,manufacturer:form.manufacturer.trim()||null,model:form.model.trim()||null,serial_number:form.serial_number.trim()||null,...values,axle_configuration:form.axle_configuration.trim(),lifting_chart_document_path:chartPath,operating_manual_document_path:manualPath};
+   if(authGeneration!==authGenerationRef.current)throw new Error("ההתחברות השתנתה. יש לטעון מחדש לפני שמירה.");
    const {error}=await supabase.from("vehicle_special_equipment").upsert(payload,{onConflict:"fleet_id,vehicle_id"});
+   if(authGeneration!==authGenerationRef.current)return;
    if(error)throw error;
-   uploadedPaths.length=0;setChart(null);setManual(null);await load();setMessage("פרטי הציוד והמסמכים נשמרו ונשלחו לבדיקה מחדש. הם עדיין אינם מאושרים לניווט.");
+   uploadedPaths.length=0;setChart(null);setManual(null);await load(authGeneration);if(authGeneration===authGenerationRef.current)setMessage("פרטי הציוד והמסמכים נשמרו ונשלחו לבדיקה מחדש. הם עדיין אינם מאושרים לניווט.");
   }catch(error){
-   if(uploadedPaths.length)await supabase.storage.from("vehicle-registrations").remove(uploadedPaths).catch(()=>{});
-   setMessage("לא ניתן לשמור את הציוד: "+(error?.message||"שגיאה לא ידועה"));
+   if(uploadedPaths.length&&authGeneration===authGenerationRef.current)await supabase.storage.from("vehicle-registrations").remove(uploadedPaths).catch(()=>{});
+   if(authGeneration===authGenerationRef.current)setMessage("לא ניתן לשמור את הציוד: "+(error?.message||"שגיאה לא ידועה"));
   }
-  finally{setBusy(false);}
+  finally{if(authGeneration===authGenerationRef.current)setBusy(false);}
  }
  async function review(row,decision){
+  const authGeneration=authGenerationRef.current;
   const note=(notes[row.id]||"").trim();if(note.length<5){setMessage("יש לכתוב הערת בדיקה באורך 5 תווים לפחות.");return;}
   setBusy(true);setMessage("");
+  if(authGeneration!==authGenerationRef.current){setBusy(false);return;}
   const {error}=await supabase.rpc("review_vehicle_special_equipment",{p_equipment_id:row.id,p_decision:decision,p_note:note});
+  if(authGeneration!==authGenerationRef.current)return;
   if(error)setMessage("בדיקת הציוד נכשלה: "+error.message);
-  else{await load();setNotes(x=>({...x,[row.id]:""}));setMessage(decision==="verified"?"הציוד עבר בדיקה פנימית. אין בכך אישור חוקי או אישור מסלול.":"הציוד נדחה ולא ניתן להשתמש בו לניתוב.");}
-  setBusy(false);
+  else{await load(authGeneration);if(authGeneration!==authGenerationRef.current)return;setNotes(x=>({...x,[row.id]:""}));setMessage(decision==="verified"?"הציוד עבר בדיקה פנימית. אין בכך אישור חוקי או אישור מסלול.":"הציוד נדחה ולא ניתן להשתמש בו לניתוב.");}
+  if(authGeneration===authGenerationRef.current)setBusy(false);
  }
  return <main dir="rtl" style={{maxWidth:1100,margin:"0 auto",padding:20,fontFamily:"Arial,sans-serif",color:"#182230"}}>
   <header style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}><div><h1>ציוד מיוחד ומנופים</h1><p>הפרדה בין מידות נסיעה למידות עבודה ותיעוד מסמכי יצרן</p></div><a href="/" style={{padding:10,border:"1px solid #ccd5df",borderRadius:8,textDecoration:"none"}}>חזרה לניהול הצי</a></header>
