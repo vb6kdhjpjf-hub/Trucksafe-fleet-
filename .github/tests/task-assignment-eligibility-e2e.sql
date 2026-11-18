@@ -24,7 +24,7 @@ VALUES
  ('bd000000-0000-4000-8000-000000000004','bb000000-0000-4000-8000-000000000001','TASK-GUARD-TRIP','on_trip',false);
 
 CREATE FUNCTION pg_temp.assert_assignment_rejected(statement text, scenario text)
-RETURNS void LANGUAGE plpgsql AS $$
+RETURNS void LANGUAGE plpgsql AS $
 DECLARE
   rejected boolean := false;
 BEGIN
@@ -37,11 +37,11 @@ BEGIN
       RAISE;
     END IF;
   END;
-  IF NOT rejected THEN
+  IF rejected IS FALSE THEN
     RAISE EXCEPTION 'Expected database rejection: %', scenario;
   END IF;
 END;
-$$;
+$;
 
 DO $test$
 DECLARE
@@ -60,6 +60,18 @@ BEGIN
       VALUES ('bb000000-0000-4000-8000-000000000001','Partial assignment',
         'bc000000-0000-4000-8000-000000000001','pending')$sql$,
     'partial driver-only assignment');
+
+  PERFORM pg_temp.assert_assignment_rejected(
+    $sql$INSERT INTO public.tasks (fleet_id,title,assigned_driver_id,assigned_vehicle_id,status)
+      VALUES ('bb000000-0000-4000-8000-000000000001','Cross-fleet driver assignment',
+        'bc000000-0000-4000-8000-000000000099','bd000000-0000-4000-8000-000000000001','assigned')$sql$,
+    'driver from another fleet or missing driver');
+
+  PERFORM pg_temp.assert_assignment_rejected(
+    $sql$INSERT INTO public.tasks (fleet_id,title,assigned_driver_id,assigned_vehicle_id,status)
+      VALUES ('bb000000-0000-4000-8000-000000000001','Cross-fleet vehicle assignment',
+        'bc000000-0000-4000-8000-000000000001','bd000000-0000-4000-8000-000000000099','assigned')$sql$,
+    'vehicle from another fleet or missing vehicle');
 
   PERFORM pg_temp.assert_assignment_rejected(
     $sql$INSERT INTO public.tasks (fleet_id,title,assigned_driver_id,assigned_vehicle_id,status)
