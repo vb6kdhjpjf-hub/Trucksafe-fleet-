@@ -1,8 +1,14 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { randomBytes, randomUUID } from "node:crypto";
+import { createClient } from "@supabase/supabase-js";
 import { Client } from "pg";
 
 const root = process.cwd();
+const TEST_PROJECT_REF = "yxxrgblpqzhnnyojbwcr";
+const PRODUCTION_PROJECT_REF = "jqebxlhhffwiebijiug";
+const FIXTURE_MARKER = "trucksafe-rollback-sql-ci";
+const PAGE_SIZE = 1000;
 
 async function expandIncludes(file, stack = []) {
   const absolute = path.resolve(root, file);
@@ -24,6 +30,120 @@ async function expandIncludes(file, stack = []) {
   return expanded.join("\n");
 }
 
+function readConfig() {
+  const databaseUrl = process.env.SUPABASE_TEST_DB_URL;
+  const url = process.env.SUPABASE_TEST_URL;
+  const anonKey = process.env.SUPABASE_TEST_ANON_KEY;
+  const serviceRoleKey = process.env.SUPABASE_TEST_SERVICE_ROLE_KEY;
+  if (!databaseUrl || !url || !anonKey || !serviceRoleKey) {
+    throw new Error("Database integration requires the dedicated Test DB URL, Auth URL, anon key and server-side service-role key.");
+  }
+
+  const parsedAuthUrl = new URL(url);
+  if (parsedAuthUrl.protocol !== "https:" || parsedAuthUrl.hostname !== `${TEST_PROJECT_REF}.supabase.co`) {
+    throw new Error("Refusing SQL fixture setup: Auth URL is not the exact dedicated Test project.");
+  }
+  if (anonKey === serviceRoleKey) {
+    throw new Error("Refusing SQL fixture setup: public and server-side keys must be different.");
+  }
+
+  const parsedDatabaseUrl = new URL(databaseUrl);
+  const databaseIdentity = `${parsedDatabaseUrl.hostname} ${decodeURIComponent(parsedDatabaseUrl.username || "")}`;
+  if (!["postgres:", "postgresql:"].includes(parsedDatabaseUrl.protocol) ||
+      !databaseIdentity.includes(TEST_PROJECT_REF) ||
+      databaseIdentity.includes(PRODUCTION_PROJECT_REF)) {
+    throw new Error("Refusing SQL integration: database URI does not identify only the dedicated Test project.");
+  }
+
+  return { databaseUrl, url: parsedAuthUrl.origin, anonKey, serviceRoleKey };
+}
+
+function createAdminClient(url, serviceRoleKey) {
+  return createClient(url, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false }
+  });
+}
+
+function extractAuthFixtureRows(sql) {
+  const statements = [...sql.matchAll(/\binsert\s+into\s+auth\.users\b[\s\S]*?;/gi)];
+  const rows = [];
+  for (const statement of statements) {
+    const tuplePattern = /\(\s*([a-z_][a-z0-9_]*|'[0-9a-f-]{36}')\s*,\s*'authenticated'\s*,\s*'authenticated'\s*,\s*'([^']+@[^']+)'/gi;
+    for (const match of statement[0].matchAll(tuplePattern)) {
+      rows.push({ identity: match[1], email: match[2] });
+    }
+  }
+  if (statements.length && rows.length === 0) {
+    throw new Error("Found direct auth.users fixture inserts, but could not safely identify their user rows.");
+  }
+  return { statements, rows };
+}
+
+async function prepareSqlFixtures(sql, file, admin, createdUsers) {
+  const { statements, rows } = extractAuthFixtureRows(sql);
+  if (statements.length === 0) return sql;
+
+  const replacements = new Map();
+  for (const row of rows) {
+    const [localPart, domain] = row.email.split("@");
+    if (!localPart || !domain) throw new Error("Invalid email in SQL fixture definition.");
+    const email = `${localPart}-${randomUUID()}@${domain}`;
+    const password = randomBytes(36).toString("base64url");
+    const { data, error } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      app_metadata: {
+        trucksafe_ci_fixture: FIXTURE_MARKER,
+        fixture_file: path.basename(file)
+      }
+    });
+    if (error || !data?.user?.id) {
+      throw new Error("Supabase Auth Admin API could not create a disposable Test fixture user.");
+    }
+    createdUsers.push(data.user.id);
+
+    if (row.identity.startsWith("'")) {
+      const originalId = row.identity.slice(1, -1);
+      if (replacements.has(originalId)) throw new Error("Duplicate Auth fixture UUID in one SQL test.");
+      replacements.set(originalId, data.user.id);
+    } else {
+      const variablePattern = new RegExp(`\\b${row.identity}\\s+uuid\\s*:=\\s*'([0-9a-f-]{36})'`, "i");
+      const declaration = sql.match(variablePattern);
+      if (!declaration) {
+        throw new Error(`Could not bind Auth Admin fixture to SQL variable ${row.identity} in ${file}.`);
+      }
+      const originalId = declaration[1];
+      if (replacements.has(originalId)) throw new Error("Duplicate Auth fixture UUID in one SQL test.");
+      replacements.set(originalId, data.user.id);
+    }
+  }
+
+  let prepared = sql;
+  for (const statement of statements) {
+    prepared = prepared.replace(statement[0], "-- Auth user fixture created by Supabase Auth Admin API in run-sql-tests.mjs.\n");
+  }
+  for (const [originalId, userId] of replacements) {
+    prepared = prepared.split(originalId).join(userId);
+  }
+
+  if (/\b(?:insert|update|delete)\s+(?:into\s+)?auth\.users\b/i.test(prepared)) {
+    throw new Error(`Direct SQL mutation of auth.users remains in ${file}; refusing to execute.`);
+  }
+  return prepared;
+}
+
+async function deleteCreatedFixtureUsers(admin, userIds) {
+  const failures = [];
+  for (const userId of [...userIds].reverse()) {
+    const { error } = await admin.auth.admin.deleteUser(userId);
+    if (error) failures.push(userId);
+  }
+  if (failures.length) {
+    throw new Error(`Auth Admin API cleanup failed for ${failures.length} disposable Test fixture user(s).`);
+  }
+}
+
 const databaseUrl = process.env.SUPABASE_TEST_DB_URL;
 if (!databaseUrl) throw new Error("SUPABASE_TEST_DB_URL is required");
 
@@ -41,8 +161,10 @@ const files = [
   ".github/tests/vehicle-special-equipment-schema-e2e.sql",
 ];
 
+const { databaseUrl: verifiedDatabaseUrl, url, anonKey, serviceRoleKey } = readConfig();
+const admin = createAdminClient(url, serviceRoleKey);
 const client = new Client({
-  connectionString: databaseUrl,
+  connectionString: verifiedDatabaseUrl,
   ssl: { rejectUnauthorized: false },
   connectionTimeoutMillis: 15000,
   query_timeout: 120000,
@@ -51,78 +173,100 @@ const client = new Client({
 try {
   await client.connect();
   for (const file of files) {
-    console.log(`Running rollback-only SQL test: ${file}`);
-    const sql = await expandIncludes(file);
-    const results = await client.query(sql);
-    if (file === ".github/tests/cross-fleet-integrity-e2e.sql") {
-      const resultList = Array.isArray(results) ? results : [results];
-      const preflight = resultList.find((result) =>
-        result.fields?.some((field) => field.name === "relationship")
-      );
-      if (!preflight) {
-        throw new Error("Cross-fleet preflight diagnostic did not return its expected result set");
+    const createdUsers = [];
+    let testError;
+    try {
+      console.log(`Running rollback-only SQL test: ${file}`);
+      let sql = await expandIncludes(file);
+      sql = await prepareSqlFixtures(sql, file, admin, createdUsers);
+      if (createdUsers.length) {
+        console.log(`Created ${createdUsers.length} disposable Auth fixture user(s) through Auth Admin API for ${file}.`);
       }
-      if (preflight.rows.length !== 0) {
-        throw new Error(`Cross-fleet preflight found ${preflight.rows.length} unexpected violation(s)`);
-      }
-      console.log("PASS: populated synthetic fixture has zero cross-fleet preflight findings");
-    }
-    if (file === ".github/tests/cross-fleet-preflight-detects-anomalies.sql") {
-      const resultList = Array.isArray(results) ? results : [results];
-      const preflight = resultList.find((result) =>
-        result.fields?.some((field) => field.name === "relationship")
-      );
-      if (!preflight) {
-        throw new Error("Anomaly preflight diagnostic did not return its expected result set");
-      }
-      if (
-        preflight.rows.length !== 1 ||
-        preflight.rows[0].relationship !== "tasks.assigned_driver_id"
-      ) {
-        throw new Error(
-          `Expected exactly one tasks.assigned_driver_id anomaly; received ${preflight.rows.length} finding(s)`
+      // These SQL scripts test PostgreSQL RLS with synthetic request.jwt.claim settings.
+      // They are database-policy tests, not signed-token or Supabase Auth E2E tests.
+      const results = await client.query(sql);
+      if (file === ".github/tests/cross-fleet-integrity-e2e.sql") {
+        const resultList = Array.isArray(results) ? results : [results];
+        const preflight = resultList.find((result) =>
+          result.fields?.some((field) => field.name === "relationship")
         );
+        if (!preflight) {
+          throw new Error("Cross-fleet preflight diagnostic did not return its expected result set");
+        }
+        if (preflight.rows.length !== 0) {
+          throw new Error(`Cross-fleet preflight found ${preflight.rows.length} unexpected violation(s)`);
+        }
+        console.log("PASS: populated synthetic fixture has zero cross-fleet preflight findings");
       }
-      console.log("PASS: preflight detects the synthetic cross-fleet task-driver anomaly");
+      if (file === ".github/tests/cross-fleet-preflight-detects-anomalies.sql") {
+        const resultList = Array.isArray(results) ? results : [results];
+        const preflight = resultList.find((result) =>
+          result.fields?.some((field) => field.name === "relationship")
+        );
+        if (!preflight) {
+          throw new Error("Anomaly preflight diagnostic did not return its expected result set");
+        }
+        if (
+          preflight.rows.length !== 1 ||
+          preflight.rows[0].relationship !== "tasks.assigned_driver_id"
+        ) {
+          throw new Error(
+            `Expected exactly one tasks.assigned_driver_id anomaly; received ${preflight.rows.length} finding(s)`
+          );
+        }
+        console.log("PASS: preflight detects the synthetic cross-fleet task-driver anomaly");
+      }
+      if (file === ".github/tests/query-plan-performance-e2e.sql") {
+        const resultList = Array.isArray(results) ? results : [results];
+        const plans = resultList.filter((result) =>
+          result.fields?.some((field) => field.name === "QUERY PLAN")
+        );
+        if (plans.length !== 2) {
+          throw new Error("Expected 2 EXPLAIN plans; received " + plans.length);
+        }
+        const expectedIndexes = [
+          "idx_trucksafe_perf_tasks_fleet_status",
+          "idx_trucksafe_perf_locations_trip_recorded",
+        ];
+        for (let index = 0; index < plans.length; index += 1) {
+          const rawPlan = plans[index].rows[0]?.["QUERY PLAN"];
+          const document = Array.isArray(rawPlan) ? rawPlan[0] : rawPlan;
+          const indexNames = [];
+          const visit = (node) => {
+            if (!node || typeof node !== "object") return;
+            if (node["Index Name"]) indexNames.push(node["Index Name"]);
+            for (const child of node.Plans ?? []) visit(child);
+          };
+          visit(document?.Plan);
+          if (!indexNames.includes(expectedIndexes[index])) {
+            throw new Error("Expected query plan to use " + expectedIndexes[index] +
+              "; found: " + (indexNames.join(", ") || "no index"));
+          }
+          if (document?.Plan?.["Actual Rows"] !== 100) {
+            throw new Error("Expected 100 returned rows for " + expectedIndexes[index] +
+              "; received " + document?.Plan?.["Actual Rows"]);
+          }
+          if (!Number.isFinite(document?.["Execution Time"])) {
+            throw new Error("Missing execution time for " + expectedIndexes[index]);
+          }
+          console.log("PASS: " + expectedIndexes[index] + " used; 100 rows returned in " +
+            document["Execution Time"].toFixed(3) + " ms");
+        }
+      }
+      console.log(`PASS: ${file}`);
+    } catch (error) {
+      testError = error;
+    } finally {
+      // Ensure an interrupted multi-statement test cannot leave the connection in an open transaction.
+      await client.query("ROLLBACK").catch(() => {});
+      try {
+        await deleteCreatedFixtureUsers(admin, createdUsers);
+      } catch (cleanupError) {
+        if (!testError) testError = cleanupError;
+        else console.error("Auth fixture cleanup also failed:", cleanupError.message);
+      }
     }
-    if (file === ".github/tests/query-plan-performance-e2e.sql") {
-      const resultList = Array.isArray(results) ? results : [results];
-      const plans = resultList.filter((result) =>
-        result.fields?.some((field) => field.name === "QUERY PLAN")
-      );
-      if (plans.length !== 2) {
-        throw new Error("Expected 2 EXPLAIN plans; received " + plans.length);
-      }
-      const expectedIndexes = [
-        "idx_trucksafe_perf_tasks_fleet_status",
-        "idx_trucksafe_perf_locations_trip_recorded",
-      ];
-      for (let index = 0; index < plans.length; index += 1) {
-        const rawPlan = plans[index].rows[0]?.["QUERY PLAN"];
-        const document = Array.isArray(rawPlan) ? rawPlan[0] : rawPlan;
-        const indexNames = [];
-        const visit = (node) => {
-          if (!node || typeof node !== "object") return;
-          if (node["Index Name"]) indexNames.push(node["Index Name"]);
-          for (const child of node.Plans ?? []) visit(child);
-        };
-        visit(document?.Plan);
-        if (!indexNames.includes(expectedIndexes[index])) {
-          throw new Error("Expected query plan to use " + expectedIndexes[index] +
-            "; found: " + (indexNames.join(", ") || "no index"));
-        }
-        if (document?.Plan?.["Actual Rows"] !== 100) {
-          throw new Error("Expected 100 returned rows for " + expectedIndexes[index] +
-            "; received " + document?.Plan?.["Actual Rows"]);
-        }
-        if (!Number.isFinite(document?.["Execution Time"])) {
-          throw new Error("Missing execution time for " + expectedIndexes[index]);
-        }
-        console.log("PASS: " + expectedIndexes[index] + " used; 100 rows returned in " +
-          document["Execution Time"].toFixed(3) + " ms");
-      }
-    }
-    console.log(`PASS: ${file}`);
+    if (testError) throw testError;
   }
 } catch (error) {
   console.error("Database integration test failed:", error.message);
