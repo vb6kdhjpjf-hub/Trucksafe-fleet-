@@ -83,7 +83,7 @@ jobs:
         run: |
           set +x
           test -s schema-artifact/schema.sql
-          python3 -m unittest .github/tests/test_validate_schema_snapshot.py
+          python3 -m unittest discover -s .github/tests -p 'test_validate_schema_snapshot.py'
           python3 .github/scripts/validate_schema_snapshot.py schema-artifact/schema.sql
 
       - name: Install PostgreSQL client
