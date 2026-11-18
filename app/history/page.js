@@ -35,6 +35,7 @@ export default function TripHistoryPage() {
       }
       return { ...trip, driverName: driverResult.data?.full_name || "לא צוין", vehicleName: vehicleResult.data?.registration_number || "לא צוין" };
     }));
+    if (authGeneration !== authGenerationRef.current) return;
     setTrips(rows);
     setError("");
   }
@@ -82,7 +83,8 @@ export default function TripHistoryPage() {
     return () => { alive = false; authGenerationRef.current += 1; subscription.unsubscribe(); };
   }, [router]);
 
-  async function toggleTrip(trip) {\n    const authGeneration = authGenerationRef.current;
+  async function toggleTrip(trip) {
+    const authGeneration = authGenerationRef.current;
     const opening = !expanded[trip.id];
     setExpanded(old => ({ ...old, [trip.id]: opening }));
     if (!opening || Object.prototype.hasOwnProperty.call(pointsByTrip, trip.id)) return;
@@ -90,7 +92,8 @@ export default function TripHistoryPage() {
     const { data, error: pointsError } = await supabase.from("trip_locations")
       .select("latitude,longitude,recorded_at").eq("trip_id", trip.id)
       .order("recorded_at", { ascending: true }).limit(3000);
-    if (authGeneration !== authGenerationRef.current) return;\n    if (pointsError) {
+    if (authGeneration !== authGenerationRef.current) return;
+    if (pointsError) {
       setError("לא ניתן לטעון נקודות GPS לנסיעה: " + pointsError.message);
     } else {
       setPointsByTrip(old => ({ ...old, [trip.id]: data || [] }));
