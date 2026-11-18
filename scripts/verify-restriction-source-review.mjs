@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 const sha256 = value => createHash("sha256").update(value).digest("hex");
 const isHash = value => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 const decisions = new Set(["accepted_for_pilot", "rejected", "needs_more_evidence"]);
-const eventKeys = ["schema_version", "candidate_schema_version", "source_id", "publisher", "dataset_name", "dataset_version", "licence_reference", "retrieved_at", "candidate_payload_sha256", "assessment_report_sha256", "reviewer", "reviewed_at", "decision", "notes", "evidence_refs", "event_sha256"];
+const eventKeys = ["schema_version", "candidate_schema_version", "source_id", "publisher", "dataset_name", "dataset_version", "licence_reference", "retrieved_at", "candidate_payload_sha256", "assessment_report_sha256", "reviewer", "reviewer_identity_status", "reviewer_identity_verified", "reviewed_at", "decision", "notes", "evidence_refs", "event_sha256"];
 
 async function readBytes(file) {
   const handle = await openNoFollow(path.resolve(file));
@@ -49,6 +49,7 @@ export async function verifyHumanReviewEvent({ candidateFile, assessmentReportFi
     throw new Error("Review event schema or hash fields are invalid");
   }
   if (typeof event.reviewer !== "string" || !event.reviewer.trim() || event.reviewer.length > 200 ||
+      event.reviewer_identity_status !== "unverified_assertion" || event.reviewer_identity_verified !== false ||
       !decisions.has(event.decision) || typeof event.notes !== "string" || event.notes.length > 4000 ||
       !Array.isArray(event.evidence_refs) || event.evidence_refs.some(ref => typeof ref !== "string" || !ref.trim() || ref.length > 1000)) {
     throw new Error("Review event fields are invalid");
@@ -67,7 +68,7 @@ export async function verifyHumanReviewEvent({ candidateFile, assessmentReportFi
   const { event_sha256: suppliedHash, ...eventBody } = event;
   if (suppliedHash !== sha256(JSON.stringify(eventBody))) throw new Error("Review event integrity hash mismatch");
   if (Object.hasOwn(event, "approved_for_routing")) throw new Error("Review event must never contain routing approval");
-  return { valid: true, decision: event.decision, reviewer: event.reviewer, source_id: event.source_id, dataset_version: event.dataset_version, retrieved_at: event.retrieved_at, candidate_payload_sha256: event.candidate_payload_sha256, assessment_report_sha256: event.assessment_report_sha256, event_sha256: event.event_sha256, approved_for_routing: false };
+  return { valid: true, decision: event.decision, reviewer: event.reviewer, reviewer_identity_status: event.reviewer_identity_status, reviewer_identity_verified: false, source_id: event.source_id, dataset_version: event.dataset_version, retrieved_at: event.retrieved_at, candidate_payload_sha256: event.candidate_payload_sha256, assessment_report_sha256: event.assessment_report_sha256, event_sha256: event.event_sha256, approved_for_routing: false };
 }
 
 async function main() {
