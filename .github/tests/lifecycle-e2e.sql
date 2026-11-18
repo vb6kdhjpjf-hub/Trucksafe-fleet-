@@ -787,7 +787,7 @@ begin
     values (t1d, f1, 'CI second trip after completion', 'Test origin', 'Test destination',
       d1, v1, 'assigned', u1);
   v_trip_id := public.start_trip_with_inspection(
-    f1, t1b, d1, v1, 'Test origin', 'Test destination', good_checklist
+    f1, t1d, d1, v1, 'Test origin', 'Test destination', good_checklist
   );
   if v_trip_id is null
      or (select status from public.vehicles where id = v1) <> 'on_trip' then
