@@ -113,7 +113,7 @@ export default function TasksPage() {
     setFleet(current);
     const [t, d, v, tr, currentDriver] = await Promise.all([
       supabase.from("tasks").select("id,reference_code,title,description,pickup_address,delivery_address,scheduled_at,assigned_driver_id,assigned_vehicle_id,status,created_at").eq("fleet_id", current.id).order("created_at", { ascending: false }),
-      supabase.from("drivers").select("id,full_name,status").eq("fleet_id", current.id).order("created_at", { ascending: false }),
+      supabase.from("drivers").select("id,full_name,status,license_expires_at").eq("fleet_id", current.id).order("created_at", { ascending: false }),
       supabase.from("vehicles").select("id,registration_number,make,vehicle_type,status").eq("fleet_id", current.id).order("created_at", { ascending: false }),
       supabase.from("trips").select("id,task_id,driver_id,vehicle_id,status,origin_address,destination_address,started_at,ended_at").eq("fleet_id", current.id).order("created_at", { ascending: false }).limit(50),
       supabase.from("drivers").select("id").eq("fleet_id", current.id).eq("user_id", user.id).maybeSingle()
