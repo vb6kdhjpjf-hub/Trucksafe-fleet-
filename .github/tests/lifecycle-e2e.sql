@@ -1140,6 +1140,73 @@ begin
 end
 $referenced_evidence_delete_behavior$;
 
+
+do $trip_rpc_security_contract$
+declare
+  v_oid oid;
+  v_definition text;
+  v_public_execute boolean;
+begin
+  -- These two public RPCs intentionally remain SECURITY DEFINER because
+  -- their transactions update multiple RLS-protected fleet tables. The
+  -- exposed warning is accepted only while the exact caller gates below
+  -- remain true and anonymous/PUBLIC execution stays revoked.
+  foreach v_oid in array array[
+    'public.start_trip_with_inspection(uuid,uuid,uuid,uuid,text,text,jsonb)'::regprocedure::oid,
+    'public.finish_trip(uuid,uuid)'::regprocedure::oid
+  ] loop
+    select lower(pg_get_functiondef(v_oid)) into v_definition;
+
+    if not (select prosecdef from pg_proc where oid = v_oid) then
+      raise exception 'Trip RPC must remain SECURITY DEFINER under the reviewed authorization contract';
+    end if;
+
+    if not (select coalesce(proconfig, '{}'::text[]) @> array['search_path=""']::text[]
+            from pg_proc where oid = v_oid) then
+      raise exception 'Trip SECURITY DEFINER RPC must pin an empty search_path';
+    end if;
+
+    if has_function_privilege('anon', v_oid, 'EXECUTE')
+       or has_function_privilege('authenticated', v_oid, 'EXECUTE') is false
+       or has_function_privilege('service_role', v_oid, 'EXECUTE') is false then
+      raise exception 'Trip RPC execution must be limited to authenticated and service_role, never anon';
+    end if;
+
+    select exists (
+      select 1
+      from pg_proc p
+      cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+      where p.oid = v_oid
+        and a.grantee = 0
+        and a.privilege_type = 'EXECUTE'
+    ) into v_public_execute;
+
+    if v_public_execute then
+      raise exception 'Trip RPC must not grant EXECUTE to PUBLIC';
+    end if;
+
+    if position('auth.uid()' in v_definition) = 0
+       or position('private.is_fleet_member' in v_definition) = 0
+       or position('private.has_fleet_role' in v_definition) = 0 then
+      raise exception 'Trip RPC must authenticate the caller and validate active fleet membership and role';
+    end if;
+  end loop;
+
+  if position('v_driver.user_id is distinct from v_user_id' in lower(pg_get_functiondef(
+       'public.start_trip_with_inspection(uuid,uuid,uuid,uuid,text,text,jsonb)'::regprocedure
+     ))) = 0
+     or position('v_driver.user_id is distinct from auth.uid()' in lower(pg_get_functiondef(
+       'public.finish_trip(uuid,uuid)'::regprocedure
+     ))) = 0 then
+    raise exception 'Non-manager trip RPC access must remain bound to the assigned driver's authenticated user';
+  end if;
+
+  insert into pg_temp.trucksafe_e2e_results values
+    ('trip RPC SECURITY DEFINER authorization contract', 'PASS',
+     'Reviewed RPCs pin an empty search_path, require authenticated fleet membership and role checks, bind driver actions to auth.uid(), and deny anon/PUBLIC execution');
+end
+$trip_rpc_security_contract$;
+
 select scenario, outcome, detail from pg_temp.trucksafe_e2e_results order by scenario;
 
 -- CI fixtures must never persist, even when all assertions pass.
