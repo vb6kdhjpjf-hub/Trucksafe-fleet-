@@ -54,6 +54,29 @@ begin
  exception when others then get stacked diagnostics msg=message_text; rejected:=msg ilike '%quantities are invalid%'; end;
  if not rejected then raise exception 'Over-delivery was not rejected'; end if;
  insert into pg_temp.shipment_test_results values('over-delivery beyond the stop allocation is rejected','PASS');
+  -- Suspended drivers and removed fleet members must lose write access while the stop is still pending.
+  update public.drivers as d set status='suspended'
+  where d.id=shipment_test_block.driver_id and d.fleet_id=shipment_test_block.fleet_id;
+  rejected:=false;
+  begin
+   perform public.record_shipment_stop_result(fleet_id,shipment_id,stop_id,'12000000-0000-4000-8000-000000000003'::uuid,'[]'::jsonb,null);
+  exception when others then get stacked diagnostics msg=message_text; rejected:=msg ilike '%active assigned fleet driver%'; end;
+  if not rejected then raise exception 'A suspended assigned driver retained shipment write access'; end if;
+  update public.drivers as d set status='active'
+  where d.id=shipment_test_block.driver_id and d.fleet_id=shipment_test_block.fleet_id;
+
+  delete from public.fleet_members fm where fm.fleet_id=shipment_test_block.fleet_id and fm.user_id=shipment_test_block.driver_user_id;
+  rejected:=false;
+  begin
+   perform public.record_shipment_stop_result(fleet_id,shipment_id,stop_id,'12000000-0000-4000-8000-000000000004'::uuid,'[]'::jsonb,null);
+  exception when others then get stacked diagnostics msg=message_text; rejected:=msg ilike '%active assigned fleet driver%'; end;
+  if not rejected then raise exception 'A removed fleet member retained shipment write access'; end if;
+
+  perform set_config('test.shipment_id',shipment_id::text,true);
+  perform set_config('test.fleet_id',fleet_id::text,true);
+  perform set_config('test.driver_user_id',driver_user_id::text,true);
+  insert into pg_temp.shipment_test_fixture values(fleet_id,shipment_id,stop_id,owner_id,driver_user_id);
+
  result:=public.record_shipment_stop_result(
   fleet_id,shipment_id,stop_id,'12000000-0000-4000-8000-000000000001'::uuid,
   (select jsonb_agg(jsonb_build_object('stop_line_id',id,'delivered_quantity',planned_quantity,
@@ -80,22 +103,25 @@ begin
  end if;
  insert into pg_temp.shipment_test_results values('shipment tables are read-only to browser clients and writes use authenticated RPCs','PASS');
 
- -- A suspended assigned driver must lose shipment write access even if membership remains.
- update public.drivers as d set status='suspended'
- where d.id=shipment_test_block.driver_id and d.fleet_id=shipment_test_block.fleet_id;
- rejected:=false;
- begin
-  perform public.record_shipment_stop_result(fleet_id,shipment_id,stop_id,'12000000-0000-4000-8000-000000000003'::uuid,'[]'::jsonb,null);
- exception when others then get stacked diagnostics msg=message_text; rejected:=msg ilike '%active assigned fleet driver%'; end;
- if not rejected then raise exception 'A suspended assigned driver retained shipment write access'; end if;
- update public.drivers as d set status='active'
- where d.id=shipment_test_block.driver_id and d.fleet_id=shipment_test_block.fleet_id;
- perform set_config('test.shipment_id',shipment_id::text,true);
- insert into pg_temp.shipment_test_fixture values(fleet_id,shipment_id,stop_id,owner_id,driver_user_id);
 end
 $test$;
 
 
+
+set local role authenticated;
+do $shipment_rls_membership_test$
+declare v_visible integer; v_shipment_id uuid:=current_setting('test.shipment_id')::uuid;
+begin
+ perform set_config('request.jwt.claim.sub',current_setting('test.driver_user_id'),true);
+ perform set_config('request.jwt.claim.role','authenticated',true);
+ select count(*) into v_visible from public.shipments where id=v_shipment_id;
+ if v_visible<>0 then raise exception 'A driver removed from fleet membership can still read an assigned shipment'; end if;
+end
+$shipment_rls_membership_test$;
+reset role;
+insert into public.fleet_members(fleet_id,user_id,role)
+values(current_setting('test.fleet_id')::uuid,current_setting('test.driver_user_id')::uuid,'driver')
+on conflict(fleet_id,user_id) do update set role='driver';
 
 do $delivery_document_test$
 declare
@@ -215,32 +241,14 @@ end
 $delivery_document_test$;
 
 do $driver_membership_revocation_test$
-declare f record; rejected boolean:=false; msg text;
+declare f record;
 begin
  select * into f from pg_temp.shipment_test_fixture;
- delete from public.fleet_members where fleet_id=f.fleet_id and user_id=f.driver_user_id;
- perform set_config('request.jwt.claim.sub',f.driver_user_id::text,true);
- perform set_config('request.jwt.claim.role','authenticated',true);
- begin
-  perform public.record_shipment_stop_result(f.fleet_id,f.shipment_id,f.stop_id,
-   '12000000-0000-4000-8000-000000000004'::uuid,'[]'::jsonb,null);
- exception when others then get stacked diagnostics msg=message_text; rejected:=msg ilike '%active assigned fleet driver%'; end;
- if not rejected then raise exception 'A removed fleet member retained shipment write access'; end if;
+ delete from public.fleet_members fm where fm.fleet_id=f.fleet_id and fm.user_id=f.driver_user_id;
  insert into pg_temp.shipment_test_results values('suspended or removed drivers cannot write shipment results','PASS');
 end
 $driver_membership_revocation_test$;
 
-set local role authenticated;
-do $shipment_rls_membership_test$
-declare v_visible integer; v_shipment_id uuid:=current_setting('test.shipment_id')::uuid;
-begin
- perform set_config('request.jwt.claim.sub','a2000000-0000-4000-8000-000000000002',true);
- perform set_config('request.jwt.claim.role','authenticated',true);
- select count(*) into v_visible from public.shipments where id=v_shipment_id;
- if v_visible<>0 then raise exception 'A driver removed from fleet membership can still read an assigned shipment'; end if;
-end
-$shipment_rls_membership_test$;
-reset role;
 
 set local role authenticated;
 do $delivery_note_rls_membership_test$
