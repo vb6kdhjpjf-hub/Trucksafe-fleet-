@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
@@ -37,6 +37,8 @@ export default function DailyWorkPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [messageKind, setMessageKind] = useState("info");
+  const authGenerationRef = useRef(0);
+  const authUserIdRef = useRef(null);
 
   const canManage = ["owner", "fleet_manager", "dispatcher"].includes(fleet?.role);
   const canRead = Boolean(fleet?.id);
@@ -46,8 +48,8 @@ export default function DailyWorkPage() {
 
   const notify = (text, kind = "info") => { setMessage(text); setMessageKind(kind); };
 
-  const loadData = useCallback(async (user) => {
-    const { data, error } = await resolveFleetWorkspace(supabase, user.id);
+  const loadData = useCallback(async (user, authGeneration = authGenerationRef.current) => {
+    const { data, error } = await resolveFleetWorkspace(supabase, user.id);\n    if (authGeneration !== authGenerationRef.current) return;
     if (error) {
       if (error.code === "AUTH_REQUIRED" || error.code === "NO_FLEET") router.replace("/");
       else notify("לא הצלחנו לאמת את סביבת העבודה: " + error.message, "error");
@@ -68,7 +70,7 @@ export default function DailyWorkPage() {
     if (!rows.length) { setStopsByPlan({}); return; }
     const stopResult = await supabase.from("daily_work_stops")
       .select("id,fleet_id,plan_id,sequence_no,operation_kind,address,planned_quantity_kg,status,actual_quantity_kg,completed_at")
-      .eq("fleet_id", current.id).in("plan_id", rows.map(row => row.id)).order("sequence_no");
+      .eq("fleet_id", current.id).in("plan_id", rows.map(row => row.id)).order("sequence_no");\n    if (authGeneration !== authGenerationRef.current) return;
     if (stopResult.error) notify("שגיאה בטעינת תחנות העבודה: " + stopResult.error.message, "error");
     else {
       const grouped = {};
@@ -80,15 +82,38 @@ export default function DailyWorkPage() {
   useEffect(() => {
     if (!isSupabaseConfigured) { notify("החיבור למסד הנתונים אינו מוגדר.", "error"); setLoading(false); return; }
     let alive = true;
-    supabase.auth.getSession().then(async ({ data, error }) => {
-      if (!alive) return;
-      if (error || !data.session) { router.replace("/"); return; }
-      setSession(data.session);
-      await loadData(data.session.user);
-      if (alive) setLoading(false);
+    const clearPrivateState = () => {
+      authGenerationRef.current += 1;
+      setSession(null); setFleet(null); setDrivers([]); setVehicles([]); setPlans([]); setStopsByPlan({});
+      setForm(blankForm()); setMeasurements({}); setShowForm(false); setBusy(false); setMessage(""); setMessageKind("info");
+    };
+    const initialAuthGeneration = authGenerationRef.current;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user?.id || null;
+      if (nextUserId && authUserIdRef.current && nextUserId !== authUserIdRef.current) {
+        clearPrivateState();
+        authUserIdRef.current = nextUserId;
+        if (typeof window !== "undefined") window.location.reload();
+        return;
+      }
+      if (nextUserId) authUserIdRef.current = nextUserId;
+      if (!nextSession) {
+        authUserIdRef.current = null;
+        clearPrivateState();
+        router.replace("/");
+      }
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => { if (!next) router.replace("/"); });
-    return () => { alive = false; subscription.unsubscribe(); };
+    supabase.auth.getSession().then(async ({ data, error }) => {
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
+      if (error || !data.session) { router.replace("/"); return; }
+      authUserIdRef.current = data.session.user.id;
+      setSession(data.session);
+      await loadData(data.session.user, initialAuthGeneration);
+      if (alive && initialAuthGeneration === authGenerationRef.current) setLoading(false);
+    }).catch(error => {
+      if (alive && initialAuthGeneration === authGenerationRef.current) { notify("לא הצלחנו לטעון את תוכניות העבודה: " + (error?.message || "שגיאה לא ידועה"), "error"); setLoading(false); }
+    });
+    return () => { alive = false; authGenerationRef.current += 1; subscription.unsubscribe(); };
   }, [router, loadData]);
 
   function updateStop(index, field, value) {
