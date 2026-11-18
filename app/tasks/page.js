@@ -210,13 +210,12 @@ export default function TasksPage() {
   }
 
   async function confirmPreTrip() {
+    const generation = authGenerationRef.current;
+    const requestingUserId = authUserIdRef.current;
     const task = preTripTask;
-    if (!task || !fleet || !session?.user) return;
+    if (!isCurrentAuthSession(generation, requestingUserId) || !task || !fleet || !session?.user) return;
     const result = buildPreTripChecklist(preTripItems, preTripChecks, preTripDefectDetails);
-    if (!result.valid) {
-      setMessage(result.message);
-      return;
-    }
+    if (!result.valid) { setMessage(result.message); return; }
     setBusy(true); setMessage("");
     try {
       const { data: startedTripId, error } = await supabase.rpc("start_trip_with_inspection", {
@@ -224,13 +223,12 @@ export default function TasksPage() {
         p_vehicle_id: task.assigned_vehicle_id, p_origin_address: task.pickup_address,
         p_destination_address: task.delivery_address, p_checklist: result.checklist
       });
-      if (error) {
-        setMessage("לא ניתן לפתוח נסיעה או לשמור בדיקת רכב: " + error.message);
-        return;
-      }
+      if (!isCurrentAuthSession(generation, requestingUserId)) return;
+      if (error) { setMessage("לא ניתן לפתוח נסיעה או לשמור בדיקת רכב: " + error.message); return; }
       setPreTripTask(null);
       setPreTripDefectDetails("");
-      await loadWorkspace(session.user);
+      await loadWorkspace(session.user, generation);
+      if (!isCurrentAuthSession(generation, requestingUserId)) return;
       if (!startedTripId) {
         setMessage(result.hasDefects
           ? "נמצאו ליקויים. הבדיקה נשמרה ונפתח אירוע בטיחות, אך הנסיעה לא נפתחה. יש לטפל בליקוי ולקבל אישור לפני יציאה."
@@ -239,13 +237,16 @@ export default function TasksPage() {
       }
       setMessage("בדיקת הרכב נשמרה והנסיעה נפתחה בהצלחה.");
     } catch (error) {
-      setMessage("אירעה שגיאה בפתיחת הנסיעה: " + (error?.message || "שגיאה לא ידועה"));
+      if (isCurrentAuthSession(generation, requestingUserId)) setMessage("אירעה שגיאה בפתיחת הנסיעה: " + (error?.message || "שגיאה לא ידועה"));
     } finally {
-      setBusy(false);
+      if (isCurrentAuthSession(generation, requestingUserId)) setBusy(false);
     }
   }
 
   async function endTrip(trip) {
+    const generation = authGenerationRef.current;
+    const requestingUserId = authUserIdRef.current;
+    if (!isCurrentAuthSession(generation, requestingUserId)) return;
     if (!canOperateTrip(trip)) { setMessage("רק מנהל מורשה או הנהג המשויך לנסיעה יכולים לסיים אותה."); return; }
     if (!fleet || !session?.user || !trip?.id) return;
     setBusy(true); setMessage("");
@@ -254,22 +255,20 @@ export default function TasksPage() {
         p_fleet_id: fleet.id,
         p_trip_id: trip.id
       });
-      if (error) {
-        setMessage("לא הצלחנו לסיים נסיעה: " + error.message);
-        return;
-      }
+      if (!isCurrentAuthSession(generation, requestingUserId)) return;
+      if (error) { setMessage("לא הצלחנו לסיים נסיעה: " + error.message); return; }
       if (trackingTripId === trip.id) {
         trackingGenerationRef.current += 1;
         if (watchIdRef.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
         setTrackingTripId(null);
       }
-      await loadWorkspace(session.user);
-      setMessage("הנסיעה והמשימה הסתיימו וסטטוס הרכב עודכן.");
+      await loadWorkspace(session.user, generation);
+      if (isCurrentAuthSession(generation, requestingUserId)) setMessage("הנסיעה והמשימה הסתיימו וסטטוס הרכב עודכן.");
     } catch (error) {
-      setMessage("אירעה שגיאה בסיום הנסיעה: " + (error?.message || "שגיאה לא ידועה"));
+      if (isCurrentAuthSession(generation, requestingUserId)) setMessage("אירעה שגיאה בסיום הנסיעה: " + (error?.message || "שגיאה לא ידועה"));
     } finally {
-      setBusy(false);
+      if (isCurrentAuthSession(generation, requestingUserId)) setBusy(false);
     }
   }
 
