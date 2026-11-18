@@ -237,6 +237,6 @@ test("truck routing clears vehicle, route and provider state when auth identity 
   assert.ok(source.includes("const authUserIdRef = useRef(null)"));
   assert.ok(source.includes("nextUserId !== authUserIdRef.current"));
   assert.ok(source.includes("authGeneration !== authGenerationRef.current"));
-  assert.ok(source.includes("setForm(initial); setVehicles([]); setVehicleComplianceWarning("")"));
+  assert.ok(source.includes('setForm(initial); setVehicles([]); setVehicleComplianceWarning("")'));
   assert.ok(source.includes("window.location.reload()"));
 });
