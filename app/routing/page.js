@@ -178,7 +178,7 @@ export default function TruckRoutingPage() {
       L.marker(points[0]).addTo(map).bindPopup("מוצא");
       L.marker(points[points.length - 1]).addTo(map).bindPopup("יעד");
       map.fitBounds(line.getBounds().pad(0.12));
-    }).catch(() => setMapMessage("המסלול חושב, אך לא הצלחנו לטעון את שכבת המפה. אפשר לעיין בהוראות הנסיעה."));
+    }).catch(() => { if (!cancelled) setMapMessage("המסלול חושב, אך לא הצלחנו לטעון את שכבת המפה. אפשר לעיין בהוראות הנסיעה."); });
     return () => {
       cancelled = true;
       if (map) map.remove();
@@ -382,7 +382,7 @@ export default function TruckRoutingPage() {
 
       <section style={{ background: "#fff8e8", border: "1px solid #f0d9a8", borderRadius: 14, padding: 14, marginBottom: 16 }}>
         <b><ShieldAlert size={17} style={{ verticalAlign: "middle" }}/> בטיחות לפני הכול</b>
-        <p style={{ margin: "7px 0 0", lineHeight: 1.6, fontSize: 13 }}>המערכת משתמשת בנתוני ניתוב למשאיות של HERE. גם מסלול ללא התראות אינו הבטחה שהדרך בטוחה או חוקית בכל רגע. חובה לבדוק שילוט, הוראות משטרה, עבודות בכביש ומגבלות מקומיות לפני ובמהלך הנסיעה. מסלול עם התראה קריטית אינו מאושר ליציאה.</p>
+        <p style={{ margin: "7px 0 0", lineHeight: 1.6, fontSize: 13 }}>שירות ניתוב משאיות חיצוני עדיין אינו מופעל במערכת, וספק HERE נשאר נעול עד לאישור נפרד. גם לאחר הפעלה, מסלול ללא התראות לא יבטיח שהדרך בטוחה או חוקית בכל רגע. חובה לבדוק שילוט, הוראות משטרה, עבודות בכביש ומגבלות מקומיות לפני ובמהלך הנסיעה. מסלול עם התראה קריטית לא יאושר ליציאה.</p>
       </section>
 
       {message && <div role="status" style={{ background: result?.hasCriticalNotices ? "#fff0f0" : "#eef4ff", border: "1px solid #dce6f7", borderRadius: 10, padding: 12, marginBottom: 14, lineHeight: 1.5 }}>{message}</div>}
@@ -456,7 +456,7 @@ export default function TruckRoutingPage() {
           <ol style={{ paddingRight: 22, lineHeight: 1.8 }}>{result.actions.map((action,i)=><li key={i} style={{ padding: "5px 0" }}>{action.instruction}{action.length ? <small style={{ color: "#718096" }}> · {formatDistance(action.length)}</small> : null}</li>)}</ol>
         </div>}
       </section>}
-      <footer style={{ color: "#8290a3", fontSize: 11, margin: "18px 4px" }}>TruckSafe Fleet · נתוני מסלול: HERE · שכבת מפה: © OpenStreetMap contributors</footer>
+      <footer style={{ color: "#8290a3", fontSize: 11, margin: "18px 4px" }}>TruckSafe Fleet · ספק ניתוב: לא הופעל · שכבת מפה: © OpenStreetMap contributors</footer>
     </div>
   </main>;
 }
