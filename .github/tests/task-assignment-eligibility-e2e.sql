@@ -29,7 +29,7 @@ VALUES
  ('bd000000-0000-4000-8000-000000000099','bb000000-0000-4000-8000-000000000002','TASK-GUARD-OTHER','available',false);
 
 CREATE FUNCTION pg_temp.assert_assignment_rejected(statement text, scenario text)
-RETURNS void LANGUAGE plpgsql AS $
+RETURNS void LANGUAGE plpgsql AS $assignment_guard$
 DECLARE
   rejected boolean := false;
 BEGIN
@@ -46,7 +46,7 @@ BEGIN
     RAISE EXCEPTION 'Expected database rejection: %', scenario;
   END IF;
 END;
-$;
+$assignment_guard$;
 
 DO $test$
 DECLARE
