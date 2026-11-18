@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
@@ -15,12 +15,15 @@ export default function TripHistoryPage() {
   const [pointsByTrip, setPointsByTrip] = useState({});
   const [pointsLoading, setPointsLoading] = useState({});
   const [error, setError] = useState("");
+  const authGenerationRef = useRef(0);
+  const authUserIdRef = useRef(null);
 
-  async function loadHistory(id) {
+  async function loadHistory(id, authGeneration = authGenerationRef.current) {
     if (!id) return;
     const { data, error: tripError } = await supabase.from("trips")
       .select("id,status,origin_address,destination_address,started_at,ended_at,driver_id,vehicle_id")
       .eq("fleet_id", id).order("started_at", { ascending: false }).limit(100);
+    if (authGeneration !== authGenerationRef.current) return;
     if (tripError) { setError("לא ניתן לטעון היסטוריית נסיעות: " + tripError.message); return; }
     const rows = await Promise.all((data || []).map(async trip => {
       const [driverResult, vehicleResult] = await Promise.all([
@@ -39,29 +42,47 @@ export default function TripHistoryPage() {
   useEffect(() => {
     if (!isSupabaseConfigured) { setError("החיבור למסד הנתונים אינו מוגדר."); setLoading(false); return; }
     let alive = true;
+    const clearPrivateState = () => {
+      authGenerationRef.current += 1;
+      setFleetId(null); setTrips([]); setExpanded({}); setPointsByTrip({}); setPointsLoading({}); setError("");
+    };
+    const initialAuthGeneration = authGenerationRef.current;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user?.id || null;
+      if (nextUserId && authUserIdRef.current && nextUserId !== authUserIdRef.current) {
+        clearPrivateState();
+        authUserIdRef.current = nextUserId;
+        if (typeof window !== "undefined") window.location.reload();
+        return;
+      }
+      if (nextUserId) authUserIdRef.current = nextUserId;
+      if (!nextSession) {
+        authUserIdRef.current = null;
+        clearPrivateState();
+        router.replace("/");
+      }
+    });
     supabase.auth.getSession().then(async ({ data, error: sessionError }) => {
-      if (!alive) return;
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (sessionError || !data.session) { router.replace("/"); return; }
+      authUserIdRef.current = data.session.user.id;
       const { data: workspace, error: workspaceError } = await resolveFleetWorkspace(supabase, data.session.user.id);
-      if (!alive) return;
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (workspaceError) {
         if (workspaceError.code === "AUTH_REQUIRED" || workspaceError.code === "NO_FLEET") router.replace("/");
         else setError("לא הצלחנו לאמת את הצי: " + workspaceError.message);
         setLoading(false); return;
       }
       setFleetId(workspace.fleet.id);
-      await loadHistory(workspace.fleet.id);
-      if (alive) setLoading(false);
+      await loadHistory(workspace.fleet.id, initialAuthGeneration);
+      if (alive && initialAuthGeneration === authGenerationRef.current) setLoading(false);
     }).catch(error => {
-      if (alive) { setError("שגיאה בטעינת ההיסטוריה: " + error.message); setLoading(false); }
+      if (alive && initialAuthGeneration === authGenerationRef.current) { setError("שגיאה בטעינת ההיסטוריה: " + error.message); setLoading(false); }
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (!nextSession) router.replace("/");
-    });
-    return () => { alive = false; subscription.unsubscribe(); };
+    return () => { alive = false; authGenerationRef.current += 1; subscription.unsubscribe(); };
   }, [router]);
 
-  async function toggleTrip(trip) {
+  async function toggleTrip(trip) {\n    const authGeneration = authGenerationRef.current;
     const opening = !expanded[trip.id];
     setExpanded(old => ({ ...old, [trip.id]: opening }));
     if (!opening || Object.prototype.hasOwnProperty.call(pointsByTrip, trip.id)) return;
@@ -69,7 +90,7 @@ export default function TripHistoryPage() {
     const { data, error: pointsError } = await supabase.from("trip_locations")
       .select("latitude,longitude,recorded_at").eq("trip_id", trip.id)
       .order("recorded_at", { ascending: true }).limit(3000);
-    if (pointsError) {
+    if (authGeneration !== authGenerationRef.current) return;\n    if (pointsError) {
       setError("לא ניתן לטעון נקודות GPS לנסיעה: " + pointsError.message);
     } else {
       setPointsByTrip(old => ({ ...old, [trip.id]: data || [] }));
