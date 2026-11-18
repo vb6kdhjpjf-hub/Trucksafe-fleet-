@@ -171,11 +171,17 @@ async function cleanupMarkedSqlFixtureUsers(admin) {
     const { error } = await admin.auth.admin.deleteUser(user.id);
     if (error) throw new Error("Unable to delete a marked disposable SQL fixture user through Auth Admin API.");
   }
-  const remaining = await listMarkedSqlFixtureUsers(admin);
-  if (remaining.length !== 0) {
-    throw new Error("SQL Auth fixture cleanup verification failed; marked Test users remain.");
+
+  // Auth user deletion can be visible to the Admin API's paginated list a
+  // short time after deleteUser returns. Verify with a bounded retry instead
+  // of reporting a false cleanup failure on the first eventually-consistent read.
+  let remaining = [];
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    remaining = await listMarkedSqlFixtureUsers(admin);
+    if (remaining.length === 0) return users.length;
+    await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
   }
-  return users.length;
+  throw new Error("SQL Auth fixture cleanup verification failed; marked Test users remain.");
 }
 
 const databaseUrl = process.env.SUPABASE_TEST_DB_URL;
