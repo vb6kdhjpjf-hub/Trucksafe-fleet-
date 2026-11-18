@@ -272,15 +272,24 @@ export default function ShipmentsPage(){
       setResults({});setSelectedNote(null);setShowForm(false);setShowSettings(false);setForm(emptyForm());
       setMessage("");setLoading(false);
     };
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,nextSession)=>{
+      const nextUserId=nextSession?.user?.id||null;
+      if(nextUserId&&authUserIdRef.current&&nextUserId!==authUserIdRef.current){
+        clearPrivateState();
+        authUserIdRef.current=nextUserId;
+        if(typeof window!=="undefined")window.location.reload();
+        return;
+      }
+      if(nextUserId)authUserIdRef.current=nextUserId;
+      if(!nextSession){authUserIdRef.current=null;clearPrivateState();router.replace("/");}
+    });
     supabase.auth.getSession().then(async({data,error})=>{
       if(!alive)return;
       if(error||!data.session){clearPrivateState();router.replace("/");return;}
+      authUserIdRef.current=data.session.user.id;
       const generation=authGenerationRef.current;
       setUser(data.session.user);await loadData(data.session.user,generation);if(alive&&generation===authGenerationRef.current)setLoading(false);
     }).catch(()=>{if(alive){clearPrivateState();router.replace("/");}});
-    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,next)=>{
-      if(!next){clearPrivateState();router.replace("/");}
-    });
     return()=>{alive=false;subscription.unsubscribe();};
   },[router,loadData]);
 
