@@ -60,6 +60,8 @@ export async function createHumanReviewEvent({ candidateFile, assessmentReportFi
     reviewer_identity_status: "unverified_assertion",
     reviewer_identity_verified: false,
     reviewed_at: reviewedAt,
+    reviewed_at_status: "caller_asserted",
+    reviewed_at_verified: false,
     decision,
     notes,
     evidence_refs: [...new Set(evidenceRefs)]
