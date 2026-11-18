@@ -147,7 +147,7 @@ test("driver management clears private state and restarts on auth identity chang
 
 test("shipment management invalidates in-flight private data on auth identity changes", async () => {
   const source = await readFile("app/shipments/page.js", "utf8");
-  assert.ok(source.includes("const authUserIdRef = useRef(null)"));
+  assert.ok(source.includes("const authUserIdRef=useRef(null)"));
   assert.ok(source.includes("nextUserId!==authUserIdRef.current"));
   assert.ok(source.includes("authUserIdRef.current=nextUserId"));
   assert.ok(source.includes("clearPrivateState();"));
