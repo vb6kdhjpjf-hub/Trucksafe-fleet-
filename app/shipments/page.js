@@ -363,6 +363,11 @@ export default function ShipmentsPage(){
     finally{setBusy(false);}
   }
   async function openNote(note){
+    // Signed-URL requests can outlive the session that initiated them.
+    // Never attach a previous user's private proof URLs to a later session.
+    const generation=authGenerationRef.current;
+    const requestingUserId=authUserIdRef.current;
+    if(!requestingUserId||requestingUserId!==user?.id)return;
     const storage=supabase.storage.from("delivery-proof-private");
     const proof=note.document_snapshot?.proof||{};
     const paths=Array.isArray(proof.photo_object_paths)?proof.photo_object_paths:[];
@@ -371,6 +376,7 @@ export default function ShipmentsPage(){
       :Promise.resolve({data:null,error:null});
     const photoPromises=paths.map(path=>storage.createSignedUrl(path,300));
     const [signature,...photos]=await Promise.all([signaturePromise,...photoPromises]);
+    if(generation!==authGenerationRef.current||requestingUserId!==authUserIdRef.current||requestingUserId!==user?.id)return;
     if(signature.error||photos.some(result=>result.error)){
       notify("לא ניתן לטעון את כל קובצי אישור המסירה. בדוק הרשאות אחסון ונסה שוב.","error");
       return;
@@ -378,16 +384,20 @@ export default function ShipmentsPage(){
     setSelectedNote({...note,signatureUrl:signature.data?.signedUrl||null,photoUrls:photos.map(result=>result.data.signedUrl)});
   }
   async function adjustNote(note,type){
+    const generation=authGenerationRef.current;
+    const requestingUserId=authUserIdRef.current;
+    if(!requestingUserId||requestingUserId!==user?.id||!canOverride)return;
     const reason=window.prompt(type==="cancellation"?"סיבת ביטול תעודת המשלוח:":"סיבת תיקון לתעודת המשלוח:");
-    if(!reason||reason.trim().length<3)return;
+    if(!reason||reason.trim().length<3||generation!==authGenerationRef.current||requestingUserId!==authUserIdRef.current)return;
     setBusy(true);
     try{
       const {error}=await supabase.rpc("add_delivery_note_adjustment",{p_fleet_id:fleet.id,p_delivery_note_id:note.id,p_event_key:eventKey(),
         p_adjustment_type:type,p_reason:reason.trim(),p_payload:type==="correction"?{correction_note:reason.trim()}:{}});
+      if(generation!==authGenerationRef.current||requestingUserId!==authUserIdRef.current)return;
       if(error)throw error;notify(type==="cancellation"?"הביטול תועד בהיסטוריה; התעודה המקורית נשמרה ללא שינוי.":"התיקון תועד בנפרד; התעודה המקורית נשמרה ללא שינוי.","success");
-      await loadData(user);
-    }catch(error){notify("לא ניתן לתעד את הפעולה: "+error.message,"error");}
-    finally{setBusy(false);}
+      await loadData(user,generation);
+    }catch(error){if(generation===authGenerationRef.current&&requestingUserId===authUserIdRef.current)notify("לא ניתן לתעד את הפעולה: "+error.message,"error");}
+    finally{if(generation===authGenerationRef.current&&requestingUserId===authUserIdRef.current)setBusy(false);}
   }
   if(selectedNote)return <DeliveryNotePrint note={selectedNote} onClose={()=>setSelectedNote(null)}/>;
   if(loading)return <main className="fleet-home"><div className="fleet-content"><p>טוען משלוחים...</p></div></main>;
