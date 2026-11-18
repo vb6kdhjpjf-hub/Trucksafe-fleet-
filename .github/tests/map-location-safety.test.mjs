@@ -161,7 +161,7 @@ test("incident management invalidates stale private queries on auth identity cha
   assert.ok(source.includes("const authUserIdRef = useRef(null)"));
   assert.ok(source.includes("nextUserId !== authUserIdRef.current"));
   assert.ok(source.includes("initialAuthGeneration !== authGenerationRef.current"));
-  assert.ok(source.includes("authGeneration === authGenerationRef.current && requestGeneration === historyRequestGenerationRef.current"));
+  assert.ok(source.includes("const isCurrent = () => authGeneration === authGenerationRef.current && requestGeneration === incidentLoadGenerationRef.current"));
   assert.ok(source.includes("window.location.reload()"));
 });
 
@@ -170,7 +170,7 @@ test("trip history clears cached GPS and rejects stale location queries after au
   const source = await readFile("app/history/page.js", "utf8");
   assert.ok(source.includes("const authUserIdRef = useRef(null)"));
   assert.ok(source.includes("nextUserId !== authUserIdRef.current"));
-  assert.ok(source.includes("authGeneration !== authGenerationRef.current"));
+  assert.ok(source.includes("authGeneration === authGenerationRef.current && requestGeneration === historyRequestGenerationRef.current"));
   assert.ok(source.includes("setPointsByTrip({})"));
   assert.ok(source.includes("window.location.reload()"));
 });
