@@ -292,7 +292,7 @@ begin
    and with_check like '%delivery-proof-private%'
    and with_check like '%shipments%'
    and with_check like '%shipment_stops%'
-   and with_check like '%drivers%'
+   and with_check like '%is_active_assigned_fleet_driver%'
    and with_check like '%has_fleet_role%'
  ) then
   raise exception 'Scoped authenticated delivery proof upload policy is missing';
@@ -305,7 +305,7 @@ begin
    and qual like '%delivery-proof-private%'
    and qual like '%shipments%'
    and qual like '%shipment_stops%'
-   and qual like '%drivers%'
+   and qual like '%is_active_assigned_fleet_driver%'
    and qual like '%has_fleet_role%'
  ) then
   raise exception 'Scoped authenticated delivery proof read policy is missing';
