@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, FileSpreadsheet, ShieldCheck, AlertTriangle, Upload, Download, RefreshCw } from "lucide-react";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
@@ -78,6 +78,8 @@ export default function ImportsPage() {
   const [busy, setBusy] = useState(false);
   const [existingIdentityValues, setExistingIdentityValues] = useState([]);
   const [identityPreflight, setIdentityPreflight] = useState({ status: "idle", message: "" });
+  const authGenerationRef = useRef(0);
+  const authUserIdRef = useRef(null);
 
   useEffect(() => {
     let alive = true;
@@ -86,14 +88,34 @@ export default function ImportsPage() {
       setLoading(false);
       return;
     }
-    supabase.auth.getSession().then(async ({ data, error }) => {
-      if (!alive) return;
-      if (error || !data.session) {
-        router.replace("/");
+    const clearPrivateState = () => {
+      authGenerationRef.current += 1;
+      setFleet(null); setRole(""); setFilename(""); setParsed(null); setMapping({});
+      setValidation(null); setExistingIdentityValues([]); setIdentityPreflight({ status: "idle", message: "" });
+      setMessage(""); setBusy(false);
+    };
+    const initialAuthGeneration = authGenerationRef.current;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user?.id || null;
+      if (nextUserId && authUserIdRef.current && nextUserId !== authUserIdRef.current) {
+        clearPrivateState();
+        authUserIdRef.current = nextUserId;
+        if (typeof window !== "undefined") window.location.reload();
         return;
       }
+      if (nextUserId) authUserIdRef.current = nextUserId;
+      if (!nextSession) {
+        authUserIdRef.current = null;
+        clearPrivateState();
+        router.replace("/");
+      }
+    });
+    supabase.auth.getSession().then(async ({ data, error }) => {
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
+      if (error || !data.session) { router.replace("/"); return; }
+      authUserIdRef.current = data.session.user.id;
       const result = await resolveFleetWorkspace(supabase, data.session.user.id);
-      if (!alive) return;
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (result.error) {
         if (result.error.code === "AUTH_REQUIRED" || result.error.code === "NO_FLEET") router.replace("/");
         else setMessage("לא ניתן לאמת את סביבת העבודה: " + result.error.message);
@@ -102,11 +124,10 @@ export default function ImportsPage() {
         setRole(result.data.membership.role);
       }
       setLoading(false);
+    }).catch(error => {
+      if (alive && initialAuthGeneration === authGenerationRef.current) { setMessage("לא ניתן לאמת את סביבת העבודה: " + (error?.message || "שגיאה לא ידועה")); setLoading(false); }
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) router.replace("/");
-    });
-    return () => { alive = false; subscription.unsubscribe(); };
+    return () => { alive = false; authGenerationRef.current += 1; subscription.unsubscribe(); };
   }, [router]);
 
   const canManage = role === "owner" || role === "fleet_manager";
@@ -126,6 +147,7 @@ export default function ImportsPage() {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
+    const authGeneration = authGenerationRef.current;
     clearPreview();
     setBusy(true);
     try {
@@ -138,6 +160,7 @@ export default function ImportsPage() {
         return;
       }
       const text = await file.text();
+      if (authGeneration !== authGenerationRef.current) return;
       const result = parseEnterpriseCsv(text);
       if (!result.ok) {
         setMessage("לא ניתן לקרוא את הקובץ: " + result.error);
@@ -168,6 +191,7 @@ export default function ImportsPage() {
 
   useEffect(() => {
     let alive = true;
+    const authGeneration = authGenerationRef.current;
     if (!parsed || !fleet?.id || !canManage) {
       setExistingIdentityValues([]);
       setIdentityPreflight({ status: "idle", message: "" });
@@ -207,12 +231,12 @@ export default function ImportsPage() {
         }
         if (batch.length < pageSize) break;
       }
-      if (alive) {
+      if (alive && authGeneration === authGenerationRef.current) {
         setExistingIdentityValues(values);
         setIdentityPreflight({ status: "ready", message: `נבדקו ${values.length.toLocaleString("he-IL")} מזהים קיימים בצי.` });
       }
     })().catch(error => {
-      if (alive) {
+      if (alive && authGeneration === authGenerationRef.current) {
         setExistingIdentityValues([]);
         setIdentityPreflight({ status: "error", message: error?.message || "בדיקת המזהים מול הצי נכשלה." });
       }
