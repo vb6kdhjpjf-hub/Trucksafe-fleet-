@@ -177,9 +177,9 @@ export default function ImportsPage() {
       setMapping(initial);
       setMessage("");
     } catch (error) {
-      setMessage("קריאת הקובץ נכשלה: " + (error?.message || "שגיאה לא ידועה"));
+      if (authGeneration === authGenerationRef.current) setMessage("קריאת הקובץ נכשלה: " + (error?.message || "שגיאה לא ידועה"));
     } finally {
-      setBusy(false);
+      if (authGeneration === authGenerationRef.current) setBusy(false);
     }
   }
 
