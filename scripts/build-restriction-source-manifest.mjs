@@ -135,7 +135,7 @@ export async function buildRestrictionSourceManifest({ quarantineDir, outputDir 
         seenEventNames.add(record.name);
         try {
           const result = await verifyHumanReviewEvent({ candidateFile, assessmentReportFile: assessmentFile, eventFile: record.file });
-          reviews.push({ event_file: "reviews/" + record.name, valid: true, decision: result.decision, reviewer: result.reviewer, reviewed_at: record.event.reviewed_at, event_sha256: result.event_sha256, assessment_report_sha256: result.assessment_report_sha256 });
+          reviews.push({ event_file: "reviews/" + record.name, valid: true, decision: result.decision, reviewer: result.reviewer, reviewer_identity_status: result.reviewer_identity_status, reviewer_identity_verified: false, reviewed_at: record.event.reviewed_at, event_sha256: result.event_sha256, assessment_report_sha256: result.assessment_report_sha256 });
         } catch (error) {
           const message = String(error.message).slice(0, 500);
           const isStale = /assessment report hash|source provenance does not match|candidate payload hash/i.test(message);
