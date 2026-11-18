@@ -126,6 +126,7 @@ export default function DailyWorkPage() {
   async function createPlan(event) {
     event.preventDefault();
     if (!canManage || !fleet || busy) return;
+    const actionAuthGeneration = authGenerationRef.current;
     const f = form;
     if (!f.driver_id || !f.vehicle_id || !f.work_date || !f.measurement_reference.trim()) {
       notify("יש למלא תאריך, נהג, רכב ואסמכתת שקילה.", "error"); return;
@@ -158,30 +159,34 @@ export default function DailyWorkPage() {
           planned_quantity_kg: Number(stop.planned_quantity_kg)
         }))
       });
+      if (actionAuthGeneration !== authGenerationRef.current) return;
       if (error) { notify("לא ניתן ליצור תוכנית עבודה: " + error.message, "error"); return; }
       setForm(blankForm()); setShowForm(false);
-      await loadData(session.user);
-      notify("תוכנית העבודה ותחנותיה נשמרו יחד בהצלחה. התוכנית ממתינה להפעלה.", "success");
+      await loadData(session.user, actionAuthGeneration);
+      if (actionAuthGeneration === authGenerationRef.current) notify("תוכנית העבודה ותחנותיה נשמרו יחד בהצלחה. התוכנית ממתינה להפעלה.", "success");
     } catch (error) {
-      notify("יצירת התוכנית נכשלה: " + (error?.message || "שגיאה לא ידועה"), "error");
-    } finally { setBusy(false); }
+      if (actionAuthGeneration === authGenerationRef.current) notify("יצירת התוכנית נכשלה: " + (error?.message || "שגיאה לא ידועה"), "error");
+    } finally { if (actionAuthGeneration === authGenerationRef.current) setBusy(false); }
   }
 
   async function activatePlan(plan) {
     if (!canManage || plan.status !== "planned" || busy) return;
+    const actionAuthGeneration = authGenerationRef.current;
     setBusy(true); notify("");
     try {
       const { error } = await supabase.rpc("activate_daily_work_plan", {
         p_fleet_id: fleet.id,
         p_plan_id: plan.id
       });
+      if (actionAuthGeneration !== authGenerationRef.current) return;
       if (error) { notify("לא ניתן להפעיל את התוכנית. ייתכן שכבר קיים שיבוץ פעיל לאותו נהג או רכב: " + error.message, "error"); return; }
-      await loadData(session.user);
-      notify("התוכנית הופעלה. הנהג יכול לדווח תחנות עם מדידות מאומתות.", "success");
-    } finally { setBusy(false); }
+      await loadData(session.user, actionAuthGeneration);
+      if (actionAuthGeneration === authGenerationRef.current) notify("התוכנית הופעלה. הנהג יכול לדווח תחנות עם מדידות מאומתות.", "success");
+    } finally { if (actionAuthGeneration === authGenerationRef.current) setBusy(false); }
   }
 
   async function completeStop(plan, stop) {
+    const actionAuthGeneration = authGenerationRef.current;
     const input = measurements[stop.id] || {};
     const quantity = Number(input.quantity_kg ?? stop.planned_quantity_kg);
     const gross = Number(input.measured_gross_weight_kg);
@@ -208,12 +213,13 @@ export default function DailyWorkPage() {
         p_measurement_reference: input.reference.trim(),
         p_expected_revision: plan.load_revision
       });
+      if (actionAuthGeneration !== authGenerationRef.current) return;
       if (error) { notify("התחנה לא עודכנה. בדוק שהשקילה עדכנית ושהמשקלים עומדים במגבלות: " + error.message, "error"); return; }
-      await loadData(session.user);
-      notify("התחנה הושלמה והמשקלים עודכנו ביומן המאובטח.", "success");
+      await loadData(session.user, actionAuthGeneration);
+      if (actionAuthGeneration === authGenerationRef.current) notify("התחנה הושלמה והמשקלים עודכנו ביומן המאובטח.", "success");
     } catch (error) {
-      notify("עדכון התחנה נכשל: " + (error?.message || "שגיאה לא ידועה"), "error");
-    } finally { setBusy(false); }
+      if (actionAuthGeneration === authGenerationRef.current) notify("עדכון התחנה נכשל: " + (error?.message || "שגיאה לא ידועה"), "error");
+    } finally { if (actionAuthGeneration === authGenerationRef.current) setBusy(false); }
   }
 
   if (loading) return <main className="fleet-home" dir="rtl"><section className="fleet-content"><div className="fleet-panel">טוען תוכניות עבודה...</div></section></main>;
