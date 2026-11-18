@@ -18,6 +18,8 @@
     "reviewer_identity_status",
     "reviewer_identity_verified",
     "reviewed_at",
+    "reviewed_at_status",
+    "reviewed_at_verified",
     "decision",
     "notes",
     "evidence_refs",
@@ -82,6 +84,12 @@
     "reviewed_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "reviewed_at_status": {
+      "const": "caller_asserted"
+    },
+    "reviewed_at_verified": {
+      "const": false
     },
     "decision": {
       "enum": [
