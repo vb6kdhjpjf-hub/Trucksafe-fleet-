@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 import { buildPreTripChecklist } from "../../lib/pre-trip-checklist.mjs";
+import { isDriverEligibleForVehicleAssignment } from "../../lib/driver-eligibility.mjs";
 import { isFreshGpsTimestamp, isValidIsraelGpsCoordinates } from "../../lib/map-location-safety.mjs";
 import { Truck, ArrowRight, Plus, ClipboardList, MapPin, CalendarClock, Play, CheckCircle2, LogOut } from "lucide-react";
 
@@ -130,6 +131,13 @@ export default function TasksPage() {
     e.preventDefault();
     if (!fleet || !form.title.trim()) return;
     if (!canManageTasks) { setMessage("אין לך הרשאה לניהול משימות."); return; }
+    if (form.assigned_driver_id) {
+      const selectedDriver = drivers.find(driver => driver.id === form.assigned_driver_id);
+      if (!isDriverEligibleForVehicleAssignment(selectedDriver)) {
+        setMessage("לא ניתן לשבץ נהג שאינו פעיל או שתוקף רישיונו חסר או פג. יש לעדכן את פרטי הנהג לפני השיבוץ.");
+        return;
+      }
+    }
     setBusy(true); setMessage("");
     const payload = {
       fleet_id: fleet.id,
@@ -345,7 +353,7 @@ export default function TasksPage() {
             <label>כתובת איסוף<input value={form.pickup_address} onChange={e=>setForm({...form,pickup_address:e.target.value})} placeholder="כתובת או נקודת איסוף"/></label>
             <label>כתובת יעד<input value={form.delivery_address} onChange={e=>setForm({...form,delivery_address:e.target.value})} placeholder="כתובת היעד"/></label>
             <label>מועד מתוכנן<input type="datetime-local" value={form.scheduled_at} onChange={e=>setForm({...form,scheduled_at:e.target.value})}/></label>
-            <label>שיוך נהג<select value={form.assigned_driver_id} onChange={e=>setForm({...form,assigned_driver_id:e.target.value})}><option value="">ללא נהג</option>{drivers.filter(d=>d.status==="active").map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label>
+            <label>שיוך נהג<select value={form.assigned_driver_id} onChange={e=>setForm({...form,assigned_driver_id:e.target.value})}><option value="">ללא נהג</option>{drivers.filter(d=>isDriverEligibleForVehicleAssignment(d)).map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label>
             <label>שיוך רכב<select value={form.assigned_vehicle_id} onChange={e=>setForm({...form,assigned_vehicle_id:e.target.value})}><option value="">ללא רכב</option>{vehicles.filter(v=>v.status==="available" || v.status==="assigned").map(v=><option key={v.id} value={v.id}>{v.registration_number} · {v.make || v.vehicle_type}</option>)}</select></label>
             <label className="task-wide">הערות / תיאור<textarea rows="3" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="פרטים נוספים לנהג או למנהל הצי"/></label>
           </div>
