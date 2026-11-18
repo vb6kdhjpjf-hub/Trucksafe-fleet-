@@ -21,26 +21,40 @@ export default function DriversPage() {
   const [showForm, setShowForm] = useState(false);
   const [message, setMessage] = useState("");
   const authGenerationRef = useRef(0);
+  const authUserIdRef = useRef(null);
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למסד הנתונים אינו מוגדר."); setLoading(false); return; }
     let alive = true;
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => {
-      if (!next) {
+    const initialAuthGeneration = authGenerationRef.current;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user?.id || null;
+      if (nextUserId && authUserIdRef.current && nextUserId !== authUserIdRef.current) {
         authGenerationRef.current += 1;
         setSession(null); setFleet(null); setDrivers([]);
         setEditing(null); setShowForm(false); setForm(emptyForm); setMessage("");
+        authUserIdRef.current = nextUserId;
+        if (typeof window !== "undefined") window.location.reload();
+        return;
+      }
+      if (nextUserId) authUserIdRef.current = nextUserId;
+      if (!nextSession) {
+        authUserIdRef.current = null;
+        authGenerationRef.current += 1;
+        setSession(null); setFleet(null); setDrivers([]);
+        setEditing(null); setShowForm(false); setForm(emptyForm); setBusy(false); setMessage("");
         router.replace("/");
       }
     });
     supabase.auth.getSession().then(async ({ data, error }) => {
-      if (!alive) return;
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (error || !data.session) { router.replace("/"); return; }
+      authUserIdRef.current = data.session.user.id;
       setSession(data.session);
-      await loadWorkspace(data.session.user);
-      if (alive) setLoading(false);
+      await loadWorkspace(data.session.user, initialAuthGeneration);
+      if (alive && initialAuthGeneration === authGenerationRef.current) setLoading(false);
     }).catch(error => {
-      if (!alive) return;
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       setMessage("לא הצלחנו לטעון את רשימת הנהגים: " + (error?.message || "שגיאה לא ידועה"));
       setLoading(false);
     });
