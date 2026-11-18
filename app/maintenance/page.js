@@ -59,7 +59,8 @@ export default function MaintenancePage() {
       supabase.from("maintenance_records").select("id,vehicle_id,incident_id,maintenance_type,description,scheduled_at,completed_at,cost,odometer_km,status,created_at").eq("fleet_id",id).order("scheduled_at",{ascending:true}),
       supabase.from("incidents").select("id,vehicle_id,incident_type,description,status,reported_at").eq("fleet_id",id).neq("status","resolved").order("reported_at",{ascending:false})
     ]);
-    if(authGeneration!==authGenerationRef.current)return;\n    if(v.error || r.error || i.error){setMessage("שגיאה בטעינת הנתונים: "+(v.error?.message||r.error?.message||i.error?.message));return;}
+    if(authGeneration!==authGenerationRef.current)return;
+    if(v.error || r.error || i.error){setMessage("שגיאה בטעינת הנתונים: "+(v.error?.message||r.error?.message||i.error?.message));return;}
     setVehicles(v.data||[]);setIncidents(i.data||[]);setCompliance(Object.fromEntries((v.data||[]).map(x=>[x.id,{test_due_at:x.test_due_at||"",insurance_due_at:x.insurance_due_at||"",registration_due_at:x.registration_due_at||""}])));setRecords(r.data||[]);
   }
   const canManageMaintenance = ["owner", "fleet_manager"].includes(fleet?.role);
