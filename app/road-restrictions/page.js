@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
@@ -28,9 +28,12 @@ export default function RoadRestrictionsPage() {
   const [message, setMessage] = useState("");
   const [reviewNotes, setReviewNotes] = useState({});
   const [reviewBusy, setReviewBusy] = useState(null);
+  const authGenerationRef = useRef(0);
+  const authUserIdRef = useRef(null);
 
-  async function load(id) {
+  async function load(id, authGeneration = authGenerationRef.current) {
     const { data, error } = await supabase.from("road_restrictions").select("*").eq("fleet_id", id).order("is_active", { ascending: false }).order("road_name");
+    if (authGeneration !== authGenerationRef.current) return;
     if (error) setMessage("לא ניתן לטעון מגבלות דרך: " + error.message);
     else setRows(data || []);
   }
@@ -38,27 +41,46 @@ export default function RoadRestrictionsPage() {
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למסד הנתונים אינו מוגדר."); setLoading(false); return; }
     let alive = true;
+    const clearPrivateState = () => {
+      authGenerationRef.current += 1;
+      setSession(null); setFleet(null); setRows([]); setForm(blank); setShowForm(false);
+      setReviewNotes({}); setReviewBusy(null); setBusy(false); setMessage("");
+    };
+    const initialAuthGeneration = authGenerationRef.current;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user?.id || null;
+      if (nextUserId && authUserIdRef.current && nextUserId !== authUserIdRef.current) {
+        clearPrivateState(); authUserIdRef.current = nextUserId;
+        if (typeof window !== "undefined") window.location.reload();
+        return;
+      }
+      if (nextUserId) authUserIdRef.current = nextUserId;
+      if (!nextSession) {
+        authUserIdRef.current = null; clearPrivateState(); router.replace("/");
+      }
+    });
     supabase.auth.getSession().then(async ({ data, error }) => {
-      if (!alive) return;
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (error || !data.session) { router.replace("/"); return; }
+      authUserIdRef.current = data.session.user.id;
       setSession(data.session);
       const { data: workspace, error: workspaceError } = await resolveFleetWorkspace(supabase, data.session.user.id);
-      if (!alive) return;
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (workspaceError) {
         if (workspaceError.code === "AUTH_REQUIRED" || workspaceError.code === "NO_FLEET") router.replace("/");
         else setMessage("לא הצלחנו לאמת את הצי: " + workspaceError.message);
         setLoading(false); return;
       }
       setFleet(workspace.fleet);
-      await load(workspace.fleet.id);
-      if (alive) setLoading(false);
-    }).catch(e => { if (alive) { setMessage("שגיאה בטעינה: " + e.message); setLoading(false); } });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => { if (!session) router.replace("/"); });
-    return () => { alive = false; subscription.unsubscribe(); };
+      await load(workspace.fleet.id, initialAuthGeneration);
+      if (alive && initialAuthGeneration === authGenerationRef.current) setLoading(false);
+    }).catch(e => { if (alive && initialAuthGeneration === authGenerationRef.current) { setMessage("שגיאה בטעינה: " + e.message); setLoading(false); } });
+    return () => { alive = false; authGenerationRef.current += 1; subscription.unsubscribe(); };
   }, [router]);
 
   async function save(e) {
     e.preventDefault();
+    const authGeneration = authGenerationRef.current;
     if (!session?.user?.id) { setMessage("פג תוקף החיבור. יש להתחבר מחדש."); return; }
     if (!fleet || !["owner", "fleet_manager", "dispatcher"].includes(fleet.role)) { setMessage("אין הרשאה להוסיף מגבלת דרך."); return; }
     if (!form.road_name.trim()) { setMessage("יש להזין שם כביש."); return; }
@@ -136,24 +158,30 @@ export default function RoadRestrictionsPage() {
         verified_by: null,
         notes: form.notes.trim() || null
       };
+      if (authGeneration !== authGenerationRef.current) return;
       const { error } = await supabase.from("road_restrictions").insert(payload);
+      if (authGeneration !== authGenerationRef.current) return;
       if (error) { setMessage("שמירת המגבלה נכשלה: " + error.message); return; }
-      setForm(blank); setShowForm(false); await load(fleet.id); setMessage("מגבלת הדרך נשמרה.");
+      setForm(blank); setShowForm(false); await load(fleet.id, authGeneration); if (authGeneration === authGenerationRef.current) setMessage("מגבלת הדרך נשמרה.");
     } catch (error) {
       setMessage("שמירת המגבלה נכשלה: " + (error?.message || "שגיאה לא ידועה"));
     } finally { setBusy(false); }
   }
 
   async function toggle(row) {
+    const authGeneration = authGenerationRef.current;
     if (!["owner", "fleet_manager", "dispatcher"].includes(fleet?.role)) { setMessage("אין הרשאה לעדכן מגבלת דרך."); return; }
     setBusy(true);
+    if (authGeneration !== authGenerationRef.current) { setBusy(false); return; }
     const { error } = await supabase.from("road_restrictions").update({ is_active: !row.is_active, updated_at: new Date().toISOString() }).eq("id", row.id).eq("fleet_id", fleet.id);
+    if (authGeneration !== authGenerationRef.current) return;
     if (error) setMessage("עדכון המגבלה נכשל: " + error.message);
-    else { await load(fleet.id); setMessage("סטטוס המגבלה עודכן."); }
+    else { await load(fleet.id, authGeneration); if (authGeneration === authGenerationRef.current) setMessage("סטטוס המגבלה עודכן."); }
     setBusy(false);
   }
 
   async function reviewRestriction(row, decision) {
+    const authGeneration = authGenerationRef.current;
     if (!["owner", "fleet_manager"].includes(fleet?.role)) {
       setMessage("רק בעל הצי או מנהל צי יכולים לאמת מגבלת דרך.");
       return;
@@ -228,12 +256,14 @@ export default function RoadRestrictionsPage() {
         verification_note: note,
         verification_notes: note
       };
+      if (authGeneration !== authGenerationRef.current) return;
       const { data, error } = await supabase.from("road_restrictions")
         .update(update)
         .eq("id", row.id)
         .eq("fleet_id", fleet.id)
         .select("id,verification_status")
         .maybeSingle();
+      if (authGeneration !== authGenerationRef.current) return;
       if (error) {
         setMessage("שמירת החלטת האימות נכשלה: " + error.message);
         return;
@@ -243,12 +273,13 @@ export default function RoadRestrictionsPage() {
         return;
       }
       setReviewNotes(current => ({ ...current, [row.id]: "" }));
-      await load(fleet.id);
+      await load(fleet.id, authGeneration);
+      if (authGeneration !== authGenerationRef.current) return;
       setMessage(decision === "verified" ? "המגבלה אומתה ונרשם תיעוד הבדיקה." : "המגבלה נדחתה ונשמר תיעוד הבדיקה.");
     } catch (error) {
       setMessage("שגיאה בשמירת האימות: " + (error?.message || "שגיאה לא ידועה"));
     } finally {
-      setReviewBusy(null);
+      if (authGeneration === authGenerationRef.current) setReviewBusy(null);
     }
   }
 
