@@ -230,3 +230,13 @@ test("road restriction records and review state clear across auth changes", asyn
   assert.ok(source.includes("setRows([]); setForm(blank); setShowForm(false)"));
   assert.ok(source.includes("window.location.reload()"));
 });
+
+
+test("truck routing clears vehicle, route and provider state when auth identity changes", async () => {
+  const source = await readFile("app/routing/page.js", "utf8");
+  assert.ok(source.includes("const authUserIdRef = useRef(null)"));
+  assert.ok(source.includes("nextUserId !== authUserIdRef.current"));
+  assert.ok(source.includes("authGeneration !== authGenerationRef.current"));
+  assert.ok(source.includes("setForm(initial); setVehicles([]); setVehicleComplianceWarning("")"));
+  assert.ok(source.includes("window.location.reload()"));
+});
