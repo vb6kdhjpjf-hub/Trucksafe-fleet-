@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
@@ -26,23 +26,52 @@ export default function IncidentsPage() {
   const [gpsBusy,setGpsBusy] = useState(false);
   const [photoFile,setPhotoFile] = useState(null);
   const [resolutionNotes,setResolutionNotes] = useState({});
+  const authGenerationRef = useRef(0);
+  const authUserIdRef = useRef(null);
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למסד הנתונים אינו מוגדר."); setLoading(false); return; }
     let alive = true;
-    supabase.auth.getSession().then(async ({data,error}) => {
-      if (!alive) return;
-      if (error || !data.session) { router.replace("/"); return; }
-      setSession(data.session);
-      await loadWorkspace(data.session.user);
-      if (alive) setLoading(false);
+    const clearPrivateState = () => {
+      authGenerationRef.current += 1;
+      setSession(null); setFleet(null); setIncidents([]); setDrivers([]); setVehicles([]);
+      setForm(emptyForm); setShowForm(false); setBusy(false); setMessage("");
+      setGps({latitude:null,longitude:null}); setGpsBusy(false); setPhotoFile(null); setResolutionNotes({});
+    };
+    const initialAuthGeneration = authGenerationRef.current;
+    const {data:{subscription}} = supabase.auth.onAuthStateChange((_event,nextSession) => {
+      const nextUserId = nextSession?.user?.id || null;
+      if (nextUserId && authUserIdRef.current && nextUserId !== authUserIdRef.current) {
+        clearPrivateState();
+        authUserIdRef.current = nextUserId;
+        if (typeof window !== "undefined") window.location.reload();
+        return;
+      }
+      if (nextUserId) authUserIdRef.current = nextUserId;
+      if (!nextSession) {
+        authUserIdRef.current = null;
+        clearPrivateState();
+        router.replace("/");
+      }
     });
-    const {data:{subscription}} = supabase.auth.onAuthStateChange((_event,next) => { if (!next) router.replace("/"); });
-    return () => { alive = false; subscription.unsubscribe(); };
+    supabase.auth.getSession().then(async ({data,error}) => {
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
+      if (error || !data.session) { router.replace("/"); return; }
+      authUserIdRef.current = data.session.user.id;
+      setSession(data.session);
+      await loadWorkspace(data.session.user, initialAuthGeneration);
+      if (alive && initialAuthGeneration === authGenerationRef.current) setLoading(false);
+    }).catch(error => {
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
+      setMessage("לא הצלחנו לטעון את אירועי הבטיחות: " + (error?.message || "שגיאה לא ידועה"));
+      setLoading(false);
+    });
+    return () => { alive = false; authGenerationRef.current += 1; subscription.unsubscribe(); };
   },[router]);
 
-  async function loadWorkspace(user) {
+  async function loadWorkspace(user, authGeneration = authGenerationRef.current) {
     const { data, error } = await resolveFleetWorkspace(supabase, user.id);
+    if (authGeneration !== authGenerationRef.current) return;
     if (error) {
       if (error.code === "AUTH_REQUIRED" || error.code === "NO_FLEET") router.replace("/");
       else setMessage("לא הצלחנו לאמת את הצי: " + error.message);
@@ -50,19 +79,22 @@ export default function IncidentsPage() {
     }
     const current = data.fleet;
     setFleet(current);
-    await loadIncidents(current.id);
+    await loadIncidents(current.id, authGeneration);
+    if (authGeneration !== authGenerationRef.current) return;
     const [d,v] = await Promise.all([
       supabase.from("drivers").select("id,full_name").eq("fleet_id",current.id),
       supabase.from("vehicles").select("id,registration_number").eq("fleet_id",current.id)
     ]);
+    if (authGeneration !== authGenerationRef.current) return;
     if (!d.error) setDrivers(d.data||[]);
     if (!v.error) setVehicles(v.data||[]);
   }
 
-  async function loadIncidents(fleetId) {
+  async function loadIncidents(fleetId, authGeneration = authGenerationRef.current) {
     const {data,error} = await supabase.from("incidents")
       .select("id,incident_type,severity,description,location_text,latitude,longitude,status,reported_at,resolved_at,driver_id,vehicle_id,photo_path")
       .eq("fleet_id",fleetId).order("reported_at",{ascending:false});
+    if (authGeneration !== authGenerationRef.current) return;
     if (error) setMessage("שגיאה בטעינת אירועי הבטיחות: "+error.message);
     else {
       const rows = await Promise.all((data||[]).map(async item => {
@@ -70,6 +102,7 @@ export default function IncidentsPage() {
         const {data:photo} = await supabase.storage.from("incident-photos").createSignedUrl(item.photo_path,60);
         return {...item,photo_url:photo?.signedUrl||null};
       }));
+      if (authGeneration !== authGenerationRef.current) return;
       setIncidents(rows);
     }
   }
