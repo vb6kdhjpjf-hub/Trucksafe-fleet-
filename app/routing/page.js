@@ -69,6 +69,8 @@ function formatDuration(seconds) {
 export default function TruckRoutingPage() {
   const router = useRouter();
   const mapElement = useRef(null);
+  const authGenerationRef = useRef(0);
+  const authUserIdRef = useRef(null);
   const [form, setForm] = useState(initial);
   const [vehicles, setVehicles] = useState([]);
   const [vehicleComplianceWarning, setVehicleComplianceWarning] = useState("");
@@ -88,15 +90,36 @@ export default function TruckRoutingPage() {
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למערכת אינו מוגדר."); setLoading(false); return; }
     let alive = true;
+    const clearPrivateState = () => {
+      authGenerationRef.current += 1;
+      setForm(initial); setVehicles([]); setVehicleComplianceWarning(""); setSelectedVehicleId("");
+      setResult(null); setMessage(""); setMapMessage(""); setProviderReady(false);
+      setPtvChecking(false); setPtvCheckResult(null); setPtvRouteChecking(false); setPtvRouteResult(null);
+      setBusy(false); setLocating(false);
+    };
+    const initialAuthGeneration = authGenerationRef.current;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user?.id || null;
+      if (nextUserId && authUserIdRef.current && nextUserId !== authUserIdRef.current) {
+        clearPrivateState(); authUserIdRef.current = nextUserId;
+        if (typeof window !== "undefined") window.location.reload();
+        return;
+      }
+      if (nextUserId) authUserIdRef.current = nextUserId;
+      if (!nextSession) {
+        authUserIdRef.current = null; clearPrivateState(); router.replace("/");
+      }
+    });
     supabase.auth.getSession().then(async ({ data, error }) => {
-      if (!alive) return;
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (error || !data.session) { router.replace("/"); return; }
+      authUserIdRef.current = data.session.user.id;
       const { data: vehicleRows, error: vehicleError } = await supabase
         .from("vehicles")
         .select("id,registration_number,make,model,status,is_demo,test_due_at,insurance_due_at,registration_due_at,registration_verification_status,registration_document_path,registration_verified_at,registration_verified_by,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,empty_weight_kg,axle_count,trailer_count,weight_per_axle_kg")
         .in("status", ["available", "assigned"])
         .order("registration_number", { ascending: true });
-      if (!alive) return;
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (vehicleError) {
         setMessage("לא ניתן לטעון את כלי הרכב המורשים לניווט. נסה לטעון מחדש.");
         setVehicles([]);
@@ -112,15 +135,12 @@ export default function TruckRoutingPage() {
       }
       setLoading(false);
       fetch("/api/truck-route").then(response => response.json()).then(status => {
-        if (!alive) return;
+        if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
         setProviderReady(Boolean(status.configured));
         if (!status.configured) setMessage("מנוע ניתוב המשאיות עדיין לא הופעל. יש להשלים חיבור לספק מאושר ולבדוק אותו לפני שימוש.");
-      }).catch(() => { if (alive) setMessage("לא ניתן לבדוק את זמינות שירות הניווט."); });
-    }).catch(() => { if (alive) { setMessage("לא ניתן לאמת את ההתחברות."); setLoading(false); } });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) router.replace("/");
-    });
-    return () => { alive = false; subscription.unsubscribe(); };
+      }).catch(() => { if (alive && initialAuthGeneration === authGenerationRef.current) setMessage("לא ניתן לבדוק את זמינות שירות הניווט."); });
+    }).catch(() => { if (alive && initialAuthGeneration === authGenerationRef.current) { setMessage("לא ניתן לאמת את ההתחברות."); setLoading(false); } });
+    return () => { alive = false; authGenerationRef.current += 1; subscription.unsubscribe(); };
   }, [router]);
 
   useEffect(() => {
@@ -166,10 +186,12 @@ export default function TruckRoutingPage() {
   }, [result]);
 
   async function checkPTVProfiles() {
+    const authGeneration = authGenerationRef.current;
     setPtvChecking(true);
     setPtvCheckResult(null);
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (authGeneration !== authGenerationRef.current) return;
       if (sessionError || !session?.access_token) {
         setPtvCheckResult({ ok: false, reason: "יש להתחבר מחדש למערכת." });
         return;
@@ -179,6 +201,7 @@ export default function TruckRoutingPage() {
         headers: { Authorization: "Bearer " + session.access_token }
       });
       const data = await response.json();
+      if (authGeneration !== authGenerationRef.current) return;
       if (!response.ok || !data.ok) {
         const messages = {
           ptv_key_not_configured: "מפתח PTV לא מוגדר בסביבת הבדיקות.",
@@ -196,17 +219,19 @@ export default function TruckRoutingPage() {
       }
       setPtvCheckResult({ ok: true, ...data });
     } catch {
-      setPtvCheckResult({ ok: false, reason: "לא ניתן להתחבר לבדיקת PTV." });
+      if (authGeneration === authGenerationRef.current) setPtvCheckResult({ ok: false, reason: "לא ניתן להתחבר לבדיקת PTV." });
     } finally {
-      setPtvChecking(false);
+      if (authGeneration === authGenerationRef.current) setPtvChecking(false);
     }
   }
 
   async function checkPTVRouting() {
+    const authGeneration = authGenerationRef.current;
     setPtvRouteChecking(true);
     setPtvRouteResult(null);
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (authGeneration !== authGenerationRef.current) return;
       if (sessionError || !session?.access_token) {
         setPtvRouteResult({ ok: false, reason: "יש להתחבר מחדש למערכת." });
         return;
@@ -216,6 +241,7 @@ export default function TruckRoutingPage() {
         headers: { Authorization: "Bearer " + session.access_token }
       });
       const data = await response.json();
+      if (authGeneration !== authGenerationRef.current) return;
       if (!response.ok || !data.ok) {
         const messages = {
           ptv_key_not_configured: "מפתח PTV אינו מוגדר בסביבת הבדיקות.",
@@ -239,9 +265,9 @@ export default function TruckRoutingPage() {
       }
       setPtvRouteResult({ ok: true, ...data });
     } catch {
-      setPtvRouteResult({ ok: false, reason: "לא ניתן להתחבר לבדיקת Routing API." });
+      if (authGeneration === authGenerationRef.current) setPtvRouteResult({ ok: false, reason: "לא ניתן להתחבר לבדיקת Routing API." });
     } finally {
-      setPtvRouteChecking(false);
+      if (authGeneration === authGenerationRef.current) setPtvRouteChecking(false);
     }
   }
 
@@ -256,10 +282,12 @@ export default function TruckRoutingPage() {
   }
 
   function useCurrentLocation() {
+    const authGeneration = authGenerationRef.current;
     if (!navigator.geolocation) { setMessage("הדפדפן אינו תומך באיתור מיקום."); return; }
     setLocating(true);
     setMessage("");
     navigator.geolocation.getCurrentPosition(position => {
+      if (authGeneration !== authGenerationRef.current) return;
       setForm(current => ({
         ...current,
         origin: "המיקום הנוכחי",
@@ -268,6 +296,7 @@ export default function TruckRoutingPage() {
       setMessage("המיקום הנוכחי נקלט. בדוק שהוא מתאים לנקודת היציאה.");
       setLocating(false);
     }, error => {
+      if (authGeneration !== authGenerationRef.current) return;
       setMessage(error.code === 1 ? "לא אושרה גישה למיקום. אפשר להזין כתובת ידנית." : "לא הצלחנו לקבל מיקום. בדוק GPS ונסה שוב.");
       setLocating(false);
     }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
@@ -275,6 +304,7 @@ export default function TruckRoutingPage() {
 
   async function calculate(event) {
     event.preventDefault();
+    const authGeneration = authGenerationRef.current;
     if (!selectedVehicleId || !vehicles.some(vehicle => vehicle.id === selectedVehicleId)) {
       setMessage("יש לבחור רכב שמור, זמין ומאומת מתוך הצי.");
       return;
@@ -298,6 +328,7 @@ export default function TruckRoutingPage() {
     setResult(null);
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (authGeneration !== authGenerationRef.current) return;
       if (sessionError || !session?.access_token) {
         setMessage("פג תוקף החיבור. יש להתחבר מחדש.");
         return;
@@ -318,6 +349,7 @@ export default function TruckRoutingPage() {
         })
       });
       const data = await response.json();
+      if (authGeneration !== authGenerationRef.current) return;
       if (!response.ok) {
         const details = formatRejectedRouteMessages(data.rejectedCandidates || []);
         setMessage((data.error || "לא הצלחנו לחשב מסלול.") + (details.length ? " פירוט: " + details.join("; ") : ""));
@@ -327,9 +359,9 @@ export default function TruckRoutingPage() {
       if (data.hasCriticalNotices) setMessage("המסלול כולל התראות קריטיות. אין לצאת לדרך על סמך מסלול זה.");
       else setMessage("המסלול חושב. יש לאמת שילוט והגבלות בשטח לפני היציאה.");
     } catch {
-      setMessage("לא ניתן להתחבר לשירות חישוב המסלולים. בדוק חיבור לאינטרנט ונסה שוב.");
+      if (authGeneration === authGenerationRef.current) setMessage("לא ניתן להתחבר לשירות חישוב המסלולים. בדוק חיבור לאינטרנט ונסה שוב.");
     } finally {
-      setBusy(false);
+      if (authGeneration === authGenerationRef.current) setBusy(false);
     }
   }
 
