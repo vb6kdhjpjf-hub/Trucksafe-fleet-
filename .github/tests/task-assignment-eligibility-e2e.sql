@@ -5,23 +5,28 @@ BEGIN;
 \ir ../../supabase/migrations/20261118194500_guard_task_assignment_eligibility.sql
 
 -- @auth-fixture 'ba000000-0000-4000-8000-000000000001' task-guard-owner@example.invalid
+-- @auth-fixture 'ba000000-0000-4000-8000-000000000002' task-guard-other-owner@example.invalid
 
 INSERT INTO public.fleets (id, name, owner_user_id)
-VALUES ('bb000000-0000-4000-8000-000000000001', 'Task Guard Test Fleet', 'ba000000-0000-4000-8000-000000000001');
+VALUES
+ ('bb000000-0000-4000-8000-000000000001', 'Task Guard Test Fleet', 'ba000000-0000-4000-8000-000000000001'),
+ ('bb000000-0000-4000-8000-000000000002', 'Task Guard Other Fleet', 'ba000000-0000-4000-8000-000000000002');
 
 INSERT INTO public.drivers (id, fleet_id, full_name, status, license_expires_at)
 VALUES
  ('bc000000-0000-4000-8000-000000000001','bb000000-0000-4000-8000-000000000001','Valid driver','active',(now() at time zone 'Asia/Jerusalem')::date + 30),
  ('bc000000-0000-4000-8000-000000000002','bb000000-0000-4000-8000-000000000001','Inactive driver','off_duty',(now() at time zone 'Asia/Jerusalem')::date + 30),
  ('bc000000-0000-4000-8000-000000000003','bb000000-0000-4000-8000-000000000001','Expired driver','active',(now() at time zone 'Asia/Jerusalem')::date - 1),
- ('bc000000-0000-4000-8000-000000000004','bb000000-0000-4000-8000-000000000001','Missing expiry driver','active',NULL);
+ ('bc000000-0000-4000-8000-000000000004','bb000000-0000-4000-8000-000000000001','Missing expiry driver','active',NULL),
+ ('bc000000-0000-4000-8000-000000000099','bb000000-0000-4000-8000-000000000002','Other fleet driver','active',(now() at time zone 'Asia/Jerusalem')::date + 30);
 
 INSERT INTO public.vehicles (id, fleet_id, registration_number, status, is_demo)
 VALUES
  ('bd000000-0000-4000-8000-000000000001','bb000000-0000-4000-8000-000000000001','TASK-GUARD-AVAILABLE','available',false),
  ('bd000000-0000-4000-8000-000000000002','bb000000-0000-4000-8000-000000000001','TASK-GUARD-MAINT','maintenance',false),
  ('bd000000-0000-4000-8000-000000000003','bb000000-0000-4000-8000-000000000001','TASK-GUARD-DEMO','available',true),
- ('bd000000-0000-4000-8000-000000000004','bb000000-0000-4000-8000-000000000001','TASK-GUARD-TRIP','on_trip',false);
+ ('bd000000-0000-4000-8000-000000000004','bb000000-0000-4000-8000-000000000001','TASK-GUARD-TRIP','on_trip',false),
+ ('bd000000-0000-4000-8000-000000000099','bb000000-0000-4000-8000-000000000002','TASK-GUARD-OTHER','available',false);
 
 CREATE FUNCTION pg_temp.assert_assignment_rejected(statement text, scenario text)
 RETURNS void LANGUAGE plpgsql AS $
@@ -65,13 +70,13 @@ BEGIN
     $sql$INSERT INTO public.tasks (fleet_id,title,assigned_driver_id,assigned_vehicle_id,status)
       VALUES ('bb000000-0000-4000-8000-000000000001','Cross-fleet driver assignment',
         'bc000000-0000-4000-8000-000000000099','bd000000-0000-4000-8000-000000000001','assigned')$sql$,
-    'driver from another fleet or missing driver');
+    'driver from another fleet');
 
   PERFORM pg_temp.assert_assignment_rejected(
     $sql$INSERT INTO public.tasks (fleet_id,title,assigned_driver_id,assigned_vehicle_id,status)
       VALUES ('bb000000-0000-4000-8000-000000000001','Cross-fleet vehicle assignment',
         'bc000000-0000-4000-8000-000000000001','bd000000-0000-4000-8000-000000000099','assigned')$sql$,
-    'vehicle from another fleet or missing vehicle');
+    'vehicle from another fleet');
 
   PERFORM pg_temp.assert_assignment_rejected(
     $sql$INSERT INTO public.tasks (fleet_id,title,assigned_driver_id,assigned_vehicle_id,status)
