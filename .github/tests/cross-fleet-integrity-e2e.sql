@@ -54,10 +54,8 @@ DECLARE
   n integer;
 BEGIN
   -- Synthetic auth identities; all records are rolled back at transaction end.
-  INSERT INTO auth.users (id, aud, role, email, created_at, updated_at)
-  VALUES
-    (u_a, 'authenticated', 'authenticated', 'fleet-a-fk-test@example.invalid', now(), now()),
-    (u_b, 'authenticated', 'authenticated', 'fleet-b-fk-test@example.invalid', now(), now());
+  -- @auth-fixture u_a fleet-a-fk-test@example.invalid
+-- @auth-fixture u_b fleet-b-fk-test@example.invalid
 
   INSERT INTO public.fleets (id, name, owner_user_id)
   VALUES (f_a, 'FK Test Fleet A', u_a), (f_b, 'FK Test Fleet B', u_b);
