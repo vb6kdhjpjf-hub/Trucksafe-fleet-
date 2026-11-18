@@ -25,6 +25,11 @@ export default function SpecialEquipmentPage(){
    return;
   }
   const userId=session.user.id;
+  if(authUserIdRef.current&&authUserIdRef.current!==userId){
+   clearPrivateState();authUserIdRef.current=userId;
+   if(typeof window!=="undefined")window.location.reload();
+   return;
+  }
   const {data:workspace,error:workspaceError}=await resolveFleetWorkspace(supabase,userId);
   if(!isCurrent())return;
   if(workspaceError||!workspace){
@@ -56,7 +61,7 @@ export default function SpecialEquipmentPage(){
   }));
   if(!isCurrent())return;
   setRows(rowsWithChartLinks);
- },[]);
+ },[clearPrivateState]);
  useEffect(()=>{
   let alive=true;
   const initialAuthGeneration=authGenerationRef.current;
@@ -131,7 +136,7 @@ export default function SpecialEquipmentPage(){
    await load(authGeneration);
    if(isCurrent())setMessage("פרטי הציוד והמסמכים נשמרו ונשלחו לבדיקה מחדש. הם עדיין אינם מאושרים לניווט.");
   }catch(error){
-   if(uploadedPaths.length)await supabase.storage.from("vehicle-registrations").remove(uploadedPaths).catch(()=>{});
+   if(uploadedPaths.length&&authGeneration===authGenerationRef.current)await supabase.storage.from("vehicle-registrations").remove(uploadedPaths).catch(()=>{});
    if(isCurrent())setMessage("לא ניתן לשמור את הציוד: "+(error?.message||"שגיאה לא ידועה"));
   }finally{if(isCurrent())setBusy(false);}
  }
