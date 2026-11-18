@@ -160,15 +160,17 @@ export async function POST(request) {
     const currentWeightKg = Number(raw.currentWeightKg);
     const weightPerAxleKg = Number(raw.weightPerAxleKg);
     const emptyWeightKg = Number(savedVehicle.empty_weight_kg);
+    const registeredMaxWeightPerAxleKg = vehicleProfile.registeredMaxWeightPerAxleKg;
     const tripWeights = validateTruckTripWeights({
       currentWeightKg,
       weightPerAxleKg,
+      registeredMaxWeightPerAxleKg,
       emptyWeightKg,
       grossWeightKg
     });
     if (!tripWeights) {
       return response({
-        error: "יש להזין משקל כולל בפועל ומשקל מדוד על הסרן העמוס ביותר. נתון הסרן חייב להתבסס על שקילה בפועל, להיות לפחות 500 ק״ג ולא לעלות על המשקל הכולל בפועל."
+        error: "נדרשת מגבלת סרן מרבית מאומתת מרישיון הרכב, ומשקל הסרן שנשקל בפועל חייב להיות לפחות 500 ק״ג ולא לעלות על המגבלה הרשומה או על המשקל הכולל בפועל."
       }, 400);
     }
 
