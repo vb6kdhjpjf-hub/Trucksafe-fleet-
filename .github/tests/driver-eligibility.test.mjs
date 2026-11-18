@@ -17,5 +17,5 @@ test("blocks expired, missing, malformed and impossible licence dates", () => {
 });
 
 test("blocks inactive drivers even when the licence date is valid", () => {
-  assert.equal(isDriverEligibleForVehicleAssignment({ status: "off_duty", license_expires_at: "2027-02-01" }, today), false);
+  assert.equal(isDriverEligibleForVehicleAssignment({ status: "off_duty", license_expires_at: "2027-02-01" }, afterIsraelMidnight), false);
 });
