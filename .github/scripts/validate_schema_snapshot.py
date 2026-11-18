@@ -134,8 +134,14 @@ def validate_schema_only_snapshot(sql: str) -> None:
     # PostgreSQL has defaulted standard_conforming_strings to on for years.
     # A dump that explicitly disables it changes string-literal tokenization;
     # reject it rather than attempting to interpret a different lexical mode.
-    if re.search(r"(?im)^\s*SET\s+standard_conforming_strings\s*=\s*off\b", code):
-        raise SnapshotValidationError("Snapshot disables standard_conforming_strings; refusing ambiguous SQL")
+    setting_pattern = re.compile(
+        r"(?is)\bSET\s+(?:(?:SESSION|LOCAL)\s+)?standard_conforming_strings\b([^;]*);"
+    )
+    for setting in setting_pattern.finditer(code):
+        if not re.fullmatch(r"\s*(?:=|TO)\s*ON\s*", setting.group(1), re.IGNORECASE):
+            raise SnapshotValidationError(
+                "Snapshot changes standard_conforming_strings from the safe default; refusing ambiguous SQL"
+            )
 
     # Schema-only snapshots must not contain data-copy or data-insertion
     # commands. Scan executable SQL after comments/literals/function bodies
