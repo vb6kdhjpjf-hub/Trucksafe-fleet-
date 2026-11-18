@@ -65,7 +65,7 @@ function createAdminClient(url, serviceRoleKey) {
 }
 
 function extractAuthFixtureRows(sql) {
-  const directivePattern = /^\\s*--\\s*@auth-fixture\\s+([a-z_][a-z0-9_]*|'[0-9a-f-]{36}')\\s+([^\\s]+)\\s*$/gim;
+  const directivePattern = /^\s*--\s*@auth-fixture\s+([a-z_][a-z0-9_]*|'[0-9a-f-]{36}')\s+([^\s]+)\s*$/gim;
   const rows = [...sql.matchAll(directivePattern)].map((match) => ({
     identity: match[1],
     email: match[2]
