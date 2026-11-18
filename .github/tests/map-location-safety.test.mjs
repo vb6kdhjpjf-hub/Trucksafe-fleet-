@@ -253,11 +253,14 @@ test("routing UI does not claim HERE is active while provider approval gate rema
 
 test("special equipment documents and records clear across auth changes", async () => {
   const source = await readFile("app/special-equipment/page.js", "utf8");
-  assert.ok(source.includes("authGenerationRef=useRef(0),authUserIdRef=useRef(null)"));
+  assert.match(source, /authGenerationRef\\s*=\\s*useRef\\(0\\)/);
+  assert.match(source, /authUserIdRef\\s*=\\s*useRef\\(null\\)/);
   assert.ok(source.includes("nextUserId!==authUserIdRef.current"));
-  assert.ok(source.includes("authGeneration!==authGenerationRef.current"));
+  assert.ok(source.includes("authGeneration===authGenerationRef.current"));
   assert.ok(source.includes("setRows([]);setForm(empty);setChart(null);setManual(null)"));
   assert.ok(source.includes("window.location.reload()"));
+  assert.ok(source.includes("resolveFleetWorkspace(supabase,userId)"));
+  assert.ok(source.includes("if(isCurrent())setBusy(false)"));
 });
 
 test("main dashboard clears private fleet state and rejects stale fleet and GPS results", async () => {
