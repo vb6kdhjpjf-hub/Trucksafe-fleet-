@@ -216,6 +216,7 @@ export default function ImportsPage() {
       const pageSize = 1000;
       const maximumRows = 100000;
       for (let offset = 0; ; offset += pageSize) {
+        if (!alive || authGeneration !== authGenerationRef.current) return;
         const { data, error } = await supabase
           .from(table)
           .select(identityField)
@@ -223,6 +224,7 @@ export default function ImportsPage() {
           .not(identityField, "is", null)
           .order("id", { ascending: true })
           .range(offset, offset + pageSize - 1);
+        if (!alive || authGeneration !== authGenerationRef.current) return;
         if (error) throw error;
         const batch = (data || []).map(row => row[identityField]).filter(value => value != null && String(value).trim());
         values.push(...batch);
