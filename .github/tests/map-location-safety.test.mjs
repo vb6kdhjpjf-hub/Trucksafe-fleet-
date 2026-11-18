@@ -134,3 +134,31 @@ test("tasks clears private state and restarts on authenticated identity changes"
   assert.match(source, /if \\(!nextSession\\) \\{\\s*authUserIdRef\\.current = null/);
   assert.match(source, /setForm\\(emptyForm\\); setShowForm\\(false\\); setBusy\\(false\\)/);
 });
+
+
+test("driver management clears private state and restarts on auth identity changes", async () => {
+  const source = await readFile("app/drivers/page.js", "utf8");
+  assert.match(source, /const authUserIdRef = useRef\\(null\\)/);
+  assert.match(source, /nextUserId !== authUserIdRef\\.current/);
+  assert.match(source, /authUserIdRef\\.current = nextUserId/);
+  assert.match(source, /window\\.location\\.reload\\(\\)/);
+  assert.match(source, /initialAuthGeneration !== authGenerationRef\\.current/);
+});
+
+test("shipment management invalidates in-flight private data on auth identity changes", async () => {
+  const source = await readFile("app/shipments/page.js", "utf8");
+  assert.match(source, /const authUserIdRef = useRef\\(null\\)/);
+  assert.match(source, /nextUserId!==authUserIdRef\\.current/);
+  assert.match(source, /authUserIdRef\\.current=nextUserId/);
+  assert.match(source, /clearPrivateState\\(\\);\\s*authUserIdRef\\.current=nextUserId/);
+  assert.match(source, /if\\(typeof window!=="undefined"\\)window\\.location\\.reload\\(\\)/);
+});
+
+test("incident management invalidates stale private queries on auth identity changes", async () => {
+  const source = await readFile("app/incidents/page.js", "utf8");
+  assert.match(source, /const authUserIdRef = useRef\\(null\\)/);
+  assert.match(source, /nextUserId !== authUserIdRef\\.current/);
+  assert.match(source, /initialAuthGeneration !== authGenerationRef\\.current/);
+  assert.match(source, /authGeneration !== authGenerationRef\\.current/);
+  assert.match(source, /window\\.location\\.reload\\(\\)/);
+});
