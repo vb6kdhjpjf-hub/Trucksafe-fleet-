@@ -608,12 +608,8 @@ declare
   );
   msg text;
 begin
-  insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data)
-  values
-    (u1, 'authenticated', 'authenticated', 'trucksafe-ci-lifecycle@example.invalid', 'test-only-no-login', now(),
-     '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb),
-    (u2, 'authenticated', 'authenticated', 'trucksafe-ci-safety@example.invalid', 'test-only-no-login', now(),
-     '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb);
+  -- @auth-fixture u1 trucksafe-ci-lifecycle@example.invalid
+-- @auth-fixture u2 trucksafe-ci-safety@example.invalid
 
   -- Test as authenticated fleet owners. Creating a fleet automatically creates its owner membership.
   perform set_config('request.jwt.claim.sub', u1::text, true);
@@ -980,13 +976,7 @@ declare
   operating_manual_path text;
   incident_photo_path text;
 begin
-  insert into auth.users (
-    id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data
-  ) values (
-    evidence_user,'authenticated','authenticated',
-    'trucksafe-ci-evidence-guard@example.invalid','test-only-no-login',now(),
-    '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb
-  );
+  -- @auth-fixture evidence_user trucksafe-ci-evidence-guard@example.invalid
 
   perform set_config('request.jwt.claim.sub',evidence_user::text,true);
   perform set_config('request.jwt.claim.role','service_role',true);
