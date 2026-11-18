@@ -11,6 +11,7 @@ begin;
 \ir ../../supabase/migrations/20261115113000_guard_vehicle_registration_insert_verification.sql
 \ir ../../supabase/migrations/20261115120000_use_israel_local_date_for_trip_compliance.sql
 \ir ../../supabase/migrations/20261117165300_harden_verified_bridge_country_and_verifier.sql
+\ir ../../supabase/migrations/20261118193000_require_verified_vehicle_registration_for_trip.sql
 
 create temporary table trucksafe_e2e_results (
   scenario text not null,
@@ -624,6 +625,22 @@ begin
         current_date + 365, current_date + 365, current_date + 365, false),
       (v1b, f1, 'CI-TEST-002', 'Test', 'Truck', 'truck', 'available',
         current_date + 365, current_date + 365, current_date + 365, false);
+
+  -- Synthetic registration objects and review metadata exist only inside this rollback transaction.
+  perform set_config('request.jwt.claim.role', 'service_role', true);
+  insert into storage.objects (bucket_id, name, metadata) values
+    ('vehicle-registrations', f1::text || '/' || v1::text || '/ci-registration.pdf', '{"mimetype":"application/pdf","size":128}'::jsonb),
+    ('vehicle-registrations', f1::text || '/' || v1b::text || '/ci-registration.pdf', '{"mimetype":"application/pdf","size":128}'::jsonb);
+  update public.vehicles
+  set registration_verification_status = 'verified',
+      registration_document_path = fleet_id::text || '/' || id::text || '/ci-registration.pdf',
+      registration_document_uploaded_at = now(),
+      registration_verified_at = now(),
+      registration_verified_by = u1,
+      registration_verification_note = 'CI synthetic registration review'
+  where id in (v1, v1b) and fleet_id = f1;
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+
   insert into public.drivers (id, fleet_id, full_name, license_expires_at, status)
     values (d1b, f1, 'CI Second Driver', current_date + 365, 'active');
   insert into public.tasks (id, fleet_id, title, pickup_address, delivery_address,
@@ -812,6 +829,22 @@ begin
     (v2a, f2, 'CI-SAFE-001', 'truck', 'available', current_date + 365, current_date + 365, current_date + 365, false),
     (v2b, f2, 'CI-SAFE-002', 'truck', 'available', current_date + 365, current_date + 365, current_date + 365, false),
     (v2c, f2, 'CI-SAFE-003', 'truck', 'available', current_date - 1, current_date + 365, current_date + 365, false);
+
+  perform set_config('request.jwt.claim.role', 'service_role', true);
+  insert into storage.objects (bucket_id, name, metadata) values
+    ('vehicle-registrations', f2::text || '/' || v2a::text || '/ci-registration.pdf', '{"mimetype":"application/pdf","size":128}'::jsonb),
+    ('vehicle-registrations', f2::text || '/' || v2b::text || '/ci-registration.pdf', '{"mimetype":"application/pdf","size":128}'::jsonb),
+    ('vehicle-registrations', f2::text || '/' || v2c::text || '/ci-registration.pdf', '{"mimetype":"application/pdf","size":128}'::jsonb);
+  update public.vehicles
+  set registration_verification_status = 'verified',
+      registration_document_path = fleet_id::text || '/' || id::text || '/ci-registration.pdf',
+      registration_document_uploaded_at = now(),
+      registration_verified_at = now(),
+      registration_verified_by = u2,
+      registration_verification_note = 'CI synthetic registration review'
+  where id in (v2a, v2b, v2c) and fleet_id = f2;
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+
   insert into public.tasks (id, fleet_id, title, assigned_driver_id, assigned_vehicle_id, status, created_by) values
     (t2a, f2, 'CI failed inspection', d2a, v2a, 'assigned', u2),
     (t2b, f2, 'CI expired license', d2b, v2b, 'assigned', u2),
