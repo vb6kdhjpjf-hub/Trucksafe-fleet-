@@ -401,9 +401,10 @@ export default function TruckRoutingPage() {
       </form>
 
       {result && <section style={{ marginTop: 16, display: "grid", gap: 14 }}>
-        {result.restrictionValidation?.validated && <div style={{ background: "#eef7f0", border: "1px solid #cde7d3", borderRadius: 12, padding: 12, fontSize: 13, lineHeight: 1.5 }}>
-          <b>בדיקת מאגר מגבלות הצי הושלמה.</b>
-          <div>נבדקו {result.restrictionValidation.checkedRecords} רשומות פעילות/לא פעילות. הבדיקה מוגבלת למידע שהוזן ואומת בצי ואינה כוללת בהכרח את כל ההגבלות הרשמיות בישראל.</div>
+        {result.restrictionValidation?.validated && <div style={{ background: "#fff8e8", border: "1px solid #f0d9a8", borderRadius: 12, padding: 12, fontSize: 13, lineHeight: 1.5 }}>
+          <b>בדיקת מאגר הצי הושלמה — אין בכך אישור בטיחות מלא.</b>
+          <div>נבדקו {result.restrictionValidation.checkedRecords} רשומות פעילות/לא פעילות מתוך המידע שהוזן ואומת בצי. המאגר אינו כולל בהכרח את כל ההגבלות הרשמיות בישראל.</div>
+          <div>בדיקת הקרבה הגאוגרפית שמרנית ואינה מאמתת התאמה מדויקת של כל הגבלה לכיוון הנסיעה, לכביש המקביל או לנתיב. לכן ייתכנו חסימות יתר, והיעדר התנגשות במאגר אינו הוכחה שהמסלול בטוח או חוקי.</div>
         </div>}
         <div style={{ background: "white", border: "1px solid #e5eaf1", borderRadius: 14, padding: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
