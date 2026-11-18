@@ -54,18 +54,21 @@ begin
  exception when others then get stacked diagnostics msg=message_text; rejected:=msg ilike '%quantities are invalid%'; end;
  if not rejected then raise exception 'Over-delivery was not rejected'; end if;
  insert into pg_temp.shipment_test_results values('over-delivery beyond the stop allocation is rejected','PASS');
-  -- Suspended drivers and removed fleet members must lose write access while the stop is still pending.
+  -- Change driver state as the fleet owner, then test the driver's authenticated RPC context.
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
   update public.drivers as d set status='suspended'
   where d.id=shipment_test_block.driver_id and d.fleet_id=shipment_test_block.fleet_id;
+  perform set_config('request.jwt.claim.sub',driver_user_id::text,true);
   rejected:=false;
   begin
    perform public.record_shipment_stop_result(fleet_id,shipment_id,stop_id,'12000000-0000-4000-8000-000000000003'::uuid,'[]'::jsonb,null);
   exception when others then get stacked diagnostics msg=message_text; rejected:=msg ilike '%active assigned fleet driver%'; end;
   if not rejected then raise exception 'A suspended assigned driver retained shipment write access'; end if;
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
   update public.drivers as d set status='active'
   where d.id=shipment_test_block.driver_id and d.fleet_id=shipment_test_block.fleet_id;
-
   delete from public.fleet_members fm where fm.fleet_id=shipment_test_block.fleet_id and fm.user_id=shipment_test_block.driver_user_id;
+  perform set_config('request.jwt.claim.sub',driver_user_id::text,true);
   rejected:=false;
   begin
    perform public.record_shipment_stop_result(fleet_id,shipment_id,stop_id,'12000000-0000-4000-8000-000000000004'::uuid,'[]'::jsonb,null);
