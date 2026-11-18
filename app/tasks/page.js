@@ -39,6 +39,13 @@ export default function TasksPage() {
   const authGenerationRef = useRef(0);
   const authUserIdRef = useRef(null);
 
+  function isCurrentAuthSession(generation = authGenerationRef.current, userId = authUserIdRef.current) {
+    return generation === authGenerationRef.current
+      && Boolean(userId)
+      && userId === authUserIdRef.current
+      && userId === session?.user?.id;
+  }
+
   useEffect(() => () => {
     trackingGenerationRef.current += 1;
     if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
@@ -129,6 +136,9 @@ export default function TasksPage() {
 
   async function saveTask(e) {
     e.preventDefault();
+    const generation = authGenerationRef.current;
+    const requestingUserId = authUserIdRef.current;
+    if (!isCurrentAuthSession(generation, requestingUserId)) return;
     if (!fleet || !form.title.trim()) return;
     if (!canManageTasks) { setMessage("אין לך הרשאה לניהול משימות."); return; }
     if (form.assigned_driver_id) {
@@ -139,47 +149,58 @@ export default function TasksPage() {
       }
     }
     setBusy(true); setMessage("");
-    const payload = {
-      fleet_id: fleet.id,
-      title: form.title.trim(),
-      description: form.description.trim() || null,
-      pickup_address: form.pickup_address.trim() || null,
-      delivery_address: form.delivery_address.trim() || null,
-      scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
-      assigned_driver_id: form.assigned_driver_id || null,
-      assigned_vehicle_id: form.assigned_vehicle_id || null,
-      status: form.assigned_driver_id && form.assigned_vehicle_id ? "assigned" : "pending",
-      created_by: session.user.id
-    };
-    const { error } = await supabase.from("tasks").insert(payload);
-    if (error) setMessage("לא הצלחנו לשמור את המשימה: " + error.message);
-    else { setForm(emptyForm); setShowForm(false); await loadWorkspace(session.user); setMessage("המשימה נשמרה בהצלחה."); }
-    setBusy(false);
+    try {
+      const payload = {
+        fleet_id: fleet.id,
+        title: form.title.trim(),
+        description: form.description.trim() || null,
+        pickup_address: form.pickup_address.trim() || null,
+        delivery_address: form.delivery_address.trim() || null,
+        scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
+        assigned_driver_id: form.assigned_driver_id || null,
+        assigned_vehicle_id: form.assigned_vehicle_id || null,
+        status: form.assigned_driver_id && form.assigned_vehicle_id ? "assigned" : "pending",
+        created_by: requestingUserId
+      };
+      const { error } = await supabase.from("tasks").insert(payload);
+      if (!isCurrentAuthSession(generation, requestingUserId)) return;
+      if (error) { setMessage("לא הצלחנו לשמור את המשימה: " + error.message); return; }
+      setForm(emptyForm); setShowForm(false);
+      await loadWorkspace(session.user, generation);
+      if (isCurrentAuthSession(generation, requestingUserId)) setMessage("המשימה נשמרה בהצלחה.");
+    } catch (error) {
+      if (isCurrentAuthSession(generation, requestingUserId)) setMessage("שמירת המשימה נכשלה: " + (error?.message || "שגיאה לא ידועה"));
+    } finally {
+      if (isCurrentAuthSession(generation, requestingUserId)) setBusy(false);
+    }
   }
 
   async function updateStatus(task, status) {
+    const generation = authGenerationRef.current;
+    const requestingUserId = authUserIdRef.current;
+    if (!isCurrentAuthSession(generation, requestingUserId)) return;
     if (!fleet || !canManageTasks) { setMessage("אין לך הרשאה לעדכון סטטוס משימה."); return; }
     if (!["pending", "assigned", "cancelled"].includes(status)) { setMessage("סטטוס זה אינו ניתן לעדכון ידני."); return; }
-    if (status === "cancelled") {
-      setBusy(true); setMessage("");
-      const { data: activeTrip, error: activeTripError } = await supabase
-        .from("trips").select("id").eq("task_id", task.id).eq("status", "active").limit(1).maybeSingle();
-      if (activeTripError) {
-        setMessage("לא ניתן לאמת אם קיימת נסיעה פעילה. נסה שוב לפני ביטול המשימה.");
-        setBusy(false);
-        return;
-      }
-      if (activeTrip) {
-        setMessage("לא ניתן לבטל משימה בזמן שהנסיעה שלה פעילה. יש לסיים את הנסיעה תחילה.");
-        setBusy(false);
-        return;
-      }
-    }
     setBusy(true); setMessage("");
-    const { error } = await supabase.from("tasks").update({ status }).eq("id", task.id).eq("fleet_id", fleet.id);
-    if (error) setMessage("לא הצלחנו לעדכן סטטוס: " + error.message);
-    else { await loadWorkspace(session.user); setMessage("סטטוס המשימה עודכן."); }
-    setBusy(false);
+    try {
+      if (status === "cancelled") {
+        const { data: activeTrip, error: activeTripError } = await supabase
+          .from("trips").select("id").eq("task_id", task.id).eq("status", "active").limit(1).maybeSingle();
+        if (!isCurrentAuthSession(generation, requestingUserId)) return;
+        if (activeTripError) { setMessage("לא ניתן לאמת אם קיימת נסיעה פעילה. נסה שוב לפני ביטול המשימה."); return; }
+        if (activeTrip) { setMessage("לא ניתן לבטל משימה בזמן שהנסיעה שלה פעילה. יש לסיים את הנסיעה תחילה."); return; }
+      }
+      if (!isCurrentAuthSession(generation, requestingUserId)) return;
+      const { error } = await supabase.from("tasks").update({ status }).eq("id", task.id).eq("fleet_id", fleet.id);
+      if (!isCurrentAuthSession(generation, requestingUserId)) return;
+      if (error) { setMessage("לא הצלחנו לעדכן סטטוס: " + error.message); return; }
+      await loadWorkspace(session.user, generation);
+      if (isCurrentAuthSession(generation, requestingUserId)) setMessage("סטטוס המשימה עודכן.");
+    } catch (error) {
+      if (isCurrentAuthSession(generation, requestingUserId)) setMessage("עדכון סטטוס המשימה נכשל: " + (error?.message || "שגיאה לא ידועה"));
+    } finally {
+      if (isCurrentAuthSession(generation, requestingUserId)) setBusy(false);
+    }
   }
 
   async function startTrip(task) {
