@@ -25,15 +25,18 @@ export default function DailyReportPage() {
   const [day, setDay] = useState("");
   const authGenerationRef = useRef(0);
   const authUserIdRef = useRef(null);
+  const reportRequestGenerationRef = useRef(0);
 
   const load = useCallback(async (fleetId, authGeneration = authGenerationRef.current) => {
+    const requestGeneration = ++reportRequestGenerationRef.current;
+    const isCurrent = () => authGeneration === authGenerationRef.current && requestGeneration === reportRequestGenerationRef.current;
     const range = localDayRange(); setDay(range.label); setError("");
     const [t, i, m] = await Promise.all([
       supabase.from("trips").select("id,driver_id,vehicle_id,status,origin_address,destination_address,started_at,ended_at").eq("fleet_id", fleetId).gte("started_at", range.start).lt("started_at", range.end).order("started_at", { ascending: false }),
       supabase.from("incidents").select("id,severity,incident_type,description,status,reported_at").eq("fleet_id", fleetId).gte("reported_at", range.start).lt("reported_at", range.end).order("reported_at", { ascending: false }),
       supabase.from("maintenance_records").select("id,maintenance_type,description,cost,status,completed_at,scheduled_at").eq("fleet_id", fleetId).gte("created_at", range.start).lt("created_at", range.end).order("created_at", { ascending: false })
     ]);
-    if (authGeneration !== authGenerationRef.current) return;
+    if (!isCurrent()) return;
     const errors = [t.error, i.error, m.error].filter(Boolean);
     if (errors.length) setError("חלק מהנתונים לא נטענו: " + errors.map(x => x.message).join(" · "));
     setTrips(t.data || []); setIncidents(i.data || []); setMaintenance(m.data || []);
@@ -44,6 +47,7 @@ export default function DailyReportPage() {
     let alive = true;
     const clearPrivateState = () => {
       authGenerationRef.current += 1;
+      reportRequestGenerationRef.current += 1;
       setFleet(null); setTrips([]); setIncidents([]); setMaintenance([]); setDay(""); setError("");
     };
     const initialAuthGeneration = authGenerationRef.current;
@@ -74,7 +78,7 @@ export default function DailyReportPage() {
       await load(workspace.fleet.id, initialAuthGeneration);
       if (alive && initialAuthGeneration === authGenerationRef.current) setLoading(false);
     }).catch(e => { if (alive && initialAuthGeneration === authGenerationRef.current) { setError(e.message); setLoading(false); } });
-    return () => { alive = false; authGenerationRef.current += 1; subscription.unsubscribe(); };
+    return () => { alive = false; authGenerationRef.current += 1; reportRequestGenerationRef.current += 1; subscription.unsubscribe(); };
   }, [router, load]);
 
   function exportCsv() {
