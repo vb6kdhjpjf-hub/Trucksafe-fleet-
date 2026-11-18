@@ -16,6 +16,7 @@ const FIXTURE_FILES = new Set([
   "road-vehicle-security-e2e.sql",
   "cross-fleet-integrity-e2e.sql",
   "cross-fleet-preflight-detects-anomalies.sql",
+  "task-assignment-eligibility-e2e.sql",
 ]);
 
 async function expandIncludes(file, stack = []) {
