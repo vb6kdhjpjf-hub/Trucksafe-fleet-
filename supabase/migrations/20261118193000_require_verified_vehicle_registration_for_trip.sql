@@ -213,5 +213,4 @@ BEGIN
 
   RETURN v_trip_id;
 END;
-$function$
-
+$function$;
