@@ -66,6 +66,9 @@ $body$ LANGUAGE plpgsql;""")
 
     def test_rejects_nonstandard_string_mode(self):
         self.rejects("SET standard_conforming_strings = off; SELECT 1;")
+        self.rejects("SET SESSION standard_conforming_strings TO off;")
+        self.rejects("SET standard_conforming_strings TO 'off';")
+        self.accepts("SET standard_conforming_strings = on; SELECT 'safe';")
 
     def test_does_not_treat_identifier_dollar_as_quote(self):
         self.accepts("SELECT column$tag$ FROM public.items;")
