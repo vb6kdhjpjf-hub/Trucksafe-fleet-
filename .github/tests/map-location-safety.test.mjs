@@ -161,7 +161,7 @@ test("incident management invalidates stale private queries on auth identity cha
   assert.ok(source.includes("const authUserIdRef = useRef(null)"));
   assert.ok(source.includes("nextUserId !== authUserIdRef.current"));
   assert.ok(source.includes("initialAuthGeneration !== authGenerationRef.current"));
-  assert.ok(source.includes("authGeneration !== authGenerationRef.current"));
+  assert.ok(source.includes("authGeneration === authGenerationRef.current && requestGeneration === historyRequestGenerationRef.current"));
   assert.ok(source.includes("window.location.reload()"));
 });
 
@@ -325,7 +325,7 @@ test("trip history rejects stale concurrent list loads and GPS point responses",
   assert.ok(source.includes("const historyRequestGenerationRef = useRef(0)"));
   assert.ok(source.includes("const gpsRequestGenerationRef = useRef(new Map())"));
   assert.ok(source.includes("requestGeneration === historyRequestGenerationRef.current"));
-  assert.ok(source.includes("requestGeneration === gpsRequestGenerationRef.current.get(trip.id)"));
+  assert.ok(source.includes("gpsRequestGenerationRef.current.get(trip.id) === requestGeneration"));
   assert.ok(source.includes("if (!isCurrent()) return;"));
   assert.ok(source.includes("historyRequestGenerationRef.current += 1"));
   assert.ok(source.includes("gpsRequestGenerationRef.current.clear()"));
