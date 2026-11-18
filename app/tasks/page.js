@@ -144,6 +144,18 @@ export default function TasksPage() {
     return `${label} · חסום: סטטוס לא מוכר`;
   }
 
+  function getTaskAssignmentWarnings(task) {
+    const warnings = [];
+    const driver = drivers.find(item => item.id === task?.assigned_driver_id);
+    const vehicle = vehicles.find(item => item.id === task?.assigned_vehicle_id);
+    if (task?.assigned_driver_id && !driver) warnings.push("הנהג המשויך לא נמצא ברשימת הצי");
+    else if (driver && !isDriverEligibleForVehicleAssignment(driver)) warnings.push(driverAssignmentLabel(driver));
+    if (task?.assigned_vehicle_id && !vehicle) warnings.push("הרכב המשויך לא נמצא ברשימת הצי");
+    else if (vehicle && (vehicle.is_demo || !["available", "assigned"].includes(vehicle.status))) warnings.push(vehicleAssignmentLabel(vehicle));
+    if (task?.status === "assigned" && (!task.assigned_driver_id || !task.assigned_vehicle_id)) warnings.push("המשימה מסומנת כשובצה אך חסר נהג או רכב");
+    return warnings;
+  }
+
   function driverAssignmentLabel(driver) {
     if (isDriverEligibleForVehicleAssignment(driver)) return `${driver.full_name} · פעיל, תוקף רשום תקין`;
     if (driver?.status !== "active") return `${driver?.full_name || "נהג ללא שם"} · לא זמין: הנהג אינו פעיל`;
@@ -404,6 +416,7 @@ export default function TasksPage() {
             <div className="task-card-top"><div><b>{task.title}</b><small>{task.reference_code || "משימה"} · {new Date(task.created_at).toLocaleDateString("he-IL")}</small></div><span className={"task-status task-"+task.status}>{labels[task.status] || task.status}</span></div>
             {(task.pickup_address || task.delivery_address) && <div className="task-route"><span><MapPin size={14}/> איסוף: {task.pickup_address || "לא צוין"}</span><span><MapPin size={14}/> יעד: {task.delivery_address || "לא צוין"}</span></div>}
             <div className="task-assignees"><span>נהג: {drivers.find(d=>d.id===task.assigned_driver_id)?.full_name || "לא שובץ"}</span><span>רכב: {vehicles.find(v=>v.id===task.assigned_vehicle_id)?.registration_number || "לא שובץ"}</span>{task.scheduled_at && <span><CalendarClock size={13}/> {new Date(task.scheduled_at).toLocaleString("he-IL")}</span>}</div>
+            {getTaskAssignmentWarnings(task).length > 0 && <div role="alert" className="task-description" style={{ marginTop: 8, padding: 10, borderRadius: 8, background: "#fff4e5", border: "1px solid #f2cf9b", color: "#8a4b12" }}><b>נדרשת בדיקת שיבוץ לפני פתיחת נסיעה:</b><ul style={{ margin: "6px 0 0", paddingRight: 20 }}>{getTaskAssignmentWarnings(task).map((warning, index) => <li key={index}>{warning}</li>)}</ul></div>}
             {task.description && <p className="task-description">{task.description}</p>}
             <div className="task-actions"><label>סטטוס<select disabled={busy||!canManageTasks} value={task.status} onChange={e=>updateStatus(task,e.target.value)}>{Object.entries(labels).filter(([value])=>["pending","assigned","cancelled"].includes(value)||value===task.status).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>{!["completed","cancelled"].includes(task.status) && (canManageTasks || isAssignedDriver(task.assigned_driver_id)) && <button className="primary-btn" disabled={busy} onClick={()=>startTrip(task)}><Play size={14}/> פתיחת נסיעה</button>}</div>
           </article>)}</div>}
