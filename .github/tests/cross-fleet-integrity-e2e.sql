@@ -53,7 +53,7 @@ DECLARE
   mr_inc_extra uuid := '33000000-0000-4000-8000-000000000004';
   n integer;
 BEGIN
-  -- Synthetic auth identities; all records are rolled back at transaction end.
+  -- Auth identities are provisioned by the SQL runner through Auth Admin API; relational fixtures roll back here.
   -- @auth-fixture u_a fleet-a-fk-test@example.invalid
 -- @auth-fixture u_b fleet-b-fk-test@example.invalid
 
