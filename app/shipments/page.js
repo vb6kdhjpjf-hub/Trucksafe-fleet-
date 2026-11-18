@@ -271,7 +271,7 @@ export default function ShipmentsPage(){
       authGenerationRef.current+=1;
       setUser(null);setFleet(null);setShipments([]);setDrivers([]);setVehicles([]);setNotes([]);setSettings(null);
       setResults({});setSelectedNote(null);setShowForm(false);setShowSettings(false);setForm(emptyForm());
-      setMessage("");setLoading(false);
+      setBusy(false);setMessage("");setLoading(false);
     };
     const initialAuthGeneration=authGenerationRef.current;
     const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,nextSession)=>{
