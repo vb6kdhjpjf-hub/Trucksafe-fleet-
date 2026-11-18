@@ -57,7 +57,11 @@ export async function createHumanReviewEvent({ candidateFile, assessmentReportFi
     candidate_payload_sha256: candidate.payload_sha256,
     assessment_report_sha256: sha256(reportBytes),
     reviewer: reviewer.trim(),
+    reviewer_identity_status: "unverified_assertion",
+    reviewer_identity_verified: false,
     reviewed_at: reviewedAt,
+    reviewed_at_status: "caller_asserted",
+    reviewed_at_verified: false,
     decision,
     notes,
     evidence_refs: [...new Set(evidenceRefs)]

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
@@ -20,25 +20,50 @@ export default function DriversPage() {
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [message, setMessage] = useState("");
+  const authGenerationRef = useRef(0);
+  const authUserIdRef = useRef(null);
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למסד הנתונים אינו מוגדר."); setLoading(false); return; }
     let alive = true;
+    const initialAuthGeneration = authGenerationRef.current;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user?.id || null;
+      if (nextUserId && authUserIdRef.current && nextUserId !== authUserIdRef.current) {
+        authGenerationRef.current += 1;
+        setSession(null); setFleet(null); setDrivers([]);
+        setEditing(null); setShowForm(false); setForm(emptyForm); setMessage("");
+        authUserIdRef.current = nextUserId;
+        if (typeof window !== "undefined") window.location.reload();
+        return;
+      }
+      if (nextUserId) authUserIdRef.current = nextUserId;
+      if (!nextSession) {
+        authUserIdRef.current = null;
+        authGenerationRef.current += 1;
+        setSession(null); setFleet(null); setDrivers([]);
+        setEditing(null); setShowForm(false); setForm(emptyForm); setBusy(false); setMessage("");
+        router.replace("/");
+      }
+    });
     supabase.auth.getSession().then(async ({ data, error }) => {
-      if (!alive) return;
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (error || !data.session) { router.replace("/"); return; }
+      authUserIdRef.current = data.session.user.id;
       setSession(data.session);
-      await loadWorkspace(data.session.user);
-      if (alive) setLoading(false);
+      await loadWorkspace(data.session.user, initialAuthGeneration);
+      if (alive && initialAuthGeneration === authGenerationRef.current) setLoading(false);
+    }).catch(error => {
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
+      setMessage("לא הצלחנו לטעון את רשימת הנהגים: " + (error?.message || "שגיאה לא ידועה"));
+      setLoading(false);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => {
-      if (!next) router.replace("/");
-    });
-    return () => { alive = false; subscription.unsubscribe(); };
+    return () => { alive = false; authGenerationRef.current += 1; subscription.unsubscribe(); };
   }, [router]);
 
-  async function loadWorkspace(user) {
+  async function loadWorkspace(user, authGeneration = authGenerationRef.current) {
     const { data, error } = await resolveFleetWorkspace(supabase, user.id);
+    if (authGeneration !== authGenerationRef.current) return;
     if (error) {
       if (error.code === "AUTH_REQUIRED" || error.code === "NO_FLEET") router.replace("/");
       else setMessage("לא הצלחנו לאמת את הצי: " + error.message);
@@ -46,13 +71,14 @@ export default function DriversPage() {
     }
     const current = data.fleet;
     setFleet(current);
-    await loadDrivers(current.id);
+    await loadDrivers(current.id, authGeneration);
   }
 
-  async function loadDrivers(fleetId) {
+  async function loadDrivers(fleetId, authGeneration = authGenerationRef.current) {
     const { data, error } = await supabase.from("drivers")
       .select("id,full_name,phone,license_number,license_class,license_expires_at,status,created_at")
       .eq("fleet_id", fleetId).order("created_at", { ascending: false });
+    if (authGeneration !== authGenerationRef.current) return;
     if (error) setMessage("שגיאה בטעינת הנהגים: " + error.message);
     else setDrivers(data || []);
   }
@@ -71,6 +97,12 @@ export default function DriversPage() {
 
   async function saveDriver(e) {
     e.preventDefault();
+    const generation = authGenerationRef.current;
+    const requestingUserId = authUserIdRef.current;
+    const isCurrentSession = () => generation === authGenerationRef.current
+      && Boolean(requestingUserId) && requestingUserId === authUserIdRef.current
+      && requestingUserId === session?.user?.id;
+    if (!isCurrentSession()) return;
     if (!canManageDrivers) { setMessage("אין לך הרשאה לניהול נהגים."); return; }
     if (!fleet) return;
     if (!form.full_name.trim()) { setMessage("יש להזין שם מלא לנהג."); return; }
@@ -86,15 +118,23 @@ export default function DriversPage() {
       const result = wasEditing
         ? await supabase.from("drivers").update(payload).eq("id", editing.id).eq("fleet_id", fleet.id)
         : await supabase.from("drivers").insert({ ...payload, fleet_id: fleet.id, status: "active" });
+      if (!isCurrentSession()) return;
       if (result.error) { setMessage("לא הצלחנו לשמור את הנהג: " + result.error.message); return; }
       setShowForm(false); setEditing(null); setForm(emptyForm);
-      await loadDrivers(fleet.id); setMessage(wasEditing ? "פרטי הנהג עודכנו." : "הנהג נוסף לצי בהצלחה.");
+      await loadDrivers(fleet.id, generation);
+      if (isCurrentSession()) setMessage(wasEditing ? "פרטי הנהג עודכנו." : "הנהג נוסף לצי בהצלחה.");
     } catch (error) {
-      setMessage("שמירת הנהג נכשלה: " + (error?.message || "שגיאה לא ידועה"));
-    } finally { setBusy(false); }
+      if (isCurrentSession()) setMessage("שמירת הנהג נכשלה: " + (error?.message || "שגיאה לא ידועה"));
+    } finally { if (isCurrentSession()) setBusy(false); }
   }
 
   async function toggleStatus(driver) {
+    const generation = authGenerationRef.current;
+    const requestingUserId = authUserIdRef.current;
+    const isCurrentSession = () => generation === authGenerationRef.current
+      && Boolean(requestingUserId) && requestingUserId === authUserIdRef.current
+      && requestingUserId === session?.user?.id;
+    if (!isCurrentSession()) return;
     if (!canManageDrivers) { setMessage("אין לך הרשאה לניהול נהגים."); return; }
     if (!fleet || !driver?.id) return;
     const nextStatus = driver.status === "active" ? "off_duty" : "active";
@@ -103,20 +143,23 @@ export default function DriversPage() {
       if (nextStatus === "off_duty") {
         const { data: activeTrips, error: tripError } = await supabase.from("trips")
           .select("id").eq("fleet_id", fleet.id).eq("driver_id", driver.id).eq("status", "active").limit(1);
+        if (!isCurrentSession()) return;
         if (tripError) { setMessage("לא ניתן לבדוק נסיעות פעילות: " + tripError.message); return; }
         if (activeTrips?.length) {
           setMessage("לא ניתן להשבית נהג במהלך נסיעה פעילה. יש לסיים את הנסיעה תחילה.");
           return;
         }
       }
+      if (!isCurrentSession()) return;
       const { error } = await supabase.from("drivers").update({ status: nextStatus })
         .eq("id", driver.id).eq("fleet_id", fleet.id);
+      if (!isCurrentSession()) return;
       if (error) { setMessage("לא הצלחנו לעדכן את סטטוס הנהג: " + error.message); return; }
-      await loadDrivers(fleet.id);
-      setMessage(nextStatus === "active" ? "הנהג סומן כפעיל." : "הנהג סומן כלא פעיל.");
+      await loadDrivers(fleet.id, generation);
+      if (isCurrentSession()) setMessage(nextStatus === "active" ? "הנהג סומן כפעיל." : "הנהג סומן כלא פעיל.");
     } catch (error) {
-      setMessage("עדכון סטטוס הנהג נכשל: " + (error?.message || "שגיאה לא ידועה"));
-    } finally { setBusy(false); }
+      if (isCurrentSession()) setMessage("עדכון סטטוס הנהג נכשל: " + (error?.message || "שגיאה לא ידועה"));
+    } finally { if (isCurrentSession()) setBusy(false); }
   }
 
   const today = getIsraelCalendarDate();
@@ -152,6 +195,7 @@ export default function DriversPage() {
       <h3>רשימת נהגים</h3><p>פרטי קשר, רישיון וסטטוס העסקה</p></div>{canManageDrivers && <button className="primary-btn" onClick={startAdd}><Plus size={16}/> הוספת נהג</button>}</div>
         {showForm && canManageDrivers && <form className="driver-form" onSubmit={saveDriver}>
           <div className="driver-form-title">{editing ? "עריכת פרטי נהג" : "הוספת נהג חדש"}</div>
+          <div className="auth-message" role="note">חשוב: פרטי דרגת הרישיון ותאריך התוקף הם רישום בלבד. המערכת עדיין אינה מאמתת מסמכי רישיון או התאמה חוקית בין הנהג, הרכב והנגרר. יש לבדוק את המסמכים המקוריים מול גורם מוסמך לפני שיבוץ לנסיעה.</div>
           <div className="driver-form-grid">
             <label>שם מלא *<input required value={form.full_name} onChange={e=>setForm({...form,full_name:e.target.value})} placeholder="שם הנהג"/></label>
             <label>טלפון<input type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="050-0000000"/></label>

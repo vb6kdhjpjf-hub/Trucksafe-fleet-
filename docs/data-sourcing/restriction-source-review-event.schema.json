@@ -15,7 +15,11 @@
     "candidate_payload_sha256",
     "assessment_report_sha256",
     "reviewer",
+    "reviewer_identity_status",
+    "reviewer_identity_verified",
     "reviewed_at",
+    "reviewed_at_status",
+    "reviewed_at_verified",
     "decision",
     "notes",
     "evidence_refs",
@@ -71,9 +75,21 @@
       "minLength": 1,
       "maxLength": 200
     },
+    "reviewer_identity_status": {
+      "const": "unverified_assertion"
+    },
+    "reviewer_identity_verified": {
+      "const": false
+    },
     "reviewed_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "reviewed_at_status": {
+      "const": "caller_asserted"
+    },
+    "reviewed_at_verified": {
+      "const": false
     },
     "decision": {
       "enum": [

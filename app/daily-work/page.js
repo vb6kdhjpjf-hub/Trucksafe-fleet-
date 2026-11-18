@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
@@ -37,6 +37,8 @@ export default function DailyWorkPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [messageKind, setMessageKind] = useState("info");
+  const authGenerationRef = useRef(0);
+  const authUserIdRef = useRef(null);
 
   const canManage = ["owner", "fleet_manager", "dispatcher"].includes(fleet?.role);
   const canRead = Boolean(fleet?.id);
@@ -46,8 +48,9 @@ export default function DailyWorkPage() {
 
   const notify = (text, kind = "info") => { setMessage(text); setMessageKind(kind); };
 
-  const loadData = useCallback(async (user) => {
+  const loadData = useCallback(async (user, authGeneration = authGenerationRef.current) => {
     const { data, error } = await resolveFleetWorkspace(supabase, user.id);
+    if (authGeneration !== authGenerationRef.current) return;
     if (error) {
       if (error.code === "AUTH_REQUIRED" || error.code === "NO_FLEET") router.replace("/");
       else notify("לא הצלחנו לאמת את סביבת העבודה: " + error.message, "error");
@@ -60,6 +63,7 @@ export default function DailyWorkPage() {
       supabase.from("vehicles").select("id,registration_number,vehicle_type,status,empty_weight_kg,gross_weight_kg,weight_per_axle_kg,registration_verification_status").eq("fleet_id", current.id).order("registration_number"),
       supabase.from("daily_work_plans").select("id,fleet_id,work_date,driver_id,vehicle_id,status,tare_weight_kg,registered_gross_limit_kg,registered_axle_limit_kg,current_gross_weight_kg,current_heaviest_axle_kg,load_revision,measurement_at,measurement_source,measurement_reference,created_at").eq("fleet_id", current.id).order("work_date", { ascending: false }).limit(50)
     ]);
+    if (authGeneration !== authGenerationRef.current) return;
     if (d.error) notify("שגיאה בטעינת הנהגים: " + d.error.message, "error"); else setDrivers(d.data || []);
     if (v.error) notify("שגיאה בטעינת כלי הרכב: " + v.error.message, "error"); else setVehicles(v.data || []);
     if (p.error) { notify("שגיאה בטעינת תוכניות העבודה: " + p.error.message, "error"); setPlans([]); setStopsByPlan({}); return; }
@@ -69,6 +73,7 @@ export default function DailyWorkPage() {
     const stopResult = await supabase.from("daily_work_stops")
       .select("id,fleet_id,plan_id,sequence_no,operation_kind,address,planned_quantity_kg,status,actual_quantity_kg,completed_at")
       .eq("fleet_id", current.id).in("plan_id", rows.map(row => row.id)).order("sequence_no");
+    if (authGeneration !== authGenerationRef.current) return;
     if (stopResult.error) notify("שגיאה בטעינת תחנות העבודה: " + stopResult.error.message, "error");
     else {
       const grouped = {};
@@ -80,15 +85,38 @@ export default function DailyWorkPage() {
   useEffect(() => {
     if (!isSupabaseConfigured) { notify("החיבור למסד הנתונים אינו מוגדר.", "error"); setLoading(false); return; }
     let alive = true;
-    supabase.auth.getSession().then(async ({ data, error }) => {
-      if (!alive) return;
-      if (error || !data.session) { router.replace("/"); return; }
-      setSession(data.session);
-      await loadData(data.session.user);
-      if (alive) setLoading(false);
+    const clearPrivateState = () => {
+      authGenerationRef.current += 1;
+      setSession(null); setFleet(null); setDrivers([]); setVehicles([]); setPlans([]); setStopsByPlan({});
+      setForm(blankForm()); setMeasurements({}); setShowForm(false); setBusy(false); setMessage(""); setMessageKind("info");
+    };
+    const initialAuthGeneration = authGenerationRef.current;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user?.id || null;
+      if (nextUserId && authUserIdRef.current && nextUserId !== authUserIdRef.current) {
+        clearPrivateState();
+        authUserIdRef.current = nextUserId;
+        if (typeof window !== "undefined") window.location.reload();
+        return;
+      }
+      if (nextUserId) authUserIdRef.current = nextUserId;
+      if (!nextSession) {
+        authUserIdRef.current = null;
+        clearPrivateState();
+        router.replace("/");
+      }
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => { if (!next) router.replace("/"); });
-    return () => { alive = false; subscription.unsubscribe(); };
+    supabase.auth.getSession().then(async ({ data, error }) => {
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
+      if (error || !data.session) { router.replace("/"); return; }
+      authUserIdRef.current = data.session.user.id;
+      setSession(data.session);
+      await loadData(data.session.user, initialAuthGeneration);
+      if (alive && initialAuthGeneration === authGenerationRef.current) setLoading(false);
+    }).catch(error => {
+      if (alive && initialAuthGeneration === authGenerationRef.current) { notify("לא הצלחנו לטעון את תוכניות העבודה: " + (error?.message || "שגיאה לא ידועה"), "error"); setLoading(false); }
+    });
+    return () => { alive = false; authGenerationRef.current += 1; subscription.unsubscribe(); };
   }, [router, loadData]);
 
   function updateStop(index, field, value) {
@@ -98,6 +126,7 @@ export default function DailyWorkPage() {
   async function createPlan(event) {
     event.preventDefault();
     if (!canManage || !fleet || busy) return;
+    const actionAuthGeneration = authGenerationRef.current;
     const f = form;
     if (!f.driver_id || !f.vehicle_id || !f.work_date || !f.measurement_reference.trim()) {
       notify("יש למלא תאריך, נהג, רכב ואסמכתת שקילה.", "error"); return;
@@ -130,30 +159,34 @@ export default function DailyWorkPage() {
           planned_quantity_kg: Number(stop.planned_quantity_kg)
         }))
       });
+      if (actionAuthGeneration !== authGenerationRef.current) return;
       if (error) { notify("לא ניתן ליצור תוכנית עבודה: " + error.message, "error"); return; }
       setForm(blankForm()); setShowForm(false);
-      await loadData(session.user);
-      notify("תוכנית העבודה ותחנותיה נשמרו יחד בהצלחה. התוכנית ממתינה להפעלה.", "success");
+      await loadData(session.user, actionAuthGeneration);
+      if (actionAuthGeneration === authGenerationRef.current) notify("תוכנית העבודה ותחנותיה נשמרו יחד בהצלחה. התוכנית ממתינה להפעלה.", "success");
     } catch (error) {
-      notify("יצירת התוכנית נכשלה: " + (error?.message || "שגיאה לא ידועה"), "error");
-    } finally { setBusy(false); }
+      if (actionAuthGeneration === authGenerationRef.current) notify("יצירת התוכנית נכשלה: " + (error?.message || "שגיאה לא ידועה"), "error");
+    } finally { if (actionAuthGeneration === authGenerationRef.current) setBusy(false); }
   }
 
   async function activatePlan(plan) {
     if (!canManage || plan.status !== "planned" || busy) return;
+    const actionAuthGeneration = authGenerationRef.current;
     setBusy(true); notify("");
     try {
       const { error } = await supabase.rpc("activate_daily_work_plan", {
         p_fleet_id: fleet.id,
         p_plan_id: plan.id
       });
+      if (actionAuthGeneration !== authGenerationRef.current) return;
       if (error) { notify("לא ניתן להפעיל את התוכנית. ייתכן שכבר קיים שיבוץ פעיל לאותו נהג או רכב: " + error.message, "error"); return; }
-      await loadData(session.user);
-      notify("התוכנית הופעלה. הנהג יכול לדווח תחנות עם מדידות מאומתות.", "success");
-    } finally { setBusy(false); }
+      await loadData(session.user, actionAuthGeneration);
+      if (actionAuthGeneration === authGenerationRef.current) notify("התוכנית הופעלה. הנהג יכול לדווח תחנות עם מדידות מאומתות.", "success");
+    } finally { if (actionAuthGeneration === authGenerationRef.current) setBusy(false); }
   }
 
   async function completeStop(plan, stop) {
+    const actionAuthGeneration = authGenerationRef.current;
     const input = measurements[stop.id] || {};
     const quantity = Number(input.quantity_kg ?? stop.planned_quantity_kg);
     const gross = Number(input.measured_gross_weight_kg);
@@ -180,12 +213,13 @@ export default function DailyWorkPage() {
         p_measurement_reference: input.reference.trim(),
         p_expected_revision: plan.load_revision
       });
+      if (actionAuthGeneration !== authGenerationRef.current) return;
       if (error) { notify("התחנה לא עודכנה. בדוק שהשקילה עדכנית ושהמשקלים עומדים במגבלות: " + error.message, "error"); return; }
-      await loadData(session.user);
-      notify("התחנה הושלמה והמשקלים עודכנו ביומן המאובטח.", "success");
+      await loadData(session.user, actionAuthGeneration);
+      if (actionAuthGeneration === authGenerationRef.current) notify("התחנה הושלמה והמשקלים עודכנו ביומן המאובטח.", "success");
     } catch (error) {
-      notify("עדכון התחנה נכשל: " + (error?.message || "שגיאה לא ידועה"), "error");
-    } finally { setBusy(false); }
+      if (actionAuthGeneration === authGenerationRef.current) notify("עדכון התחנה נכשל: " + (error?.message || "שגיאה לא ידועה"), "error");
+    } finally { if (actionAuthGeneration === authGenerationRef.current) setBusy(false); }
   }
 
   if (loading) return <main className="fleet-home" dir="rtl"><section className="fleet-content"><div className="fleet-panel">טוען תוכניות עבודה...</div></section></main>;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
@@ -26,23 +26,56 @@ export default function IncidentsPage() {
   const [gpsBusy,setGpsBusy] = useState(false);
   const [photoFile,setPhotoFile] = useState(null);
   const [resolutionNotes,setResolutionNotes] = useState({});
+  const authGenerationRef = useRef(0);
+  const authUserIdRef = useRef(null);
+  const incidentLoadGenerationRef = useRef(0);
+  const gpsRequestGenerationRef = useRef(0);
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למסד הנתונים אינו מוגדר."); setLoading(false); return; }
     let alive = true;
-    supabase.auth.getSession().then(async ({data,error}) => {
-      if (!alive) return;
-      if (error || !data.session) { router.replace("/"); return; }
-      setSession(data.session);
-      await loadWorkspace(data.session.user);
-      if (alive) setLoading(false);
+    const clearPrivateState = () => {
+      authGenerationRef.current += 1;
+      incidentLoadGenerationRef.current += 1;
+      gpsRequestGenerationRef.current += 1;
+      setSession(null); setFleet(null); setIncidents([]); setDrivers([]); setVehicles([]);
+      setForm(emptyForm); setShowForm(false); setBusy(false); setMessage("");
+      setGps({latitude:null,longitude:null}); setGpsBusy(false); setPhotoFile(null); setResolutionNotes({});
+    };
+    const initialAuthGeneration = authGenerationRef.current;
+    const {data:{subscription}} = supabase.auth.onAuthStateChange((_event,nextSession) => {
+      const nextUserId = nextSession?.user?.id || null;
+      if (nextUserId && authUserIdRef.current && nextUserId !== authUserIdRef.current) {
+        clearPrivateState();
+        authUserIdRef.current = nextUserId;
+        if (typeof window !== "undefined") window.location.reload();
+        return;
+      }
+      if (nextUserId) authUserIdRef.current = nextUserId;
+      if (!nextSession) {
+        authUserIdRef.current = null;
+        clearPrivateState();
+        router.replace("/");
+      }
     });
-    const {data:{subscription}} = supabase.auth.onAuthStateChange((_event,next) => { if (!next) router.replace("/"); });
-    return () => { alive = false; subscription.unsubscribe(); };
+    supabase.auth.getSession().then(async ({data,error}) => {
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
+      if (error || !data.session) { router.replace("/"); return; }
+      authUserIdRef.current = data.session.user.id;
+      setSession(data.session);
+      await loadWorkspace(data.session.user, initialAuthGeneration);
+      if (alive && initialAuthGeneration === authGenerationRef.current) setLoading(false);
+    }).catch(error => {
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
+      setMessage("לא הצלחנו לטעון את אירועי הבטיחות: " + (error?.message || "שגיאה לא ידועה"));
+      setLoading(false);
+    });
+    return () => { alive = false; authGenerationRef.current += 1; subscription.unsubscribe(); };
   },[router]);
 
-  async function loadWorkspace(user) {
+  async function loadWorkspace(user, authGeneration = authGenerationRef.current) {
     const { data, error } = await resolveFleetWorkspace(supabase, user.id);
+    if (authGeneration !== authGenerationRef.current) return;
     if (error) {
       if (error.code === "AUTH_REQUIRED" || error.code === "NO_FLEET") router.replace("/");
       else setMessage("לא הצלחנו לאמת את הצי: " + error.message);
@@ -50,39 +83,50 @@ export default function IncidentsPage() {
     }
     const current = data.fleet;
     setFleet(current);
-    await loadIncidents(current.id);
+    await loadIncidents(current.id, authGeneration);
+    if (authGeneration !== authGenerationRef.current) return;
     const [d,v] = await Promise.all([
       supabase.from("drivers").select("id,full_name").eq("fleet_id",current.id),
       supabase.from("vehicles").select("id,registration_number").eq("fleet_id",current.id)
     ]);
+    if (authGeneration !== authGenerationRef.current) return;
     if (!d.error) setDrivers(d.data||[]);
     if (!v.error) setVehicles(v.data||[]);
   }
 
-  async function loadIncidents(fleetId) {
+  async function loadIncidents(fleetId, authGeneration = authGenerationRef.current) {
+    const requestGeneration = ++incidentLoadGenerationRef.current;
+    const isCurrent = () => authGeneration === authGenerationRef.current && requestGeneration === incidentLoadGenerationRef.current;
     const {data,error} = await supabase.from("incidents")
       .select("id,incident_type,severity,description,location_text,latitude,longitude,status,reported_at,resolved_at,driver_id,vehicle_id,photo_path")
       .eq("fleet_id",fleetId).order("reported_at",{ascending:false});
+    if (!isCurrent()) return;
     if (error) setMessage("שגיאה בטעינת אירועי הבטיחות: "+error.message);
     else {
       const rows = await Promise.all((data||[]).map(async item => {
         if (!item.photo_path) return item;
-        const {data:photo} = await supabase.storage.from("incident-photos").createSignedUrl(item.photo_path,3600);
+        const {data:photo} = await supabase.storage.from("incident-photos").createSignedUrl(item.photo_path,60);
         return {...item,photo_url:photo?.signedUrl||null};
       }));
+      if (!isCurrent()) return;
       setIncidents(rows);
     }
   }
 
   function captureIncidentLocation() {
     if (!navigator.geolocation) { setMessage("המכשיר אינו תומך בקבלת מיקום GPS."); return; }
+    const requestGeneration = ++gpsRequestGenerationRef.current;
+    const authGeneration = authGenerationRef.current;
+    const isCurrent = () => authGeneration === authGenerationRef.current && requestGeneration === gpsRequestGenerationRef.current;
     setGpsBusy(true); setMessage("מקבל מיקום GPS...");
     navigator.geolocation.getCurrentPosition(position => {
+      if (!isCurrent()) return;
       const latitude=position.coords.latitude, longitude=position.coords.longitude;
       setGps({latitude,longitude});
       setForm(old=>({...old,location_text:old.location_text||"מיקום GPS"}));
       setGpsBusy(false); setMessage("מיקום האירוע נקלט בהצלחה.");
     }, error => {
+      if (!isCurrent()) return;
       setGpsBusy(false);
       setMessage(error.code===1?"לא אושרה הרשאת מיקום. אפשר להזין מיקום ידנית.":"לא ניתן לקבל מיקום כרגע. אפשר להזין מיקום ידנית.");
     }, {enableHighAccuracy:true,timeout:20000,maximumAge:10000});
@@ -95,6 +139,7 @@ export default function IncidentsPage() {
     if (form.driver_id && !drivers.some(driver=>driver.id===form.driver_id)) { setMessage("הנהג שנבחר אינו שייך לצי הפעיל. רענן את הרשימה ובחר נהג תקין."); return; }
     if (form.vehicle_id && !vehicles.some(vehicle=>vehicle.id===form.vehicle_id)) { setMessage("הרכב שנבחר אינו שייך לצי הפעיל. רענן את הרשימה ובחר רכב תקין."); return; }
     if ((gps.latitude == null) !== (gps.longitude == null)) { setMessage("נתוני המיקום אינם מלאים. נסה לקלוט GPS מחדש או נקה את המיקום."); return; }
+    const actionAuthGeneration = authGenerationRef.current;
     setBusy(true); setMessage("");
     let photoPath = null;
     try {
@@ -104,8 +149,10 @@ export default function IncidentsPage() {
         const extension = photoFile.type === "image/png" ? "png" : photoFile.type === "image/webp" ? "webp" : "jpg";
         photoPath = fleet.id+"/incidents/"+crypto.randomUUID()+"."+extension;
         const {error:uploadError} = await supabase.storage.from("incident-photos").upload(photoPath,photoFile,{contentType:photoFile.type,upsert:false});
-        if (uploadError) { setMessage("העלאת התמונה נכשלה: "+uploadError.message); return; }
+        if (uploadError) { if (actionAuthGeneration === authGenerationRef.current) setMessage("העלאת התמונה נכשלה: "+uploadError.message); return; }
+        if (actionAuthGeneration !== authGenerationRef.current) return;
       }
+      if (actionAuthGeneration !== authGenerationRef.current) return;
       const payload = {
         fleet_id:fleet.id, incident_type:form.incident_type, severity:form.severity,
         description:form.description.trim(), location_text:form.location_text.trim()||null,
@@ -114,6 +161,7 @@ export default function IncidentsPage() {
         status:"open", reported_at:new Date().toISOString(), created_by:session.user.id
       };
       const {error} = await supabase.from("incidents").insert(payload);
+      if (actionAuthGeneration !== authGenerationRef.current) return;
       if (error) {
         if (photoPath) {
           const {error:cleanupError} = await supabase.storage.from("incident-photos").remove([photoPath]);
@@ -124,13 +172,15 @@ export default function IncidentsPage() {
       }
       photoPath = null;
       setForm(emptyForm); setGps({latitude:null,longitude:null}); setPhotoFile(null); setShowForm(false);
-      await loadIncidents(fleet.id); setMessage("האירוע דווח ונשמר במערכת.");
+      await loadIncidents(fleet.id, actionAuthGeneration);
+      if (actionAuthGeneration === authGenerationRef.current) setMessage("האירוע דווח ונשמר במערכת.");
     } catch (error) {
+      if (actionAuthGeneration !== authGenerationRef.current) return;
       if (photoPath) {
         const {error:cleanupError} = await supabase.storage.from("incident-photos").remove([photoPath]);
         setMessage("דיווח האירוע נכשל: "+(error?.message||"שגיאה לא ידועה")+(cleanupError ? " בנוסף, מחיקת התמונה נכשלה: "+cleanupError.message : ""));
       } else setMessage("דיווח האירוע נכשל: "+(error?.message||"שגיאה לא ידועה"));
-    } finally { setBusy(false); }
+    } finally { if (actionAuthGeneration === authGenerationRef.current) setBusy(false); }
   }
 
   const canResolveIncidents = ["owner","fleet_manager","safety_manager"].includes(fleet?.role);
@@ -142,14 +192,22 @@ export default function IncidentsPage() {
     const resolutionNote=(resolutionNotes[incident.id]||"").trim();
     if(resolutionNote.length<5){setMessage("יש לתעד את אופן הטיפול באירוע (לפחות 5 תווים).");return;}
     if(resolutionNote.length>1000){setMessage("תיעוד הטיפול מוגבל ל-1,000 תווים.");return;}
+    const actionAuthGeneration = authGenerationRef.current;
     setBusy(true); setMessage("");
     try {
       const {error} = await supabase.from("incidents").update({status:"resolved",resolution_notes:resolutionNote}).eq("id",incident.id).eq("fleet_id",fleet.id);
+      if (actionAuthGeneration !== authGenerationRef.current) return;
       if (error) setMessage("לא הצלחנו לעדכן את האירוע: "+error.message);
-      else { await loadIncidents(fleet.id); setResolutionNotes(current=>({...current,[incident.id]:""})); setMessage("האירוע סומן כטופל ותיעוד הטיפול נשמר."); }
+      else {
+        await loadIncidents(fleet.id, actionAuthGeneration);
+        if (actionAuthGeneration === authGenerationRef.current) {
+          setResolutionNotes(current=>({...current,[incident.id]:""}));
+          setMessage("האירוע סומן כטופל ותיעוד הטיפול נשמר.");
+        }
+      }
     } catch(error) {
-      setMessage("עדכון האירוע נכשל: "+(error?.message||"שגיאה לא ידועה"));
-    } finally { setBusy(false); }
+      if (actionAuthGeneration === authGenerationRef.current) setMessage("עדכון האירוע נכשל: "+(error?.message||"שגיאה לא ידועה"));
+    } finally { if (actionAuthGeneration === authGenerationRef.current) setBusy(false); }
   }
 
   async function signOut() { await supabase.auth.signOut(); router.replace("/"); }

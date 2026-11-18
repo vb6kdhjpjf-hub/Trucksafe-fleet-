@@ -1,0 +1,284 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TruckSafe normalized point of interest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "poi_id",
+    "name",
+    "category",
+    "geometry",
+    "truck_access_status",
+    "source",
+    "observed_at",
+    "last_checked_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "poi_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "name": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 160
+    },
+    "category": {
+      "enum": [
+        "fuel",
+        "food",
+        "truck_parking",
+        "rest_area",
+        "driver_facilities",
+        "truck_workshop",
+        "mobile_mechanic",
+        "tire_service",
+        "roadside_assistance",
+        "truck_wash",
+        "weighbridge",
+        "air_service",
+        "logistics_hub",
+        "loading_area",
+        "depot",
+        "lodging",
+        "convenience",
+        "pharmacy"
+      ]
+    },
+    "geometry": {
+      "$ref": "#/$defs/point"
+    },
+    "truck_access_status": {
+      "enum": [
+        "confirmed_truck_access",
+        "restricted_truck_access",
+        "unknown",
+        "not_applicable"
+      ]
+    },
+    "vehicle_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_height_cm": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "max_width_cm": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "max_length_cm": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5000
+        },
+        "max_gross_weight_kg": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "max_axle_weight_kg": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50000
+        }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "diesel",
+          "adblue",
+          "high_flow_pump",
+          "ev_charging",
+          "restaurant",
+          "cafe",
+          "toilets",
+          "showers",
+          "secure_parking",
+          "overnight_parking",
+          "truck_wash",
+          "weighbridge",
+          "air",
+          "workshop",
+          "tires",
+          "roadside_assistance",
+          "loading",
+          "unloading",
+          "lodging",
+          "pharmacy"
+        ]
+      }
+    },
+    "opening_hours": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "source_checked_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "parking": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "capacity": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "available_spaces": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "availability_checked_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "availability_source": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "contact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "phone": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "website": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_id",
+        "source_class",
+        "source_url",
+        "license_review_status"
+      ],
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "source_class": {
+          "enum": [
+            "official_authority",
+            "licensed_provider",
+            "operator_verified",
+            "user_submission"
+          ]
+        },
+        "source_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "license_review_status": {
+          "enum": [
+            "approved",
+            "pending",
+            "rejected"
+          ]
+        },
+        "attribution": {
+          "type": "string",
+          "maxLength": 300
+        }
+      }
+    },
+    "truck_access_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_class",
+        "source_url",
+        "verified_at",
+        "expires_at"
+      ],
+      "properties": {
+        "source_class": {
+          "enum": [
+            "official_authority",
+            "licensed_provider",
+            "operator_verified"
+          ]
+        },
+        "source_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "verified_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 500
+        }
+      }
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_checked_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "latitude",
+        "longitude"
+      ],
+      "properties": {
+        "latitude": {
+          "type": "number",
+          "minimum": 29,
+          "maximum": 34
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": 34,
+          "maximum": 36
+        }
+      }
+    }
+  }
+}

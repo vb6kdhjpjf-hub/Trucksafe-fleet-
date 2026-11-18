@@ -53,11 +53,9 @@ DECLARE
   mr_inc_extra uuid := '33000000-0000-4000-8000-000000000004';
   n integer;
 BEGIN
-  -- Synthetic auth identities; all records are rolled back at transaction end.
-  INSERT INTO auth.users (id, aud, role, email, created_at, updated_at)
-  VALUES
-    (u_a, 'authenticated', 'authenticated', 'fleet-a-fk-test@example.invalid', now(), now()),
-    (u_b, 'authenticated', 'authenticated', 'fleet-b-fk-test@example.invalid', now(), now());
+  -- Auth identities are provisioned by the SQL runner through Auth Admin API; relational fixtures roll back here.
+  -- @auth-fixture u_a fleet-a-fk-test@example.invalid
+-- @auth-fixture u_b fleet-b-fk-test@example.invalid
 
   INSERT INTO public.fleets (id, name, owner_user_id)
   VALUES (f_a, 'FK Test Fleet A', u_a), (f_b, 'FK Test Fleet B', u_b);
@@ -356,6 +354,24 @@ BEGIN
   );
   IF visible_rows <> 1 THEN
     RAISE EXCEPTION 'Driver RLS failure: driver should see only own trip; saw % rows', visible_rows;
+  END IF;
+
+  SELECT count(*) INTO visible_rows
+  FROM public.trip_locations
+  WHERE trip_id IN (
+    'ff000000-0000-4000-8000-000000000001',
+    'ff000000-0000-4000-8000-000000000002',
+    'ff000000-0000-4000-8000-000000000003'
+  );
+  IF visible_rows <> 1 THEN
+    RAISE EXCEPTION 'Driver RLS failure: driver should see only the remaining GPS point from own Fleet A trip; saw % rows', visible_rows;
+  END IF;
+
+  SELECT count(*) INTO visible_rows
+  FROM public.trip_locations
+  WHERE trip_id = 'ff000000-0000-4000-8000-000000000002';
+  IF visible_rows <> 0 THEN
+    RAISE EXCEPTION 'Driver RLS failure: driver can see Fleet B GPS locations';
   END IF;
 
   SELECT count(*) INTO visible_rows

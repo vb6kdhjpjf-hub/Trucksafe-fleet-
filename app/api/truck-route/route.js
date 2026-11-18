@@ -146,7 +146,7 @@ export async function POST(request) {
     const specialTypes = new Set(["articulated_crane","telescopic_crane","loader_crane","heavy_lift_crane","mobile_crane","aerial_platform","recovery_crane","concrete_pump","other_special","low_loader"]);
     if (specialTypes.has(savedVehicle.body_type)) {
       const { data, error } = await db.from("vehicle_special_equipment")
-        .select("id,fleet_id,vehicle_id,travel_height_cm,travel_width_cm,travel_length_cm,working_height_cm,working_width_cm,working_length_cm,max_outreach_cm,max_lifting_capacity_kg,axle_configuration,lifting_chart_document_path,evidence_status,evidence_verified_at,evidence_verified_by")
+        .select("id,fleet_id,vehicle_id,equipment_kind,travel_height_cm,travel_width_cm,travel_length_cm,working_height_cm,working_width_cm,working_length_cm,max_outreach_cm,max_lifting_capacity_kg,axle_configuration,lifting_chart_document_path,evidence_status,evidence_verified_at,evidence_verified_by")
         .eq("fleet_id",membership.fleet_id).eq("vehicle_id",vehicleId).maybeSingle();
       if(error||!data)return response({error:"חסר פרופיל ציוד מיוחד מאומת. אין לחשב מסלול למנוף או לרכב ייעודי עד להשלמת בדיקת הציוד."},409);
       specialEquipment=data;
@@ -160,15 +160,17 @@ export async function POST(request) {
     const currentWeightKg = Number(raw.currentWeightKg);
     const weightPerAxleKg = Number(raw.weightPerAxleKg);
     const emptyWeightKg = Number(savedVehicle.empty_weight_kg);
+    const registeredMaxWeightPerAxleKg = vehicleProfile.registeredMaxWeightPerAxleKg;
     const tripWeights = validateTruckTripWeights({
       currentWeightKg,
       weightPerAxleKg,
+      registeredMaxWeightPerAxleKg,
       emptyWeightKg,
       grossWeightKg
     });
     if (!tripWeights) {
       return response({
-        error: "יש להזין משקל כולל בפועל ומשקל מדוד על הסרן העמוס ביותר. נתון הסרן חייב להתבסס על שקילה בפועל, להיות לפחות 500 ק״ג ולא לעלות על המשקל הכולל בפועל."
+        error: "נדרשת מגבלת סרן מרבית מאומתת מרישיון הרכב, ומשקל הסרן שנשקל בפועל חייב להיות לפחות 500 ק״ג ולא לעלות על המגבלה הרשומה או על המשקל הכולל בפועל."
       }, 400);
     }
 

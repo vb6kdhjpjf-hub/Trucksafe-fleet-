@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
@@ -15,32 +15,51 @@ export default function MaintenancePage() {
   const [fleet,setFleet]=useState(null), [vehicles,setVehicles]=useState([]), [records,setRecords]=useState([]), [incidents,setIncidents]=useState([]);
   const [form,setForm]=useState(blank), [showForm,setShowForm]=useState(false), [message,setMessage]=useState("");
   const [compliance,setCompliance]=useState({});
+  const authGenerationRef=useRef(0), authUserIdRef=useRef(null);
 
   useEffect(()=>{
     if(!isSupabaseConfigured){setMessage("החיבור למסד הנתונים אינו מוגדר.");setLoading(false);return;}
     let alive=true;
+    const clearPrivateState=()=>{
+      authGenerationRef.current+=1;
+      setFleet(null);setVehicles([]);setRecords([]);setIncidents([]);setCompliance({});
+      setForm(blank);setShowForm(false);setBusy(false);setMessage("");
+    };
+    const initialAuthGeneration=authGenerationRef.current;
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,nextSession)=>{
+      const nextUserId=nextSession?.user?.id||null;
+      if(nextUserId&&authUserIdRef.current&&nextUserId!==authUserIdRef.current){
+        clearPrivateState();authUserIdRef.current=nextUserId;
+        if(typeof window!=="undefined")window.location.reload();
+        return;
+      }
+      if(nextUserId)authUserIdRef.current=nextUserId;
+      if(!nextSession){authUserIdRef.current=null;clearPrivateState();router.replace("/");}
+    });
     supabase.auth.getSession().then(async ({data,error})=>{
-      if(!alive)return;
-      if(error || !data.session){router.replace("/");return;}
+      if(!alive||initialAuthGeneration!==authGenerationRef.current)return;
+      if(error||!data.session){router.replace("/");return;}
+      authUserIdRef.current=data.session.user.id;
       const {data:workspace,error:workspaceError}=await resolveFleetWorkspace(supabase,data.session.user.id);
+      if(!alive||initialAuthGeneration!==authGenerationRef.current)return;
       if(workspaceError){
         if(workspaceError.code==="AUTH_REQUIRED"||workspaceError.code==="NO_FLEET")router.replace("/");
         else setMessage("לא הצלחנו לאמת את הצי: "+workspaceError.message);
         setLoading(false);return;
       }
       const current=workspace.fleet;
-      setFleet(current); await load(current.id); if(alive)setLoading(false);
-    });
-    const {data:{subscription}}=supabase.auth.onAuthStateChange((_e,s)=>{if(!s)router.replace("/");});
-    return ()=>{alive=false;subscription.unsubscribe();};
+      setFleet(current); await load(current.id,initialAuthGeneration); if(alive&&initialAuthGeneration===authGenerationRef.current)setLoading(false);
+    }).catch(error=>{if(alive&&initialAuthGeneration===authGenerationRef.current){setMessage("שגיאה בטעינת התחזוקה: "+(error?.message||"שגיאה לא ידועה"));setLoading(false);}});
+    return ()=>{alive=false;authGenerationRef.current+=1;subscription.unsubscribe();};
   },[router]);
 
-  async function load(id){
+  async function load(id,authGeneration=authGenerationRef.current){
     const [v,r,i]=await Promise.all([
       supabase.from("vehicles").select("id,registration_number,make,model,odometer_km,next_service_at,test_due_at,insurance_due_at,registration_due_at").eq("fleet_id",id).order("registration_number"),
       supabase.from("maintenance_records").select("id,vehicle_id,incident_id,maintenance_type,description,scheduled_at,completed_at,cost,odometer_km,status,created_at").eq("fleet_id",id).order("scheduled_at",{ascending:true}),
       supabase.from("incidents").select("id,vehicle_id,incident_type,description,status,reported_at").eq("fleet_id",id).neq("status","resolved").order("reported_at",{ascending:false})
     ]);
+    if(authGeneration!==authGenerationRef.current)return;
     if(v.error || r.error || i.error){setMessage("שגיאה בטעינת הנתונים: "+(v.error?.message||r.error?.message||i.error?.message));return;}
     setVehicles(v.data||[]);setIncidents(i.data||[]);setCompliance(Object.fromEntries((v.data||[]).map(x=>[x.id,{test_due_at:x.test_due_at||"",insurance_due_at:x.insurance_due_at||"",registration_due_at:x.registration_due_at||""}])));setRecords(r.data||[]);
   }

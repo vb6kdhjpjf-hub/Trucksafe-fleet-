@@ -69,6 +69,8 @@ function formatDuration(seconds) {
 export default function TruckRoutingPage() {
   const router = useRouter();
   const mapElement = useRef(null);
+  const authGenerationRef = useRef(0);
+  const authUserIdRef = useRef(null);
   const [form, setForm] = useState(initial);
   const [vehicles, setVehicles] = useState([]);
   const [vehicleComplianceWarning, setVehicleComplianceWarning] = useState("");
@@ -88,15 +90,36 @@ export default function TruckRoutingPage() {
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למערכת אינו מוגדר."); setLoading(false); return; }
     let alive = true;
+    const clearPrivateState = () => {
+      authGenerationRef.current += 1;
+      setForm(initial); setVehicles([]); setVehicleComplianceWarning(""); setSelectedVehicleId("");
+      setResult(null); setMessage(""); setMapMessage(""); setProviderReady(false);
+      setPtvChecking(false); setPtvCheckResult(null); setPtvRouteChecking(false); setPtvRouteResult(null);
+      setBusy(false); setLocating(false);
+    };
+    const initialAuthGeneration = authGenerationRef.current;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user?.id || null;
+      if (nextUserId && authUserIdRef.current && nextUserId !== authUserIdRef.current) {
+        clearPrivateState(); authUserIdRef.current = nextUserId;
+        if (typeof window !== "undefined") window.location.reload();
+        return;
+      }
+      if (nextUserId) authUserIdRef.current = nextUserId;
+      if (!nextSession) {
+        authUserIdRef.current = null; clearPrivateState(); router.replace("/");
+      }
+    });
     supabase.auth.getSession().then(async ({ data, error }) => {
-      if (!alive) return;
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (error || !data.session) { router.replace("/"); return; }
+      authUserIdRef.current = data.session.user.id;
       const { data: vehicleRows, error: vehicleError } = await supabase
         .from("vehicles")
         .select("id,registration_number,make,model,status,is_demo,test_due_at,insurance_due_at,registration_due_at,registration_verification_status,registration_document_path,registration_verified_at,registration_verified_by,routing_vehicle_type,height_cm,width_cm,length_cm,gross_weight_kg,empty_weight_kg,axle_count,trailer_count,weight_per_axle_kg")
         .in("status", ["available", "assigned"])
         .order("registration_number", { ascending: true });
-      if (!alive) return;
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (vehicleError) {
         setMessage("לא ניתן לטעון את כלי הרכב המורשים לניווט. נסה לטעון מחדש.");
         setVehicles([]);
@@ -112,15 +135,12 @@ export default function TruckRoutingPage() {
       }
       setLoading(false);
       fetch("/api/truck-route").then(response => response.json()).then(status => {
-        if (!alive) return;
+        if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
         setProviderReady(Boolean(status.configured));
         if (!status.configured) setMessage("מנוע ניתוב המשאיות עדיין לא הופעל. יש להשלים חיבור לספק מאושר ולבדוק אותו לפני שימוש.");
-      }).catch(() => { if (alive) setMessage("לא ניתן לבדוק את זמינות שירות הניווט."); });
-    }).catch(() => { if (alive) { setMessage("לא ניתן לאמת את ההתחברות."); setLoading(false); } });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) router.replace("/");
-    });
-    return () => { alive = false; subscription.unsubscribe(); };
+      }).catch(() => { if (alive && initialAuthGeneration === authGenerationRef.current) setMessage("לא ניתן לבדוק את זמינות שירות הניווט."); });
+    }).catch(() => { if (alive && initialAuthGeneration === authGenerationRef.current) { setMessage("לא ניתן לאמת את ההתחברות."); setLoading(false); } });
+    return () => { alive = false; authGenerationRef.current += 1; subscription.unsubscribe(); };
   }, [router]);
 
   useEffect(() => {
@@ -158,7 +178,7 @@ export default function TruckRoutingPage() {
       L.marker(points[0]).addTo(map).bindPopup("מוצא");
       L.marker(points[points.length - 1]).addTo(map).bindPopup("יעד");
       map.fitBounds(line.getBounds().pad(0.12));
-    }).catch(() => setMapMessage("המסלול חושב, אך לא הצלחנו לטעון את שכבת המפה. אפשר לעיין בהוראות הנסיעה."));
+    }).catch(() => { if (!cancelled) setMapMessage("המסלול חושב, אך לא הצלחנו לטעון את שכבת המפה. אפשר לעיין בהוראות הנסיעה."); });
     return () => {
       cancelled = true;
       if (map) map.remove();
@@ -166,10 +186,12 @@ export default function TruckRoutingPage() {
   }, [result]);
 
   async function checkPTVProfiles() {
+    const authGeneration = authGenerationRef.current;
     setPtvChecking(true);
     setPtvCheckResult(null);
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (authGeneration !== authGenerationRef.current) return;
       if (sessionError || !session?.access_token) {
         setPtvCheckResult({ ok: false, reason: "יש להתחבר מחדש למערכת." });
         return;
@@ -179,6 +201,7 @@ export default function TruckRoutingPage() {
         headers: { Authorization: "Bearer " + session.access_token }
       });
       const data = await response.json();
+      if (authGeneration !== authGenerationRef.current) return;
       if (!response.ok || !data.ok) {
         const messages = {
           ptv_key_not_configured: "מפתח PTV לא מוגדר בסביבת הבדיקות.",
@@ -196,17 +219,19 @@ export default function TruckRoutingPage() {
       }
       setPtvCheckResult({ ok: true, ...data });
     } catch {
-      setPtvCheckResult({ ok: false, reason: "לא ניתן להתחבר לבדיקת PTV." });
+      if (authGeneration === authGenerationRef.current) setPtvCheckResult({ ok: false, reason: "לא ניתן להתחבר לבדיקת PTV." });
     } finally {
-      setPtvChecking(false);
+      if (authGeneration === authGenerationRef.current) setPtvChecking(false);
     }
   }
 
   async function checkPTVRouting() {
+    const authGeneration = authGenerationRef.current;
     setPtvRouteChecking(true);
     setPtvRouteResult(null);
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (authGeneration !== authGenerationRef.current) return;
       if (sessionError || !session?.access_token) {
         setPtvRouteResult({ ok: false, reason: "יש להתחבר מחדש למערכת." });
         return;
@@ -216,6 +241,7 @@ export default function TruckRoutingPage() {
         headers: { Authorization: "Bearer " + session.access_token }
       });
       const data = await response.json();
+      if (authGeneration !== authGenerationRef.current) return;
       if (!response.ok || !data.ok) {
         const messages = {
           ptv_key_not_configured: "מפתח PTV אינו מוגדר בסביבת הבדיקות.",
@@ -239,9 +265,9 @@ export default function TruckRoutingPage() {
       }
       setPtvRouteResult({ ok: true, ...data });
     } catch {
-      setPtvRouteResult({ ok: false, reason: "לא ניתן להתחבר לבדיקת Routing API." });
+      if (authGeneration === authGenerationRef.current) setPtvRouteResult({ ok: false, reason: "לא ניתן להתחבר לבדיקת Routing API." });
     } finally {
-      setPtvRouteChecking(false);
+      if (authGeneration === authGenerationRef.current) setPtvRouteChecking(false);
     }
   }
 
@@ -256,10 +282,12 @@ export default function TruckRoutingPage() {
   }
 
   function useCurrentLocation() {
+    const authGeneration = authGenerationRef.current;
     if (!navigator.geolocation) { setMessage("הדפדפן אינו תומך באיתור מיקום."); return; }
     setLocating(true);
     setMessage("");
     navigator.geolocation.getCurrentPosition(position => {
+      if (authGeneration !== authGenerationRef.current) return;
       setForm(current => ({
         ...current,
         origin: "המיקום הנוכחי",
@@ -268,6 +296,7 @@ export default function TruckRoutingPage() {
       setMessage("המיקום הנוכחי נקלט. בדוק שהוא מתאים לנקודת היציאה.");
       setLocating(false);
     }, error => {
+      if (authGeneration !== authGenerationRef.current) return;
       setMessage(error.code === 1 ? "לא אושרה גישה למיקום. אפשר להזין כתובת ידנית." : "לא הצלחנו לקבל מיקום. בדוק GPS ונסה שוב.");
       setLocating(false);
     }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
@@ -275,6 +304,7 @@ export default function TruckRoutingPage() {
 
   async function calculate(event) {
     event.preventDefault();
+    const authGeneration = authGenerationRef.current;
     if (!selectedVehicleId || !vehicles.some(vehicle => vehicle.id === selectedVehicleId)) {
       setMessage("יש לבחור רכב שמור, זמין ומאומת מתוך הצי.");
       return;
@@ -285,8 +315,11 @@ export default function TruckRoutingPage() {
     const savedProfile = getSavedTruckRoutingProfile(selectedVehicle);
     if (!savedProfile || !Number.isFinite(currentWeightKg) ||
         currentWeightKg < savedProfile.emptyWeightKg || currentWeightKg > savedProfile.grossWeightKg ||
-        !Number.isFinite(weightPerAxleKg) || weightPerAxleKg < 500 || weightPerAxleKg > currentWeightKg) {
-      setMessage("יש להזין משקל כולל בפועל ומשקל שקול בפועל על הסרן העמוס ביותר. אין להעריך או לחשב את משקל הסרן באמצעות חלוקת המשקל הכולל.");
+        !Number.isFinite(savedProfile.registeredMaxWeightPerAxleKg) ||
+        !Number.isFinite(weightPerAxleKg) || weightPerAxleKg < 500 ||
+        weightPerAxleKg > currentWeightKg ||
+        weightPerAxleKg > savedProfile.registeredMaxWeightPerAxleKg) {
+      setMessage("יש להזין משקל כולל ומשקל סרן שנמדדו בפועל. נדרשת גם מגבלת סרן מרבית מאומתת מרישיון הרכב; עומס הסרן בפועל אינו יכול לעלות עליה. אין להעריך את עומס הסרן באמצעות חלוקה במספר הסרנים.");
       return;
     }
     if (!providerReady) { setMessage("מנוע ניתוב המשאיות עדיין לא הופעל. אין לחשב מסלול עד להשלמת החיבור והבדיקות."); return; }
@@ -295,6 +328,7 @@ export default function TruckRoutingPage() {
     setResult(null);
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (authGeneration !== authGenerationRef.current) return;
       if (sessionError || !session?.access_token) {
         setMessage("פג תוקף החיבור. יש להתחבר מחדש.");
         return;
@@ -315,6 +349,7 @@ export default function TruckRoutingPage() {
         })
       });
       const data = await response.json();
+      if (authGeneration !== authGenerationRef.current) return;
       if (!response.ok) {
         const details = formatRejectedRouteMessages(data.rejectedCandidates || []);
         setMessage((data.error || "לא הצלחנו לחשב מסלול.") + (details.length ? " פירוט: " + details.join("; ") : ""));
@@ -324,9 +359,9 @@ export default function TruckRoutingPage() {
       if (data.hasCriticalNotices) setMessage("המסלול כולל התראות קריטיות. אין לצאת לדרך על סמך מסלול זה.");
       else setMessage("המסלול חושב. יש לאמת שילוט והגבלות בשטח לפני היציאה.");
     } catch {
-      setMessage("לא ניתן להתחבר לשירות חישוב המסלולים. בדוק חיבור לאינטרנט ונסה שוב.");
+      if (authGeneration === authGenerationRef.current) setMessage("לא ניתן להתחבר לשירות חישוב המסלולים. בדוק חיבור לאינטרנט ונסה שוב.");
     } finally {
-      setBusy(false);
+      if (authGeneration === authGenerationRef.current) setBusy(false);
     }
   }
 
@@ -347,7 +382,7 @@ export default function TruckRoutingPage() {
 
       <section style={{ background: "#fff8e8", border: "1px solid #f0d9a8", borderRadius: 14, padding: 14, marginBottom: 16 }}>
         <b><ShieldAlert size={17} style={{ verticalAlign: "middle" }}/> בטיחות לפני הכול</b>
-        <p style={{ margin: "7px 0 0", lineHeight: 1.6, fontSize: 13 }}>המערכת משתמשת בנתוני ניתוב למשאיות של HERE. גם מסלול ללא התראות אינו הבטחה שהדרך בטוחה או חוקית בכל רגע. חובה לבדוק שילוט, הוראות משטרה, עבודות בכביש ומגבלות מקומיות לפני ובמהלך הנסיעה. מסלול עם התראה קריטית אינו מאושר ליציאה.</p>
+        <p style={{ margin: "7px 0 0", lineHeight: 1.6, fontSize: 13 }}>שירות ניתוב משאיות חיצוני עדיין אינו מופעל במערכת, וספק HERE נשאר נעול עד לאישור נפרד. גם לאחר הפעלה, מסלול ללא התראות לא יבטיח שהדרך בטוחה או חוקית בכל רגע. חובה לבדוק שילוט, הוראות משטרה, עבודות בכביש ומגבלות מקומיות לפני ובמהלך הנסיעה. מסלול עם התראה קריטית לא יאושר ליציאה.</p>
       </section>
 
       {message && <div role="status" style={{ background: result?.hasCriticalNotices ? "#fff0f0" : "#eef4ff", border: "1px solid #dce6f7", borderRadius: 10, padding: 12, marginBottom: 14, lineHeight: 1.5 }}>{message}</div>}
@@ -382,14 +417,14 @@ export default function TruckRoutingPage() {
           <label style={label}>מוצא בישראל<div style={{ display: "flex", gap: 7, marginTop: 6 }}><input required maxLength={180} style={{ ...field, marginTop: 0, minWidth: 0 }} value={form.origin} onChange={e => update("origin", e.target.value)} placeholder="כתובת, יישוב או אזור"/><button type="button" onClick={useCurrentLocation} disabled={locating || busy} style={{ ...field, width: "auto", whiteSpace: "nowrap", marginTop: 0, cursor: "pointer" }}><MapPin size={15} style={{ verticalAlign: "middle" }}/> {locating ? "מאתר..." : "המיקום שלי"}</button></div></label>
           <label style={label}>יעד בישראל<input required maxLength={180} style={field} value={form.destination} onChange={e => update("destination", e.target.value)} placeholder="כתובת, יישוב או אזור"/></label>
           <label style={label}>משקל כולל בפועל לנסיעה (ק״ג)<input required type="number" min={selectedProfile?.emptyWeightKg || 1} max={selectedProfile?.grossWeightKg || 100000} step="1" style={field} value={form.currentWeightKg} onChange={e => update("currentWeightKg", e.target.value)} placeholder={selectedProfile ? `בין ${selectedProfile.emptyWeightKg} ל־${selectedProfile.grossWeightKg}` : "בחר רכב תחילה"} disabled={!selectedProfile}/></label>
-          <label style={label}>משקל בפועל על הסרן העמוס ביותר (ק״ג)<input required type="number" min="500" max={Number(form.currentWeightKg) || selectedProfile?.grossWeightKg || 100000} step="1" style={field} value={form.weightPerAxleKg} onChange={e => update("weightPerAxleKg", e.target.value)} placeholder="לפי שקילה בפועל בלבד" disabled={!selectedProfile}/></label>
+          <label style={label}>משקל בפועל על הסרן העמוס ביותר (ק״ג)<input required type="number" min="500" max={selectedProfile?.registeredMaxWeightPerAxleKg == null ? 0 : Math.min(Number(form.currentWeightKg) || selectedProfile.grossWeightKg, selectedProfile.registeredMaxWeightPerAxleKg)} step="1" style={field} value={form.weightPerAxleKg} onChange={e => update("weightPerAxleKg", e.target.value)} placeholder={selectedProfile?.registeredMaxWeightPerAxleKg == null ? "נדרשת מגבלת סרן מאומתת" : "לפי שקילה בפועל בלבד"} disabled={!selectedProfile || !Number.isFinite(selectedProfile.registeredMaxWeightPerAxleKg)}/></label>
         </div>
         {selectedVehicle && selectedProfile ? <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: "#f5f8fc", border: "1px solid #e1e8f0", lineHeight: 1.7, fontSize: 13 }}>
           <b>פרופיל מאומת של הרכב</b>
           <div>גובה: {selectedProfile.heightCm} ס״מ · רוחב: {selectedProfile.widthCm} ס״מ · אורך: {selectedProfile.lengthCm} ס״מ</div>
           <div>משקל ריק: {selectedProfile.emptyWeightKg.toLocaleString("he-IL")} ק״ג · משקל כולל מותר: {selectedProfile.grossWeightKg.toLocaleString("he-IL")} ק״ג</div>
           <div>סרנים: {selectedProfile.axleCount} · נגררים: {selectedProfile.trailerCount} · מגבלת סרן רשומה: {selectedProfile.registeredMaxWeightPerAxleKg == null ? "לא הוזנה" : selectedProfile.registeredMaxWeightPerAxleKg.toLocaleString("he-IL") + " ק״ג"}</div>
-          <small style={{ color: "#667085" }}>המידות והנתונים נלקחים מפרופיל הרכב השמור שאומת מול מסמכי הרכב. משקל הסרן המוצג, אם קיים, הוא מגבלה רשומה בלבד ולא עומס בפועל. לצורך ניתוב נדרש להזין בנפרד את העומס שנמדד על הסרן העמוס ביותר, כולל מטען.</small>
+          <small style={{ color: "#667085" }}>המידות והנתונים נלקחים מפרופיל הרכב השמור שאומת מול מסמכי הרכב. מגבלת הסרן הרשומה היא תקרת החוק/הרישיון ואינה עומס בפועל. ניתוב חסום אם המגבלה אינה מוזנת ומאומתת, או אם העומס שנשקל על הסרן העמוס ביותר חורג ממנה.</small>
         </div> : <p style={{ color: "#8a4b12", fontSize: 13 }}>לא נמצאו כלי רכב זמינים עם פרופיל ניתוב מלא ואימות רישיון. יש להשלים את פרטי הרכב ואימות המסמכים בלוח הבקרה לפני תכנון מסלול.</p>}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 18 }}>
           <button type="submit" disabled={busy || !providerReady || !selectedVehicleId || !selectedProfile} style={button}><Route size={17} style={{ verticalAlign: "middle" }}/> {busy ? "מחשב מסלול..." : providerReady ? "חשב מסלול למשאית" : "ממתין לחיבור שירות הניווט"}</button>
@@ -398,9 +433,10 @@ export default function TruckRoutingPage() {
       </form>
 
       {result && <section style={{ marginTop: 16, display: "grid", gap: 14 }}>
-        {result.restrictionValidation?.validated && <div style={{ background: "#eef7f0", border: "1px solid #cde7d3", borderRadius: 12, padding: 12, fontSize: 13, lineHeight: 1.5 }}>
-          <b>בדיקת מאגר מגבלות הצי הושלמה.</b>
-          <div>נבדקו {result.restrictionValidation.checkedRecords} רשומות פעילות/לא פעילות. הבדיקה מוגבלת למידע שהוזן ואומת בצי ואינה כוללת בהכרח את כל ההגבלות הרשמיות בישראל.</div>
+        {result.restrictionValidation?.validated && <div style={{ background: "#fff8e8", border: "1px solid #f0d9a8", borderRadius: 12, padding: 12, fontSize: 13, lineHeight: 1.5 }}>
+          <b>בדיקת מאגר הצי הושלמה — אין בכך אישור בטיחות מלא.</b>
+          <div>נבדקו {result.restrictionValidation.checkedRecords} רשומות פעילות/לא פעילות מתוך המידע שהוזן ואומת בצי. המאגר אינו כולל בהכרח את כל ההגבלות הרשמיות בישראל.</div>
+          <div>בדיקת הקרבה הגאוגרפית שמרנית ואינה מאמתת התאמה מדויקת של כל הגבלה לכיוון הנסיעה, לכביש המקביל או לנתיב. לכן ייתכנו חסימות יתר, והיעדר התנגשות במאגר אינו הוכחה שהמסלול בטוח או חוקי.</div>
         </div>}
         <div style={{ background: "white", border: "1px solid #e5eaf1", borderRadius: 14, padding: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -420,7 +456,7 @@ export default function TruckRoutingPage() {
           <ol style={{ paddingRight: 22, lineHeight: 1.8 }}>{result.actions.map((action,i)=><li key={i} style={{ padding: "5px 0" }}>{action.instruction}{action.length ? <small style={{ color: "#718096" }}> · {formatDistance(action.length)}</small> : null}</li>)}</ol>
         </div>}
       </section>}
-      <footer style={{ color: "#8290a3", fontSize: 11, margin: "18px 4px" }}>TruckSafe Fleet · נתוני מסלול: HERE · שכבת מפה: © OpenStreetMap contributors</footer>
+      <footer style={{ color: "#8290a3", fontSize: 11, margin: "18px 4px" }}>TruckSafe Fleet · ספק ניתוב: לא הופעל · שכבת מפה: © OpenStreetMap contributors</footer>
     </div>
   </main>;
 }

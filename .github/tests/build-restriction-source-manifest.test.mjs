@@ -54,6 +54,7 @@ test("detects repeated reviews for the same candidate and report", async t => {
   const result = await buildRestrictionSourceManifest({ quarantineDir: f.root, createdAt: "2026-11-10T18:30:00Z" });
   assert.equal(result.manifest.candidates[0].status, "repeated_review");
   assert.equal(result.manifest.candidates[0].reviews.filter(item => item.valid).length, 2);
+  assert.ok(result.manifest.candidates[0].reviews.every(item => item.reviewer_identity_status === "unverified_assertion" && item.reviewer_identity_verified === false && item.reviewed_at_status === "caller_asserted" && item.reviewed_at_verified === false));
   assert.equal(result.manifest.approved_for_routing, false);
 });
 
