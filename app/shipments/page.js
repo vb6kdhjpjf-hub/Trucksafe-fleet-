@@ -272,6 +272,7 @@ export default function ShipmentsPage(){
       setResults({});setSelectedNote(null);setShowForm(false);setShowSettings(false);setForm(emptyForm());
       setMessage("");setLoading(false);
     };
+    const initialAuthGeneration=authGenerationRef.current;
     const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,nextSession)=>{
       const nextUserId=nextSession?.user?.id||null;
       if(nextUserId&&authUserIdRef.current&&nextUserId!==authUserIdRef.current){
@@ -284,10 +285,10 @@ export default function ShipmentsPage(){
       if(!nextSession){authUserIdRef.current=null;clearPrivateState();router.replace("/");}
     });
     supabase.auth.getSession().then(async({data,error})=>{
-      if(!alive)return;
+      if(!alive||initialAuthGeneration!==authGenerationRef.current)return;
       if(error||!data.session){clearPrivateState();router.replace("/");return;}
       authUserIdRef.current=data.session.user.id;
-      const generation=authGenerationRef.current;
+      const generation=initialAuthGeneration;
       setUser(data.session.user);await loadData(data.session.user,generation);if(alive&&generation===authGenerationRef.current)setLoading(false);
     }).catch(()=>{if(alive){clearPrivateState();router.replace("/");}});
     return()=>{alive=false;subscription.unsubscribe();};
