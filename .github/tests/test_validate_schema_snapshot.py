@@ -25,6 +25,7 @@ class SnapshotValidatorTests(unittest.TestCase):
     def test_rejects_case_and_whitespace_variants(self):
         self.rejects("\n  insert\n into public.items values (1);")
         self.rejects("COPY public.items FROM STDIN;")
+        self.rejects("COPY public.items FROM STDIN WITH (FORMAT csv);")
 
     def test_ignores_insert_and_copy_inside_dollar_body(self):
         self.accepts("""CREATE FUNCTION f() RETURNS void AS $body$
