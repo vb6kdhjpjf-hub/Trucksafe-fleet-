@@ -102,6 +102,7 @@ jobs:
         with:
           node-version: 24
       - name: Install PostgreSQL driver
+        id: install-db
         if: steps.test-db.outputs.available == 'true'
         run: npm install --no-save --ignore-scripts --no-audit --no-fund pg
       - name: Run rollback-only database integration tests
@@ -110,6 +111,12 @@ jobs:
         run: |
           set +x
           node .github/tests/run-sql-tests.mjs
+      - name: Sweep disposable SQL Auth fixtures after test (also runs on failure)
+        if: always() && steps.test-db.outputs.available == 'true' && steps.install-db.outcome == 'success'
+        shell: bash
+        run: |
+          set +x
+          node .github/tests/run-sql-tests.mjs --cleanup-only
 
 
   auth-integration:
