@@ -32,6 +32,8 @@ test("verifies linked candidate, report, and event hashes", async t => {
   const result = await verifyHumanReviewEvent(f);
   assert.equal(result.valid, true);
   assert.equal(result.approved_for_routing, false);
+  assert.equal(result.reviewer_identity_status, "unverified_assertion");
+  assert.equal(result.reviewer_identity_verified, false);
   assert.equal(result.source_id, "agency-dataset-id");
   assert.equal(result.dataset_version, "2026-11");
 });
