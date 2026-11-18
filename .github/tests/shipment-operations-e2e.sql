@@ -15,10 +15,9 @@ declare
  driver_id uuid:='c2000000-0000-4000-8000-000000000001';
  shipment_id uuid; stop_id uuid; result jsonb; rejected boolean; msg text;
 begin
- insert into auth.users(id,aud,role,email,created_at,updated_at) values
- (owner_id,'authenticated','authenticated','shipment-owner@example.invalid',now(),now()),
- (driver_user_id,'authenticated','authenticated','shipment-driver@example.invalid',now(),now()),
- (other_owner_id,'authenticated','authenticated','shipment-other@example.invalid',now(),now());
+ -- @auth-fixture owner_id shipment-owner@example.invalid
+-- @auth-fixture driver_user_id shipment-driver@example.invalid
+-- @auth-fixture other_owner_id shipment-other@example.invalid
  perform set_config('request.jwt.claim.sub',owner_id::text,true);
  perform set_config('request.jwt.claim.role','authenticated',true);
  insert into public.fleets(id,name,owner_user_id) values
