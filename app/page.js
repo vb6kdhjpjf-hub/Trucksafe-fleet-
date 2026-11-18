@@ -13,6 +13,8 @@ export default function Home() {
   const [workspaceChecked,setWorkspaceChecked]=useState(false);
   const [workspaceError,setWorkspaceError]=useState("");
   const fleetLoadRef=useRef(0);
+  const authGenerationRef=useRef(0);
+  const authUserIdRef=useRef(null);
   const [busy,setBusy]=useState(false);
   const [mode,setMode]=useState("login");
   const [email,setEmail]=useState("");
@@ -54,9 +56,10 @@ export default function Home() {
 
   async function loadFleet(user) {
     const requestId=++fleetLoadRef.current;
+    const authGeneration=authGenerationRef.current;
     setWorkspaceChecked(false);
     setWorkspaceError("");
-    const isCurrent=()=>requestId===fleetLoadRef.current;
+    const isCurrent=()=>requestId===fleetLoadRef.current&&authGeneration===authGenerationRef.current;
     const membershipResult=await supabase.from("fleet_members").select("fleet_id,role").eq("user_id",user.id).limit(2);
     if(!isCurrent())return;
     if(membershipResult.error){
@@ -128,12 +131,14 @@ export default function Home() {
       supabase.from("trips").select("id,driver_id,vehicle_id").eq("fleet_id",current.id).eq("status","active"),
       supabase.from("maintenance_records").select("id,vehicle_id,maintenance_type,scheduled_at,status,description").eq("fleet_id",current.id).neq("status","completed").order("scheduled_at",{ascending:true}).limit(30)
     ]);
+    if(!isCurrent())return;
     if(v.error)setMessage("שגיאה בטעינת כלי הרכב: "+v.error.message);
     else {
       const {data:verificationRows,error:verificationError}=await supabase
         .from("vehicles")
         .select("id,registration_verification_status,registration_document_path,registration_document_uploaded_at,registration_verified_at,registration_verification_note")
         .eq("fleet_id",current.id);
+      if(!isCurrent())return;
       const verificationById=new Map((verificationRows||[]).map(row=>[row.id,row]));
       setRegistrationSchemaReady(!verificationError);
       setVehicles((v.data||[]).map(vehicle=>({...vehicle,...(verificationById.get(vehicle.id)||{})})));
@@ -149,19 +154,23 @@ export default function Home() {
         const {data:loc,error:locError}=await supabase.from("trip_locations").select("latitude,longitude,speed_kmh,heading_degrees,recorded_at").eq("trip_id",trip.id).order("recorded_at",{ascending:false}).limit(1).maybeSingle();
         return locError||!loc?null:{...trip,...loc,driver: (d.data||[]).find(x=>x.id===trip.driver_id)?.full_name||"נהג לא ידוע",vehicle:(v.data||[]).find(x=>x.id===trip.vehicle_id)?.registration_number||"רכב לא ידוע"};
       }));
+      if(!isCurrent())return;
       setLiveLocations(points.filter(Boolean));
     } else setLiveLocations([]);
   }
 
   async function refreshLiveLocations() {
     if(!fleet?.id) return;
-    const {data:trips,error}=await supabase.from("trips").select("id,driver_id,vehicle_id").eq("fleet_id",fleet.id).eq("status","active");
-    if(error) return;
+    const authGeneration=authGenerationRef.current;
+    const currentFleetId=fleet.id;
+    const {data:trips,error}=await supabase.from("trips").select("id,driver_id,vehicle_id").eq("fleet_id",currentFleetId).eq("status","active");
+    if(error||authGeneration!==authGenerationRef.current||fleet?.id!==currentFleetId) return;
     const points=await Promise.all((trips||[]).map(async trip=>{
       const {data:loc,error:locError}=await supabase.from("trip_locations").select("id,latitude,longitude,speed_kmh,recorded_at").eq("trip_id",trip.id).order("recorded_at",{ascending:false}).limit(1).maybeSingle();
       if(locError||!loc) return null;
       return {...trip,...loc,driver:drivers.find(d=>d.id===trip.driver_id)?.full_name||"נהג לא ידוע",vehicle:vehicles.find(v=>v.id===trip.vehicle_id)?.registration_number||"רכב לא ידוע"};
     }));
+    if(authGeneration!==authGenerationRef.current||fleet?.id!==currentFleetId)return;
     setLiveLocations(points.filter(Boolean));
   }
 
