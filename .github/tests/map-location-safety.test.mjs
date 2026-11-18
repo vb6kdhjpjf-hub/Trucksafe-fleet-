@@ -318,3 +318,15 @@ test("main dashboard clears private fleet state and rejects stale fleet and GPS 
   assert.ok(source.includes("setIncidentAlerts([])"));
   assert.ok(source.includes("window.location.reload()"));
 });
+
+
+test("trip history rejects stale concurrent list loads and GPS point responses", async () => {
+  const source = await readFile("app/history/page.js", "utf8");
+  assert.ok(source.includes("const historyRequestGenerationRef = useRef(0)"));
+  assert.ok(source.includes("const gpsRequestGenerationRef = useRef(new Map())"));
+  assert.ok(source.includes("requestGeneration === historyRequestGenerationRef.current"));
+  assert.ok(source.includes("requestGeneration === gpsRequestGenerationRef.current.get(trip.id)"));
+  assert.ok(source.includes("if (!isCurrent()) return;"));
+  assert.ok(source.includes("historyRequestGenerationRef.current += 1"));
+  assert.ok(source.includes("gpsRequestGenerationRef.current.clear()"));
+});
