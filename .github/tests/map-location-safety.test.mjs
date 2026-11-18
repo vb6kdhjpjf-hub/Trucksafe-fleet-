@@ -208,7 +208,7 @@ test("imports clear sensitive previews and reject stale identity checks after au
   const source = await readFile("app/imports/page.js", "utf8");
   assert.ok(source.includes("const authUserIdRef = useRef(null)"));
   assert.ok(source.includes("nextUserId !== authUserIdRef.current"));
-  assert.ok(source.includes("setFleet(null); setRole(""); setFilename(""); setParsed(null)"));
+  assert.ok(source.includes('setFleet(null); setRole(""); setFilename(""); setParsed(null)'));
   assert.ok(source.includes("authGeneration === authGenerationRef.current"));
   assert.ok(source.includes("window.location.reload()"));
 });
