@@ -65,23 +65,17 @@ function createAdminClient(url, serviceRoleKey) {
 }
 
 function extractAuthFixtureRows(sql) {
-  const statements = [...sql.matchAll(/\binsert\s+into\s+auth\.users\b[\s\S]*?;/gi)];
-  const rows = [];
-  for (const statement of statements) {
-    const tuplePattern = /\(\s*([a-z_][a-z0-9_]*|'[0-9a-f-]{36}')\s*,\s*'authenticated'\s*,\s*'authenticated'\s*,\s*'([^']+@[^']+)'/gi;
-    for (const match of statement[0].matchAll(tuplePattern)) {
-      rows.push({ identity: match[1], email: match[2] });
-    }
-  }
-  if (statements.length && rows.length === 0) {
-    throw new Error("Found direct auth.users fixture inserts, but could not safely identify their user rows.");
-  }
-  return { statements, rows };
+  const directivePattern = /^\\s*--\\s*@auth-fixture\\s+([a-z_][a-z0-9_]*|'[0-9a-f-]{36}')\\s+([^\\s]+)\\s*$/gim;
+  const rows = [...sql.matchAll(directivePattern)].map((match) => ({
+    identity: match[1],
+    email: match[2]
+  }));
+  return { directivePattern, rows };
 }
 
 async function prepareSqlFixtures(sql, file, admin, createdUsers) {
-  const { statements, rows } = extractAuthFixtureRows(sql);
-  if (statements.length === 0) return sql;
+  const { directivePattern, rows } = extractAuthFixtureRows(sql);
+  if (rows.length === 0) return sql;
 
   const replacements = new Map();
   for (const row of rows) {
@@ -119,10 +113,10 @@ async function prepareSqlFixtures(sql, file, admin, createdUsers) {
     }
   }
 
-  let prepared = sql;
-  for (const statement of statements) {
-    prepared = prepared.replace(statement[0], "-- Auth user fixture created by Supabase Auth Admin API in run-sql-tests.mjs.\n");
-  }
+  let prepared = sql.replace(
+    directivePattern,
+    "-- Auth user fixture created by Supabase Auth Admin API in run-sql-tests.mjs.\\n"
+  );
   for (const [originalId, userId] of replacements) {
     prepared = prepared.split(originalId).join(userId);
   }
