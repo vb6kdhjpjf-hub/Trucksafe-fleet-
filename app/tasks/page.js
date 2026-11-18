@@ -151,7 +151,7 @@ export default function TasksPage() {
     if (task?.assigned_driver_id && !driver) warnings.push("הנהג המשויך לא נמצא ברשימת הצי");
     else if (driver && !isDriverEligibleForVehicleAssignment(driver)) warnings.push(driverAssignmentLabel(driver));
     if (task?.assigned_vehicle_id && !vehicle) warnings.push("הרכב המשויך לא נמצא ברשימת הצי");
-    else if (vehicle && (vehicle.is_demo || !["available", "assigned"].includes(vehicle.status))) warnings.push(vehicleAssignmentLabel(vehicle));
+    else if (vehicle && (vehicle.is_demo || (task?.status === "in_progress" ? vehicle.status !== "on_trip" : !["available", "assigned"].includes(vehicle.status)))) warnings.push(vehicleAssignmentLabel(vehicle));
     if (task?.status === "assigned" && (!task.assigned_driver_id || !task.assigned_vehicle_id)) warnings.push("המשימה מסומנת כשובצה אך חסר נהג או רכב");
     return warnings;
   }
