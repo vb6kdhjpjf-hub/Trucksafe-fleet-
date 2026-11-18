@@ -69,3 +69,32 @@ A single person must not be able to bypass the required independent review by ch
 ## Current disposition
 
 This is a documented gap, not a production incident. No authentication was bypassed, no reviewer identity was verified, no database schema/data was changed and no operational restriction was promoted. Supabase Production remains untouched. PR #19 must remain open and Draft; no merge, deployment, preview or routing-provider activation.
+
+
+## Implementation boundary and next-stage design (2026-11-18)
+
+A read-only inspection of the dedicated Supabase Test schema confirmed that the existing `public.fleet_members` roles (`owner`, `fleet_manager`, `dispatcher`, `safety_manager`, `driver`) are fleet-operational roles. They are not a global source-governance permission model and must not be reused to grant authority over restriction-source evidence. The current source review workflow also has no server endpoint or persisted source-review role registry.
+
+The authenticated implementation should therefore be a separate, global governance boundary rather than an extension of fleet membership:
+
+1. **Principal authentication:** a server route receives the user's access token and validates it with Supabase Auth `getUser(token)`. The authenticated user ID returned by Auth is the only identity used for authorization and audit fields. Request body, URL parameters, display name, `user_metadata`, and caller-provided headers are never identity sources.
+2. **Live permission lookup:** a private, server-managed role registry grants scoped capabilities such as `source_intake`, `evidence_review`, and `operational_approval`. Look up permissions on each sensitive operation so revocation is not dependent on a stale JWT `app_metadata` claim. Do not reuse `fleet_members`.
+3. **Separate records:** persist source captures with server-assigned `imported_by`; persist evidence assessments separately; persist review decisions as append-only events with server-assigned `reviewed_by` and `reviewed_at`; persist operational approval as a distinct event. Store content hashes calculated by the server after fetching stored evidence.
+4. **Separation checks:** reject a review if the authenticated reviewer is the importer, regardless of any display label. Require a different authorized principal for operational approval. Enforce the invariant in the transaction/database boundary as well as the API route, not only in UI code.
+5. **No direct client access:** keep role assignments, candidate evidence, and audit writes in a non-exposed schema with no `anon` or ordinary `authenticated` table grants. Expose only narrowly scoped server operations; no browser service-role key and no general-purpose client write path.
+6. **No implicit routing activation:** even an approved evidence-review event does not create or verify a road restriction and cannot enable route use. Operational promotion remains a separately authorized process with its own source-quality, geometry, freshness, licensing, and validation gates.
+
+### Required bootstrap and release gates
+
+- An authorized system owner must explicitly designate the initial intake, reviewer, and approver principals using their real Supabase Auth user IDs. Do not infer these identities from the repository owner, fleet owner, email display name, or the current chat account.
+- The owner must confirm who may administer this global permission registry and how access is revoked.
+- The implementation must be reviewed against current Supabase documentation and changelog before any schema/API feature is added. The changelog index fetch returned an unsupported Markdown content type during this review; the relevant current Auth/RLS documentation was searched, but the changelog scan remains outstanding.
+- Create and test the schema only through rollback-only CI against the dedicated Test project. Do not apply a persistent migration to Test or Production as part of this work.
+- Add live integration tests with distinct synthetic Auth users for intake, reviewer, approver, unauthenticated, revoked, and cross-fleet principals. Tests must prove self-review denial, reviewer cannot promote, approver must be independent, role revocation takes effect immediately, and audit events cannot be edited/deleted through client access.
+- Do not enable this workflow or describe the roles as enforced until the server route, database boundary, identity bootstrap, and all integration tests are complete.
+
+### Decision for this stage
+
+The existing fleet Auth helper correctly validates a signed user with `client.auth.getUser(token)` and then resolves fleet membership. That is a useful authentication pattern, but its fleet role lookup is not sufficient for global source governance. The next implementation should reuse the verified-identity pattern while adding a distinct server-managed permission registry and append-only review records. No such registry or endpoint is being activated in this stage.
+
+The Supabase changelog could not be fetched as Markdown, and the repository workflow has no verified protected-environment reviewer configuration. Therefore no pretend GitHub-dispatch approval flow, role simulation, Supabase schema write, or deployment was introduced. The current local review flow remains explicitly unverified.
