@@ -32,25 +32,28 @@ export default function ReportsPage() {
   const [error, setError] = useState("");
   const authGenerationRef = useRef(0);
   const authUserIdRef = useRef(null);
+  const reportRequestGenerationRef = useRef(0);
 
   async function loadReport(id, authGeneration = authGenerationRef.current) {
     if (!id) return;
+    const requestGeneration = ++reportRequestGenerationRef.current;
+    const isCurrent = () => authGeneration === authGenerationRef.current && requestGeneration === reportRequestGenerationRef.current;
     const since = new Date();
     since.setDate(since.getDate() - 365);
     const { data, error: tripError } = await supabase.from("trips")
       .select("id,status,started_at,ended_at,driver_id,vehicle_id,origin_address,destination_address")
       .eq("fleet_id", id).gte("started_at", since.toISOString()).order("started_at", { ascending: false }).limit(500);
-    if (authGeneration !== authGenerationRef.current) return;
+    if (!isCurrent()) return;
     if (tripError) { setError("לא ניתן לטעון דוחות: " + tripError.message); return; }
     const { data: maintenanceRows, error: maintenanceError } = await supabase.from("maintenance_records").select("id,vehicle_id,maintenance_type,completed_at,scheduled_at,cost,status").eq("fleet_id",id).eq("status","completed").not("cost","is",null).gte("completed_at",since.toISOString().slice(0,10)).order("completed_at",{ascending:false}).limit(500);
-    if (authGeneration !== authGenerationRef.current) return;
+    if (!isCurrent()) return;
     if (maintenanceError) { setError("לא ניתן לטעון עלויות תחזוקה: " + maintenanceError.message); return; }
-    if (authGeneration !== authGenerationRef.current) return;
+    if (!isCurrent()) return;
     setMaintenance(maintenanceRows || []);
     const { data: incidentRows, error: incidentError } = await supabase.from("incidents").select("id,vehicle_id,severity,incident_type,description,status,reported_at").eq("fleet_id",id).gte("reported_at",since.toISOString()).order("reported_at",{ascending:false}).limit(500);
-    if (authGeneration !== authGenerationRef.current) return;
+    if (!isCurrent()) return;
     if (incidentError) { setError("לא ניתן לטעון אירועים: " + incidentError.message); return; }
-    if (authGeneration !== authGenerationRef.current) return;
+    if (!isCurrent()) return;
     setIncidents(incidentRows || []);
     const ids = [...new Set((data || []).map(t => t.driver_id).filter(Boolean))];
     const vehicleIds = [...new Set((data || []).map(t => t.vehicle_id).filter(Boolean))];
@@ -58,16 +61,16 @@ export default function ReportsPage() {
       ids.length ? supabase.from("drivers").select("id,full_name").in("id", ids) : Promise.resolve({ data: [] }),
       vehicleIds.length ? supabase.from("vehicles").select("id,registration_number").in("id", vehicleIds) : Promise.resolve({ data: [] })
     ]);
-    if (authGeneration !== authGenerationRef.current) return;
+    if (!isCurrent()) return;
     const rows = await Promise.all((data || []).map(async trip => {
       const { data: points } = await supabase.from("trip_locations").select("latitude,longitude,recorded_at")
         .eq("trip_id", trip.id).order("recorded_at", { ascending: true }).limit(3000);
       return { ...trip, points: points || [], km: distanceFor(points || []), minutes: durationFor(trip) };
     }));
-    if (authGeneration !== authGenerationRef.current) return;
+    if (!isCurrent()) return;
     setDrivers(driverRows.data || []);
     setVehicles(vehicleRows.data || []);
-    if (authGeneration !== authGenerationRef.current) return;
+    if (!isCurrent()) return;
     setTrips(rows);
     setError("");
   }
@@ -77,6 +80,7 @@ export default function ReportsPage() {
     let alive = true;
     const clearPrivateState = () => {
       authGenerationRef.current += 1;
+      reportRequestGenerationRef.current += 1;
       setFleetId(null); setTrips([]); setMaintenance([]); setIncidents([]); setDrivers([]); setVehicles([]);
       setDriverFilter("all"); setVehicleFilter("all"); setError("");
     };
@@ -113,7 +117,7 @@ export default function ReportsPage() {
     }).catch(() => {
       if (alive && initialAuthGeneration === authGenerationRef.current) { setError("לא ניתן לאמת את ההתחברות."); setLoading(false); }
     });
-    return () => { alive = false; authGenerationRef.current += 1; subscription.unsubscribe(); };
+    return () => { alive = false; authGenerationRef.current += 1; reportRequestGenerationRef.current += 1; subscription.unsubscribe(); };
   }, [router]);
 
   const filtered = useMemo(() => {
