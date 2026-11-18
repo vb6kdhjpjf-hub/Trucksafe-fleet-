@@ -208,16 +208,10 @@ declare
   message_text_value text;
   status_value text;
 begin
-  insert into auth.users(id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data)
-  values
-    (owner_id,'authenticated','authenticated','ci-road-owner@example.invalid','test-only-no-login',now(),
-      '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb),
-    (dispatcher_id,'authenticated','authenticated','ci-road-dispatcher@example.invalid','test-only-no-login',now(),
-      '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb),
-    (driver_user_id,'authenticated','authenticated','ci-road-driver@example.invalid','test-only-no-login',now(),
-      '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb),
-    (other_owner_id,'authenticated','authenticated','ci-other-owner@example.invalid','test-only-no-login',now(),
-      '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb);
+  -- @auth-fixture owner_id ci-road-owner@example.invalid
+-- @auth-fixture dispatcher_id ci-road-dispatcher@example.invalid
+-- @auth-fixture driver_user_id ci-road-driver@example.invalid
+-- @auth-fixture other_owner_id ci-other-owner@example.invalid
 
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
   perform set_config('request.jwt.claim.role','authenticated',true);
