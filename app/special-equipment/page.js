@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
 const kinds=[["crane","מנוף"],["aerial_platform","במת הרמה / סל"],["concrete_pump","משאבת בטון"],["other_special","ציוד מיוחד אחר"]];
