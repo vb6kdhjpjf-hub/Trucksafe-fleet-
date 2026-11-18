@@ -78,9 +78,10 @@ begin
   perform set_config('test.shipment_id',shipment_id::text,true);
   perform set_config('test.fleet_id',fleet_id::text,true);
   perform set_config('test.driver_user_id',driver_user_id::text,true);
-  insert into pg_temp.shipment_test_fixture values(fleet_id,shipment_id,stop_id,owner_id,driver_user_id);
-  insert into public.fleet_members(fleet_id,user_id,role) values(fleet_id,driver_user_id,'driver')
-  on conflict(fleet_id,user_id) do update set role='driver';
+  insert into pg_temp.shipment_test_fixture values(shipment_test_block.fleet_id,shipment_test_block.shipment_id,shipment_test_block.stop_id,shipment_test_block.owner_id,shipment_test_block.driver_user_id);
+  insert into public.fleet_members(fleet_id,user_id,role)
+  values(shipment_test_block.fleet_id,shipment_test_block.driver_user_id,'driver')
+  on conflict do nothing;
 
  result:=public.record_shipment_stop_result(
   fleet_id,shipment_id,stop_id,'12000000-0000-4000-8000-000000000001'::uuid,
