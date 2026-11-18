@@ -58,7 +58,11 @@ def _blank_sql_literals_and_comments(sql: str) -> str:
 
         # PostgreSQL dollar-quoted strings: $tag$ ... $tag$ (including $$).
         if ch == "$":
-            match = re.match(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$", sql[i:])
+            # A dollar-quote opener must not be immediately preceded by an
+            # identifier character; otherwise this may be part of an
+            # unquoted PostgreSQL identifier (for example column$tag$).
+            boundary_ok = i == 0 or not (sql[i - 1].isalnum() or sql[i - 1] in "_$")
+            match = re.match(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$", sql[i:]) if boundary_ok else None
             if match:
                 delimiter = match.group(0)
                 start = i
