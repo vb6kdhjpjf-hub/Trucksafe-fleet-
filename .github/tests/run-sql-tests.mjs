@@ -123,7 +123,7 @@ async function prepareSqlFixtures(sql, file, admin, createdUsers) {
 
   let prepared = sql.replace(
     directivePattern,
-    "-- Auth user fixture created by Supabase Auth Admin API in run-sql-tests.mjs.\\n"
+    "-- Auth user fixture created by Supabase Auth Admin API in run-sql-tests.mjs.\n"
   );
   for (const [originalId, userId] of replacements) {
     prepared = prepared.split(originalId).join(userId);
@@ -165,7 +165,7 @@ async function cleanupMarkedSqlFixtureUsers(admin) {
   for (const user of users) {
     const fixtureFile = user.app_metadata?.fixture_file;
     const email = user.email ?? "";
-    if (!FIXTURE_FILES.has(fixtureFile) || !/@example\\.(?:invalid|com)$/i.test(email)) {
+    if (!FIXTURE_FILES.has(fixtureFile) || !/@example\.(?:invalid|com)$/i.test(email)) {
       throw new Error("Refusing SQL fixture cleanup: a marked user has an unexpected file or email identity.");
     }
     const { error } = await admin.auth.admin.deleteUser(user.id);
