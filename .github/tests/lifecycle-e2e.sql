@@ -645,8 +645,29 @@ begin
     values (d1b, f1, 'CI Second Driver', current_date + 365, 'active');
   insert into public.tasks (id, fleet_id, title, pickup_address, delivery_address,
     assigned_driver_id, assigned_vehicle_id, status, created_by)
-    values (t1, f1, 'CI end-to-end test task', 'Test origin', 'Test destination',
-      d1, v1, 'assigned', u1);
+    values
+      (t1, f1, 'CI end-to-end test task', 'Test origin', 'Test destination', d1, v1, 'assigned', u1),
+      (t1b, f1, 'CI unverified registration rejection', 'Test origin', 'Test destination', d1b, v1b, 'assigned', u1);
+
+  -- An otherwise eligible vehicle with a pending registration review must be blocked server-side.
+  update public.vehicles set registration_verification_status = 'pending'
+  where id = v1b and fleet_id = f1;
+  begin
+    perform public.start_trip_with_inspection(
+      f1, t1b, d1b, v1b, 'Test origin', 'Test destination', good_checklist
+    );
+    raise exception 'Unverified vehicle registration unexpectedly opened a trip';
+  exception when others then
+    if sqlerrm not like '%רישיון הרכב טרם אומת%' then
+      raise;
+    end if;
+  end;
+  if exists (select 1 from public.trips where task_id = t1b) then
+    raise exception 'Trip exists despite unverified vehicle registration';
+  end if;
+  insert into pg_temp.trucksafe_e2e_results values
+    ('unverified vehicle registration blocks trip start', 'PASS',
+     'The server RPC rejected the vehicle and created no trip');
 
   v_trip_id := public.start_trip_with_inspection(
     f1, t1, d1, v1, 'Test origin', 'Test destination', good_checklist
