@@ -89,7 +89,7 @@ jobs:
           from pathlib import Path
           import re
           sql = Path("schema-artifact/schema.sql").read_text()
-          if re.search(r"(?im)^\\s*COPY\\s+[^;]+\\s+FROM\\s+stdin\\s*;", sql):
+          if re.search(r"(?im)^\s*COPY\s+[^;]+\s+FROM\s+stdin\s*;", sql):
               raise SystemExit("Snapshot contains a COPY data block. Refusing to restore.")
           outside = []
           in_dollar = None
@@ -98,7 +98,7 @@ jobs:
                   if in_dollar in line:
                       in_dollar = None
                   continue
-              m = re.search(r"\\$[A-Za-z_0-9]*\\$", line)
+              m = re.search(r"\$[A-Za-z_0-9]*\$", line)
               if m:
                   tag = m.group(0)
                   # Only scan SQL before the first function-body delimiter on this line.
@@ -107,7 +107,7 @@ jobs:
                   in_dollar = tag
                   continue
               outside.append(line)
-          if re.search(r"(?im)^\\s*INSERT\\s+INTO\\b", "\\n".join(outside)):
+          if re.search(r"(?im)^\s*INSERT\s+INTO\b", "\n".join(outside)):
               raise SystemExit("Snapshot contains a top-level INSERT statement. Refusing to restore.")
           print("Schema snapshot present; no COPY data blocks or top-level INSERT statements found.")
           PY
