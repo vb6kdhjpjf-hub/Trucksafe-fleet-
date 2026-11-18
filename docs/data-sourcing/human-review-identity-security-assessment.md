@@ -49,7 +49,7 @@ A single person must not be able to bypass the required independent review by ch
 ## Safe interim operating rule
 
 - Continue to use the local scripts only for synthetic fixtures, offline candidate preparation and internal evidence organization.
-- Treat `reviewer` as an asserted label, not a verified identity.
+- Treat `reviewer` as an asserted label, not a verified identity. Review events now explicitly carry `reviewer_identity_status: "unverified_assertion"` and `reviewer_identity_verified: false`; the verifier rejects events that claim otherwise, and the audit manifest preserves that status.
 - Treat `accepted_for_pilot` as a workflow decision only; it is not source authority approval, production approval or permission to route.
 - Do not connect the local review event to Supabase, the operational restriction catalogue or route selection.
 - Do not claim that importer/reviewer separation is currently technically enforced.
