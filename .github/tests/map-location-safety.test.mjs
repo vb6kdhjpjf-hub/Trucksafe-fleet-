@@ -202,3 +202,31 @@ test("maintenance clears private fleet records and rejects stale queries after a
   assert.ok(source.includes("setRecords([]);setIncidents([]);setCompliance({})"));
   assert.ok(source.includes("window.location.reload()"));
 });
+
+
+test("imports clear sensitive previews and reject stale identity checks after auth changes", async () => {
+  const source = await readFile("app/imports/page.js", "utf8");
+  assert.ok(source.includes("const authUserIdRef = useRef(null)"));
+  assert.ok(source.includes("nextUserId !== authUserIdRef.current"));
+  assert.ok(source.includes("setFleet(null); setRole(""); setFilename(""); setParsed(null)"));
+  assert.ok(source.includes("authGeneration === authGenerationRef.current"));
+  assert.ok(source.includes("window.location.reload()"));
+});
+
+test("daily reports clear private aggregates and reject stale results after auth changes", async () => {
+  const source = await readFile("app/daily-report/page.js", "utf8");
+  assert.ok(source.includes("const authUserIdRef = useRef(null)"));
+  assert.ok(source.includes("nextUserId !== authUserIdRef.current"));
+  assert.ok(source.includes("authGeneration !== authGenerationRef.current"));
+  assert.ok(source.includes("setTrips([]); setIncidents([]); setMaintenance([])"));
+  assert.ok(source.includes("window.location.reload()"));
+});
+
+test("road restriction records and review state clear across auth changes", async () => {
+  const source = await readFile("app/road-restrictions/page.js", "utf8");
+  assert.ok(source.includes("const authUserIdRef = useRef(null)"));
+  assert.ok(source.includes("nextUserId !== authUserIdRef.current"));
+  assert.ok(source.includes("authGeneration !== authGenerationRef.current"));
+  assert.ok(source.includes("setRows([]); setForm(blank); setShowForm(false)"));
+  assert.ok(source.includes("window.location.reload()"));
+});
