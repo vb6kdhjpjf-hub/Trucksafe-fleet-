@@ -246,3 +246,19 @@ Before enabling the proposed Safety Manager reviewer capability, prove with real
 - Demotion/removal from membership takes effect at the sensitive server-side authorization boundary, not merely after a client refresh.
 
 Until these tests pass, implement no UI affordance that implies Safety Manager or any other role already has licence-document access.
+
+## Application authorization boundary review — 18 November 2026
+
+Read-only inspection of the current application code on `fix/physical-clearance-routing-gate` confirms:
+
+- `resolveFleetWorkspace` first verifies the authenticated user through Supabase Auth `getUser()`, requires the returned user ID to match the caller, and then resolves membership from `fleet_members`. It fails closed for no membership, multiple memberships, lookup errors, or unsupported roles. The application does not rely on a user-editable role claim for workspace selection.
+- The Drivers page exposes create, edit, and status-change controls only to `owner` and `fleet_manager`. Safety managers and dispatchers can read the ordinary driver list under the existing database policy but cannot use those UI mutation paths.
+- The driver form currently stores one free-text `license_class` and one expiry date. The UI explicitly warns that these are registration-only values and that document verification and legal driver/vehicle/trailer compatibility are not automated.
+- The Special Equipment page also limits its management and review UI to `owner` and `fleet_manager`; it obtains signed document URLs only after the workspace role check. The existing database RLS and RPC policies remain the actual security boundary; client-side checks are not authorization by themselves.
+- Task assignment UI permits `owner`, `fleet_manager`, and `dispatcher` to manage assignments. Its local driver eligibility check only tests active status and a valid non-expired date; the database assignment trigger and trip-start checks remain authoritative. Neither layer currently validates licence class against the vehicle or trailer combination.
+
+### Consequence for the licence-evidence feature
+
+The proposed matrix's Safety Manager upload/read/review capability is not implemented in the current application or Storage policies. It must not be exposed by adding UI controls alone or by broadening the existing vehicle-registration bucket. Implement it only after the dedicated private bucket, server-side authorization path, append-only review history, retention/privacy rules, and real-Auth role tests are designed together. Until then, the application must continue to describe licence class as unverified and require manual verification before dispatch.
+
+This was a source-code review only. No application code, database schema, Storage policy, Auth user, or production resource was changed.
