@@ -9,6 +9,14 @@ const TEST_PROJECT_REF = "yxxrgblpqzhnnyojbwcr";
 const PRODUCTION_PROJECT_REF = "jqebxlhhffwiebijiug";
 const FIXTURE_MARKER = "trucksafe-rollback-sql-ci";
 const PAGE_SIZE = 1000;
+const FIXTURE_FILES = new Set([
+  "lifecycle-e2e.sql",
+  "daily-load-ledger-e2e.sql",
+  "shipment-operations-e2e.sql",
+  "road-vehicle-security-e2e.sql",
+  "cross-fleet-integrity-e2e.sql",
+  "cross-fleet-preflight-detects-anomalies.sql",
+]);
 
 async function expandIncludes(file, stack = []) {
   const absolute = path.resolve(root, file);
@@ -138,6 +146,38 @@ async function deleteCreatedFixtureUsers(admin, userIds) {
   }
 }
 
+async function listMarkedSqlFixtureUsers(admin) {
+  const matches = [];
+  for (let page = 1; ; page += 1) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: PAGE_SIZE });
+    if (error) throw new Error("Unable to enumerate disposable SQL fixture users in the dedicated Test project.");
+    const users = data?.users ?? [];
+    matches.push(...users.filter(user =>
+      user.app_metadata?.trucksafe_ci_fixture === FIXTURE_MARKER
+    ));
+    if (users.length < PAGE_SIZE) break;
+  }
+  return matches;
+}
+
+async function cleanupMarkedSqlFixtureUsers(admin) {
+  const users = await listMarkedSqlFixtureUsers(admin);
+  for (const user of users) {
+    const fixtureFile = user.app_metadata?.fixture_file;
+    const email = user.email ?? "";
+    if (!FIXTURE_FILES.has(fixtureFile) || !/@example\\.(?:invalid|com)$/i.test(email)) {
+      throw new Error("Refusing SQL fixture cleanup: a marked user has an unexpected file or email identity.");
+    }
+    const { error } = await admin.auth.admin.deleteUser(user.id);
+    if (error) throw new Error("Unable to delete a marked disposable SQL fixture user through Auth Admin API.");
+  }
+  const remaining = await listMarkedSqlFixtureUsers(admin);
+  if (remaining.length !== 0) {
+    throw new Error("SQL Auth fixture cleanup verification failed; marked Test users remain.");
+  }
+  return users.length;
+}
+
 const databaseUrl = process.env.SUPABASE_TEST_DB_URL;
 if (!databaseUrl) throw new Error("SUPABASE_TEST_DB_URL is required");
 
@@ -157,6 +197,15 @@ const files = [
 
 const { databaseUrl: verifiedDatabaseUrl, url, anonKey, serviceRoleKey } = readConfig();
 const admin = createAdminClient(url, serviceRoleKey);
+if (process.argv.includes("--cleanup-only")) {
+  const removed = await cleanupMarkedSqlFixtureUsers(admin);
+  console.log(`Cleaned ${removed} marked disposable SQL Auth fixture user(s) through Auth Admin API.`);
+  process.exit(0);
+}
+const staleRemoved = await cleanupMarkedSqlFixtureUsers(admin);
+if (staleRemoved) {
+  console.log(`Cleaned ${staleRemoved} stale disposable SQL Auth fixture user(s) before starting.`);
+}
 const client = new Client({
   connectionString: verifiedDatabaseUrl,
   ssl: { rejectUnauthorized: false },
