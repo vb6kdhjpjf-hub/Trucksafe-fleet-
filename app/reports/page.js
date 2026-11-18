@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
@@ -30,33 +30,35 @@ export default function ReportsPage() {
   const [vehicleFilter, setVehicleFilter] = useState("all");
   const [period, setPeriod] = useState("30");
   const [error, setError] = useState("");
+  const authGenerationRef = useRef(0);
+  const authUserIdRef = useRef(null);
 
-  async function loadReport(id) {
+  async function loadReport(id, authGeneration = authGenerationRef.current) {
     if (!id) return;
     const since = new Date();
     since.setDate(since.getDate() - 365);
     const { data, error: tripError } = await supabase.from("trips")
       .select("id,status,started_at,ended_at,driver_id,vehicle_id,origin_address,destination_address")
       .eq("fleet_id", id).gte("started_at", since.toISOString()).order("started_at", { ascending: false }).limit(500);
-    if (tripError) { setError("לא ניתן לטעון דוחות: " + tripError.message); return; }
+    if (authGeneration !== authGenerationRef.current) return;\n    if (tripError) { setError("לא ניתן לטעון דוחות: " + tripError.message); return; }
     const { data: maintenanceRows, error: maintenanceError } = await supabase.from("maintenance_records").select("id,vehicle_id,maintenance_type,completed_at,scheduled_at,cost,status").eq("fleet_id",id).eq("status","completed").not("cost","is",null).gte("completed_at",since.toISOString().slice(0,10)).order("completed_at",{ascending:false}).limit(500);
-    if (maintenanceError) { setError("לא ניתן לטעון עלויות תחזוקה: " + maintenanceError.message); return; }
-    setMaintenance(maintenanceRows || []);
+    if (authGeneration !== authGenerationRef.current) return;\n    if (maintenanceError) { setError("לא ניתן לטעון עלויות תחזוקה: " + maintenanceError.message); return; }
+    if (authGeneration !== authGenerationRef.current) return;\n    setMaintenance(maintenanceRows || []);
     const { data: incidentRows, error: incidentError } = await supabase.from("incidents").select("id,vehicle_id,severity,incident_type,description,status,reported_at").eq("fleet_id",id).gte("reported_at",since.toISOString()).order("reported_at",{ascending:false}).limit(500);
-    if (incidentError) { setError("לא ניתן לטעון אירועים: " + incidentError.message); return; }
-    setIncidents(incidentRows || []);
+    if (authGeneration !== authGenerationRef.current) return;\n    if (incidentError) { setError("לא ניתן לטעון אירועים: " + incidentError.message); return; }
+    if (authGeneration !== authGenerationRef.current) return;\n    setIncidents(incidentRows || []);
     const ids = [...new Set((data || []).map(t => t.driver_id).filter(Boolean))];
     const vehicleIds = [...new Set((data || []).map(t => t.vehicle_id).filter(Boolean))];
     const [driverRows, vehicleRows] = await Promise.all([
       ids.length ? supabase.from("drivers").select("id,full_name").in("id", ids) : Promise.resolve({ data: [] }),
       vehicleIds.length ? supabase.from("vehicles").select("id,registration_number").in("id", vehicleIds) : Promise.resolve({ data: [] })
     ]);
-    const rows = await Promise.all((data || []).map(async trip => {
+    if (authGeneration !== authGenerationRef.current) return;\n    const rows = await Promise.all((data || []).map(async trip => {
       const { data: points } = await supabase.from("trip_locations").select("latitude,longitude,recorded_at")
         .eq("trip_id", trip.id).order("recorded_at", { ascending: true }).limit(3000);
       return { ...trip, points: points || [], km: distanceFor(points || []), minutes: durationFor(trip) };
     }));
-    setDrivers(driverRows.data || []);
+    if (authGeneration !== authGenerationRef.current) return;\n    setDrivers(driverRows.data || []);
     setVehicles(vehicleRows.data || []);
     setTrips(rows);
     setError("");
@@ -64,18 +66,46 @@ export default function ReportsPage() {
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setError("החיבור למסד הנתונים אינו מוגדר."); setLoading(false); return; }
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!data.session) { router.replace("/"); return; }
+    let alive = true;
+    const clearPrivateState = () => {
+      authGenerationRef.current += 1;
+      setFleetId(null); setTrips([]); setMaintenance([]); setIncidents([]); setDrivers([]); setVehicles([]);
+      setDriverFilter("all"); setVehicleFilter("all"); setError("");
+    };
+    const initialAuthGeneration = authGenerationRef.current;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user?.id || null;
+      if (nextUserId && authUserIdRef.current && nextUserId !== authUserIdRef.current) {
+        clearPrivateState();
+        authUserIdRef.current = nextUserId;
+        if (typeof window !== "undefined") window.location.reload();
+        return;
+      }
+      if (nextUserId) authUserIdRef.current = nextUserId;
+      if (!nextSession) {
+        authUserIdRef.current = null;
+        clearPrivateState();
+        router.replace("/");
+      }
+    });
+    supabase.auth.getSession().then(async ({ data, error: sessionError }) => {
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
+      if (sessionError || !data.session) { router.replace("/"); return; }
+      authUserIdRef.current = data.session.user.id;
       const { data: workspace, error: workspaceError } = await resolveFleetWorkspace(supabase, data.session.user.id);
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (workspaceError) {
         if (workspaceError.code === "AUTH_REQUIRED" || workspaceError.code === "NO_FLEET") router.replace("/");
         else setError("לא הצלחנו לאמת את הצי: " + workspaceError.message);
         setLoading(false); return;
       }
       setFleetId(workspace.fleet.id);
-      await loadReport(workspace.fleet.id);
-      setLoading(false);
+      await loadReport(workspace.fleet.id, initialAuthGeneration);
+      if (alive && initialAuthGeneration === authGenerationRef.current) setLoading(false);
+    }).catch(() => {
+      if (alive && initialAuthGeneration === authGenerationRef.current) { setError("לא ניתן לאמת את ההתחברות."); setLoading(false); }
     });
+    return () => { alive = false; authGenerationRef.current += 1; subscription.unsubscribe(); };
   }, [router]);
 
   const filtered = useMemo(() => {
