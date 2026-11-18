@@ -115,3 +115,104 @@ A second read-only review of the dedicated Test project's current policies confi
 ### Verification boundary
 
 This review inspected policies in the dedicated Test project only. It made no schema, Storage, Auth, or data changes. The proposed bucket, tables, policies, signed-URL flow, and review-event model remain design work until the full access matrix and rollback-only integration tests are ready.
+
+
+## Implementation contract — access matrix, lifecycle, and acceptance gates
+
+This section turns the design into an implementation contract. It remains documentation only; it creates no tables, buckets, policies, or application routes.
+
+### Role-to-capability matrix
+
+| Capability | Owner | Fleet manager | Safety manager | Dispatcher | Linked driver | Other fleet / unassigned |
+|---|---:|---:|---:|---:|---:|---:|
+| Read ordinary driver profile | Yes | Yes | Yes | Yes | Own profile only | No |
+| Read licence metadata (not document) | Yes | Yes | Yes | No by default | Own metadata only | No |
+| Upload licence evidence | Yes | Yes | Yes | No | No | No |
+| Read/download licence evidence | Yes | Yes | Yes | No | No | No |
+| Mark evidence verified/rejected | Yes | Yes | Yes | No | No | No |
+| Append a review event | Yes | Yes | Yes | No | No | No |
+| Directly delete evidence/history | No | No | No | No | No | No |
+| Manage trailer master records | Yes | Yes | Read | Read | Assigned-combination summary only | No |
+| Approve legal compatibility | Qualified manual reviewer only | Qualified manual reviewer only | Qualified manual reviewer only | No | No | No |
+
+The exact reviewer roles must be confirmed against the actual role enum and product ownership before migration. Membership must be resolved from current database membership rows, not user-editable metadata or stale client state. Ambiguous membership or role must fail closed.
+
+### Evidence lifecycle
+
+1. A manager/reviewer creates a pending evidence record and uploads the source document to the dedicated private bucket.
+2. The server validates authenticated identity, active fleet membership, role, driver-to-fleet relationship, evidence-record ID, MIME type, file size, and object path. Client-supplied fleet/driver IDs are never sufficient authorization.
+3. Metadata records object path, cryptographic checksum, upload time, source/issuer, document dates, and uploader. No public URL is stored.
+4. A reviewer records a separate immutable review event with outcome, reviewer, timestamp, mandatory reason/note, and source/rule version.
+5. Renewal or replacement creates a new evidence record and review event. The prior record is superseded, not overwritten or physically deleted.
+6. Document viewing requires a fresh server-side authorization check. A short-lived signed URL is created only after that check and is never written to logs, analytics, or persistent records.
+7. Retention, legal hold, and erasure rules must be approved before production use. Append-only history does not override applicable privacy or deletion law.
+
+### Trailer entity and combination model
+
+A trailer must be an independently identified, fleet-scoped registered asset, not a boolean or count on a tractor. The future model must account for:
+- trailer identity, registration number, registration class/use, make/model, and active/maintenance/retired status;
+- permitted gross weight, tare, payload, axle count, dimensions, and applicable coupling/combination characteristics;
+- current registration evidence, verification status, reviewer, dates, and source;
+- tractor-to-trailer combination records with effective dates and order/position for multi-trailer combinations where legally relevant;
+- assignment/trip snapshots so later trailer edits cannot rewrite the historical combination used by a completed trip.
+
+First map fields to the actual registration document and authoritative rules; do not assume every field is legally required for every trailer type. A trailer with missing, stale, unverified, or conflicting facts remains unavailable for automatic compatibility approval. The existing trailer-count routing gate must continue blocking routing until the full combination is verified.
+
+### Decision and invalidation rules
+
+- Persist outcome (allowed, denied, manual_review), stable reason codes, ruleset version, effective date, source references, input snapshot hash, and decision time.
+- manual_review blocks assignment/trip start operationally; it is not an allowed state.
+- Any change to driver class/expiry/evidence, vehicle classification/weights, trailer facts/evidence, combination membership, or active ruleset invalidates the previous compatibility result.
+- Re-check eligibility at assignment save and again in the server-side trip-start transaction. UI-only checks never authorize a trip.
+- The assignment guard proposed in PR #19 checks eligibility at assignment write time; it does not prevent a later driver/vehicle status change from making the assignment stale. Trip-start revalidation remains mandatory.
+
+### Required automated test matrix before schema implementation is accepted
+
+**Relational integrity**
+- Driver, vehicle, trailer, evidence, reviewer, and combination IDs cannot cross fleet boundaries.
+- A combination cannot reference a retired, missing, or foreign-fleet trailer.
+- Effective-date ranges cannot create simultaneously active contradictory combinations.
+- Replacing evidence creates a new immutable record and preserves prior audit history.
+
+**RLS and Data API**
+- RLS is enabled before any Data API grant is added.
+- Explicit grants expose only required tables and operations; no broad anon grants.
+- Owner/manager/safety reviewer can read permitted evidence; dispatcher, linked driver, unrelated fleet, and unassigned user cannot read document objects or mint signed URLs.
+- A linked driver may read only the approved metadata projection for their own record; profile access does not imply evidence access.
+- UPDATE policies include both USING and WITH CHECK; cross-fleet reassignment is rejected.
+- Views use security_invoker=true where supported, or remain outside exposed schemas with access explicitly revoked.
+- Storage policies separately test download, upload, update, and delete; upsert is disabled unless all required privileges are intentionally granted.
+- Public URLs and service-role keys are absent from browser bundles, responses, and logs.
+
+**Real Auth and HTTP**
+- Repeat the matrix with real signed Test Auth sessions for owner, fleet manager, safety manager, dispatcher, linked driver, unrelated-fleet manager, unassigned user, and invalid/expired token.
+- Test actual server HTTP endpoints and signed-URL minting, not only helpers or mocked claims.
+- Verify role demotion and membership removal at sensitive endpoints, accounting for token freshness and server-side membership lookups.
+- Verify cleanup of all uniquely marked synthetic Auth users, fleets, files, and records after success and failure.
+
+**Lifecycle and regression**
+- Pending → verified/rejected → superseded/renewed transitions are auditable and cannot be silently overwritten.
+- Expiry at Israel local midnight is tested at the date boundary.
+- Every supported trailer-combination boundary is tested; unsupported or unknown combinations fail closed.
+- Trip start re-checks the exact driver + tractor + trailer combination and current evidence.
+- Existing trip lifecycle RPCs are regression-tested before any permission or implementation changes.
+
+### Delivery sequence and release gates
+
+1. **Source gate:** obtain the original Official Gazette file 12573, page 408; verify operative text, effective date, transitional rules, and later amendments. Obtain qualified Israeli transport-law review. Until then, all new 15 November 2026 exceptions remain manual review.
+2. **Schema gate:** map the existing schema and migrations; create a proposed migration only after the access matrix, retention policy, and source-backed field map are approved.
+3. **Test gate:** add rollback-only SQL tests and real-Auth HTTP tests against the dedicated Test project. No persistent Test migration and no Production writes.
+4. **Security gate:** verify RLS, explicit grants/Data API exposure, Storage policies, signed URLs, and run Supabase Security Advisors. Review the two existing trip lifecycle SECURITY DEFINER RPCs separately without weakening their current behavior.
+5. **Product gate:** implement reviewer workflow and trailer management with clear manual-review states; preserve routing fail-closed behavior for unverified combinations.
+6. **Release gate:** separate explicit approval is required for any Production migration, merge, or deployment. None is authorized by this design.
+
+### Supabase platform and documentation checks
+
+The Supabase changelog confirms that, from 30 October 2026, newly created public tables on existing projects are no longer automatically exposed through the Data API; explicit grants, RLS, and policies must be reviewed together. Supabase Storage documentation confirms private buckets enforce RLS for downloads and allow limited-time signed URLs; public buckets bypass access control for object retrieval.
+
+References:
+- https://supabase.com/changelog/45329-breaking-change-tables-not-exposed-to-data-and-graphql-api-automatically
+- https://supabase.com/docs/guides/storage/buckets/fundamentals
+- https://supabase.com/docs/guides/storage/security/access-control
+
+The dedicated Test project's Security Advisor was re-run on 18 November 2026. It still reports exactly two signed-in-callable SECURITY DEFINER functions: public.start_trip_with_inspection and public.finish_trip. They are existing trip lifecycle entry points and remain unchanged pending a dedicated review of their authorization contract and all callers. No schema, Storage, Auth, or data changes were made by this review.
