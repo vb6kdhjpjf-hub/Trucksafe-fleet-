@@ -49,7 +49,8 @@ export default function DailyWorkPage() {
   const notify = (text, kind = "info") => { setMessage(text); setMessageKind(kind); };
 
   const loadData = useCallback(async (user, authGeneration = authGenerationRef.current) => {
-    const { data, error } = await resolveFleetWorkspace(supabase, user.id);\n    if (authGeneration !== authGenerationRef.current) return;
+    const { data, error } = await resolveFleetWorkspace(supabase, user.id);
+    if (authGeneration !== authGenerationRef.current) return;
     if (error) {
       if (error.code === "AUTH_REQUIRED" || error.code === "NO_FLEET") router.replace("/");
       else notify("לא הצלחנו לאמת את סביבת העבודה: " + error.message, "error");
@@ -62,6 +63,7 @@ export default function DailyWorkPage() {
       supabase.from("vehicles").select("id,registration_number,vehicle_type,status,empty_weight_kg,gross_weight_kg,weight_per_axle_kg,registration_verification_status").eq("fleet_id", current.id).order("registration_number"),
       supabase.from("daily_work_plans").select("id,fleet_id,work_date,driver_id,vehicle_id,status,tare_weight_kg,registered_gross_limit_kg,registered_axle_limit_kg,current_gross_weight_kg,current_heaviest_axle_kg,load_revision,measurement_at,measurement_source,measurement_reference,created_at").eq("fleet_id", current.id).order("work_date", { ascending: false }).limit(50)
     ]);
+    if (authGeneration !== authGenerationRef.current) return;
     if (d.error) notify("שגיאה בטעינת הנהגים: " + d.error.message, "error"); else setDrivers(d.data || []);
     if (v.error) notify("שגיאה בטעינת כלי הרכב: " + v.error.message, "error"); else setVehicles(v.data || []);
     if (p.error) { notify("שגיאה בטעינת תוכניות העבודה: " + p.error.message, "error"); setPlans([]); setStopsByPlan({}); return; }
@@ -70,7 +72,8 @@ export default function DailyWorkPage() {
     if (!rows.length) { setStopsByPlan({}); return; }
     const stopResult = await supabase.from("daily_work_stops")
       .select("id,fleet_id,plan_id,sequence_no,operation_kind,address,planned_quantity_kg,status,actual_quantity_kg,completed_at")
-      .eq("fleet_id", current.id).in("plan_id", rows.map(row => row.id)).order("sequence_no");\n    if (authGeneration !== authGenerationRef.current) return;
+      .eq("fleet_id", current.id).in("plan_id", rows.map(row => row.id)).order("sequence_no");
+    if (authGeneration !== authGenerationRef.current) return;
     if (stopResult.error) notify("שגיאה בטעינת תחנות העבודה: " + stopResult.error.message, "error");
     else {
       const grouped = {};
