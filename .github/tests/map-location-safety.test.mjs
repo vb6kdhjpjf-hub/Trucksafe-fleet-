@@ -234,6 +234,19 @@ test("daily reports clear private aggregates and reject stale results after auth
   assert.ok(source.includes("window.location.reload()"));
 });
 
+test("incident loads, GPS callbacks and mutations reject stale auth or request generations", async () => {
+  const source = await readFile("app/incidents/page.js", "utf8");
+  assert.ok(source.includes("const incidentLoadGenerationRef = useRef(0)"));
+  assert.ok(source.includes("const gpsRequestGenerationRef = useRef(0)"));
+  assert.ok(source.includes("incidentLoadGenerationRef.current += 1"));
+  assert.ok(source.includes("gpsRequestGenerationRef.current += 1"));
+  assert.ok(source.includes("requestGeneration === incidentLoadGenerationRef.current"));
+  assert.ok(source.includes("if (!isCurrent()) return;"));
+  assert.ok(source.includes("const actionAuthGeneration = authGenerationRef.current"));
+  assert.ok(source.includes("if (actionAuthGeneration !== authGenerationRef.current) return;"));
+  assert.ok(source.includes("if (actionAuthGeneration === authGenerationRef.current) setBusy(false)"));
+});
+
 test("reports reject stale concurrent fleet loads after a newer report request starts", async () => {
   const source = await readFile("app/reports/page.js", "utf8");
   assert.ok(source.includes("const reportRequestGenerationRef = useRef(0)"));
