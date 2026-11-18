@@ -216,3 +216,33 @@ References:
 - https://supabase.com/docs/guides/storage/security/access-control
 
 The dedicated Test project's Security Advisor was re-run on 18 November 2026. It still reports exactly two signed-in-callable SECURITY DEFINER functions: public.start_trip_with_inspection and public.finish_trip. They are existing trip lifecycle entry points and remain unchanged pending a dedicated review of their authorization contract and all callers. No schema, Storage, Auth, or data changes were made by this review.
+
+## Verified Test role boundary and required permission delta — 18 November 2026
+
+A focused read-only inspection of the current Test project's membership constraint, driver policies, and Storage policies clarifies an important distinction between the **proposed target matrix above** and permissions that exist today:
+
+| Existing capability | Owner | Fleet manager | Safety manager | Dispatcher | Linked driver |
+|---|---:|---:|---:|---:|---:|
+| Read driver profile | Yes | Yes | Yes | Yes | Own row only |
+| Insert/update/delete driver profile | Yes | Yes | No | No | No |
+| Read vehicle-registration documents | Yes | Yes | No | No | No |
+| Upload vehicle-registration documents | Yes | Yes | No | No | No |
+| Delete vehicle-registration documents | Yes, subject to reference guard | Yes, subject to reference guard | No | No | No |
+
+The fleet_members.role CHECK constraint currently accepts exactly: owner, fleet_manager, dispatcher, safety_manager, and driver. The private.has_fleet_role helper checks the current fleet_members row for auth.uid(); it does not authorize from user-editable profile metadata.
+
+**Implementation consequence:** the target matrix above intentionally proposes Safety Manager as a licence-evidence reviewer, but this is **not a permission already granted by the current schema**. A future implementation must make an explicit, separately tested authorization change before Safety Managers can read, upload, or review licence evidence. Do not silently broaden the existing vehicle-registration bucket policies as a shortcut. The dedicated licence-evidence bucket must have its own reviewed policies and tests.
+
+The Test project had no persistent fleet-membership rows at the time of this read-only check (the role list query returned no rows); accepted role values were verified from the table CHECK constraint, and actual access policy expressions were inspected separately. This check made no database, Storage, Auth, or data changes.
+
+### Mandatory authorization delta tests
+
+Before enabling the proposed Safety Manager reviewer capability, prove with real signed Test Auth sessions that:
+- Owner and Fleet Manager can perform only the intended licence-evidence operations within their own fleet.
+- Safety Manager can perform only the explicitly approved evidence-review operations; cannot edit driver identity/profile fields or manage unrelated vehicle-registration files unless separately authorized.
+- Dispatcher can see only the approved operational projection and cannot read, upload, delete, or mint a signed URL for licence evidence.
+- Linked Driver can see only their own approved metadata projection and cannot read the underlying document or mint a signed URL.
+- Other-fleet and unassigned users are denied at both Storage and server HTTP boundaries.
+- Demotion/removal from membership takes effect at the sensitive server-side authorization boundary, not merely after a client refresh.
+
+Until these tests pass, implement no UI affordance that implies Safety Manager or any other role already has licence-document access.
