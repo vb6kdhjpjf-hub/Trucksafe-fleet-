@@ -21,11 +21,13 @@ class SnapshotValidatorTests(unittest.TestCase):
 
     def test_rejects_insert_statement(self):
         self.rejects("INSERT INTO public.items VALUES (1);")
+        self.rejects("WITH source AS (SELECT 1) INSERT INTO public.items SELECT * FROM source;")
 
     def test_rejects_case_and_whitespace_variants(self):
         self.rejects("\n  insert\n into public.items values (1);")
         self.rejects("COPY public.items FROM STDIN;")
         self.rejects("COPY public.items FROM STDIN WITH (FORMAT csv);")
+        self.rejects("COPY public.items FROM PROGRAM 'dangerous-command';")
 
     def test_ignores_insert_and_copy_inside_dollar_body(self):
         self.accepts("""CREATE FUNCTION f() RETURNS void AS $body$
@@ -61,6 +63,9 @@ $body$ LANGUAGE plpgsql;""")
 
     def test_rejects_empty_snapshot(self):
         self.rejects("  -- empty schema\n")
+
+    def test_rejects_nonstandard_string_mode(self):
+        self.rejects("SET standard_conforming_strings = off; SELECT 1;")
 
     def test_does_not_treat_identifier_dollar_as_quote(self):
         self.accepts("SELECT column$tag$ FROM public.items;")
