@@ -1198,7 +1198,7 @@ begin
      or position('v_driver.user_id is distinct from auth.uid()' in lower(pg_get_functiondef(
        'public.finish_trip(uuid,uuid)'::regprocedure
      ))) = 0 then
-    raise exception 'Non-manager trip RPC access must remain bound to the assigned driver's authenticated user';
+    raise exception 'Non-manager trip RPC access must remain bound to the assigned driver''s authenticated user';
   end if;
 
   insert into pg_temp.trucksafe_e2e_results values
