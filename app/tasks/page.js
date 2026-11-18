@@ -36,6 +36,7 @@ export default function TasksPage() {
   const locationWriteInFlightRef = useRef(false);
   const trackingGenerationRef = useRef(0);
   const authGenerationRef = useRef(0);
+  const authUserIdRef = useRef(null);
 
   useEffect(() => () => {
     trackingGenerationRef.current += 1;
@@ -45,8 +46,9 @@ export default function TasksPage() {
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למסד הנתונים אינו מוגדר."); setLoading(false); return; }
     let alive = true;
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => {
-      if (!next) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user?.id || null;
+      if (nextUserId && authUserIdRef.current && nextUserId !== authUserIdRef.current) {
         authGenerationRef.current += 1;
         trackingGenerationRef.current += 1;
         if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
@@ -54,7 +56,24 @@ export default function TasksPage() {
         setTrackingTripId(null);
         setSession(null); setFleet(null); setTasks([]); setTrips([]); setInspections([]);
         setDrivers([]); setVehicles([]); setCurrentDriverId(null);
-        setPreTripTask(null); setMessage("");
+        setForm(emptyForm); setShowForm(false); setBusy(false);
+        setPreTripTask(null); setPreTripChecks({}); setPreTripDefectDetails(""); setMessage("");
+        authUserIdRef.current = nextUserId;
+        if (typeof window !== "undefined") window.location.reload();
+        return;
+      }
+      if (nextUserId) authUserIdRef.current = nextUserId;
+      if (!nextSession) {
+        authUserIdRef.current = null;
+        authGenerationRef.current += 1;
+        trackingGenerationRef.current += 1;
+        if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+        setTrackingTripId(null);
+        setSession(null); setFleet(null); setTasks([]); setTrips([]); setInspections([]);
+        setDrivers([]); setVehicles([]); setCurrentDriverId(null);
+        setForm(emptyForm); setShowForm(false); setBusy(false);
+        setPreTripTask(null); setPreTripChecks({}); setPreTripDefectDetails(""); setMessage("");
         router.replace("/");
       }
     });
@@ -62,6 +81,7 @@ export default function TasksPage() {
     supabase.auth.getSession().then(async ({ data, error }) => {
       if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (error || !data.session) { router.replace("/"); return; }
+      authUserIdRef.current = data.session.user.id;
       setSession(data.session);
       await loadWorkspace(data.session.user, initialAuthGeneration);
       if (alive && initialAuthGeneration === authGenerationRef.current) setLoading(false);
