@@ -435,6 +435,42 @@ test("blocks a time-window restriction that begins during the journey", () => {
   assert.equal(result.conflicts[0].restrictionType, "time_window");
 });
 
+test("blocks a sub-minute restriction window entirely between route minute samples", () => {
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [verifiedRestriction({
+      restriction_type: "time_window",
+      valid_from: "12:00:10",
+      valid_until: "12:00:20"
+    })],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now: new Date("2026-11-09T09:59:00.000Z")
+  });
+  assert.equal(result.validated, false);
+  assert.equal(result.conflicts.length, 1);
+  assert.equal(result.conflicts[0].restrictionType, "time_window");
+});
+
+test("does not block a sub-minute restriction window that starts after route arrival", () => {
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [verifiedRestriction({
+      restriction_type: "time_window",
+      valid_from: "12:03:10",
+      valid_until: "12:03:20"
+    })],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now: new Date("2026-11-09T09:59:00.000Z")
+  });
+  assert.equal(result.validated, true);
+  assert.deepEqual(result.conflicts, []);
+  assert.deepEqual(result.unresolved, []);
+});
+
 test("blocks a date-based road closure that starts after departure but before arrival", () => {
   const result = evaluateFleetRestrictions({
     sections,
