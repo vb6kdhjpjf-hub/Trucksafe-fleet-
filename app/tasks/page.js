@@ -115,7 +115,7 @@ export default function TasksPage() {
     const [t, d, v, tr, currentDriver] = await Promise.all([
       supabase.from("tasks").select("id,reference_code,title,description,pickup_address,delivery_address,scheduled_at,assigned_driver_id,assigned_vehicle_id,status,created_at").eq("fleet_id", current.id).order("created_at", { ascending: false }),
       supabase.from("drivers").select("id,full_name,status,license_expires_at").eq("fleet_id", current.id).order("created_at", { ascending: false }),
-      supabase.from("vehicles").select("id,registration_number,make,vehicle_type,status").eq("fleet_id", current.id).order("created_at", { ascending: false }),
+      supabase.from("vehicles").select("id,registration_number,make,vehicle_type,status,is_demo").eq("fleet_id", current.id).order("created_at", { ascending: false }),
       supabase.from("trips").select("id,task_id,driver_id,vehicle_id,status,origin_address,destination_address,started_at,ended_at").eq("fleet_id", current.id).order("created_at", { ascending: false }).limit(50),
       supabase.from("drivers").select("id").eq("fleet_id", current.id).eq("user_id", user.id).maybeSingle()
     ]);
@@ -134,6 +134,16 @@ export default function TasksPage() {
   const canManageTasks = ["owner", "fleet_manager", "dispatcher"].includes(fleet?.role);
   const isAssignedDriver = driverId => Boolean(currentDriverId && currentDriverId === driverId);
   const canOperateTrip = trip => canManageTasks || isAssignedDriver(trip?.driver_id);
+  function vehicleAssignmentLabel(vehicle) {
+    const label = `${vehicle?.registration_number || "רכב ללא מספר"} · ${vehicle?.make || vehicle?.vehicle_type || "רכב"}`;
+    if (vehicle?.is_demo) return `${label} · חסום: רכב הדגמה`;
+    if (vehicle?.status === "on_trip") return `${label} · חסום: בנסיעה פעילה`;
+    if (vehicle?.status === "maintenance") return `${label} · חסום: בטיפול / תחזוקה`;
+    if (vehicle?.status === "inactive") return `${label} · חסום: מושבת`;
+    if (vehicle?.status === "available" || vehicle?.status === "assigned") return `${label} · זמין לשיבוץ`;
+    return `${label} · חסום: סטטוס לא מוכר`;
+  }
+
   function driverAssignmentLabel(driver) {
     if (isDriverEligibleForVehicleAssignment(driver)) return `${driver.full_name} · פעיל, תוקף רשום תקין`;
     if (driver?.status !== "active") return `${driver?.full_name || "נהג ללא שם"} · לא זמין: הנהג אינו פעיל`;
@@ -384,7 +394,7 @@ export default function TasksPage() {
             <label>כתובת יעד<input value={form.delivery_address} onChange={e=>setForm({...form,delivery_address:e.target.value})} placeholder="כתובת היעד"/></label>
             <label>מועד מתוכנן<input type="datetime-local" value={form.scheduled_at} onChange={e=>setForm({...form,scheduled_at:e.target.value})}/></label>
             <label>שיוך נהג<select value={form.assigned_driver_id} onChange={e=>setForm({...form,assigned_driver_id:e.target.value})}><option value="">ללא נהג</option>{drivers.map(d=><option key={d.id} value={d.id} disabled={!isDriverEligibleForVehicleAssignment(d)}>{driverAssignmentLabel(d)}</option>)}</select></label>
-            <label>שיוך רכב<select value={form.assigned_vehicle_id} onChange={e=>setForm({...form,assigned_vehicle_id:e.target.value})}><option value="">ללא רכב</option>{vehicles.filter(v=>v.status==="available" || v.status==="assigned").map(v=><option key={v.id} value={v.id}>{v.registration_number} · {v.make || v.vehicle_type}</option>)}</select></label>
+            <label>שיוך רכב<select value={form.assigned_vehicle_id} onChange={e=>setForm({...form,assigned_vehicle_id:e.target.value})}><option value="">ללא רכב</option>{vehicles.map(v=><option key={v.id} value={v.id} disabled={v.is_demo || !["available","assigned"].includes(v.status)}>{vehicleAssignmentLabel(v)}</option>)}</select></label>
             <label className="task-wide">הערות / תיאור<textarea rows="3" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="פרטים נוספים לנהג או למנהל הצי"/></label>
           </div>
           <div className="driver-form-actions"><button className="primary-btn" disabled={busy}>{busy ? "שומר..." : "שמירת משימה"}</button><button type="button" className="secondary-btn" onClick={()=>{setShowForm(false);setForm(emptyForm);}}>ביטול</button></div>
