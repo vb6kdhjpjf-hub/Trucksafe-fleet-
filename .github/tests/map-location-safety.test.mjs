@@ -240,3 +240,12 @@ test("truck routing clears vehicle, route and provider state when auth identity 
   assert.ok(source.includes('setForm(initial); setVehicles([]); setVehicleComplianceWarning("")'));
   assert.ok(source.includes("window.location.reload()"));
 });
+
+
+test("routing UI does not claim HERE is active while provider approval gate remains closed", async () => {
+  const source = await readFile("app/routing/page.js", "utf8");
+  assert.ok(source.includes("ספק HERE נשאר נעול עד לאישור נפרד"));
+  assert.ok(source.includes("ספק ניתוב: לא הופעל"));
+  assert.ok(!source.includes("המערכת משתמשת בנתוני ניתוב למשאיות של HERE"));
+  assert.ok(source.includes("if (!cancelled) setMapMessage"));
+});
