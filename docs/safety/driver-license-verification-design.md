@@ -91,3 +91,27 @@ The current product's active-driver and expiry checks are useful baseline contro
 ## Explicit non-goals
 
 This design does not certify any driver, vehicle, trailer, road, bridge, or route. It does not enable automated legal approval, does not import national restriction data, and does not authorize deployment or merge.
+
+
+## Access-control design review — 18 November 2026
+
+A second read-only review of the dedicated Test project's current policies confirms the following implementation constraints:
+
+- Driver records are readable by fleet owners, fleet managers, dispatchers, and safety managers; a linked driver can read their own driver row. Driver insert, update, and delete are limited to fleet owners and fleet managers.
+- Vehicle registration evidence is stored in a private bucket. Its current read, upload, and delete policies are limited to fleet owners and fleet managers and require a two-segment `fleet_id/vehicle_id` object path.
+- Task visibility is restricted to fleet operational roles and the driver linked to the assigned task. These task policies are not an appropriate shortcut for exposing licence documents.
+- The Test project's current security advisor reports two signed-in-callable SECURITY DEFINER RPCs: `start_trip_with_inspection` and `finish_trip`. These are existing trip lifecycle endpoints and must be reviewed as intentional privileged entry points; do not revoke or weaken them without a separate call-path and real-Auth review.
+
+### Required controls for a future driver-licence evidence feature
+
+1. Use a dedicated **private** Storage bucket; do not reuse the vehicle-registration bucket or any public bucket.
+2. Scope every object path to fleet, driver, and immutable evidence-record identifiers. Validate UUID path segments before casting them in policies.
+3. Allow document read, upload, and deletion only to the fleet roles explicitly responsible for licence verification. A driver's ability to view their own driver profile must not automatically grant access to the underlying document.
+4. Prefer short-lived signed URLs generated only after a server-side authorization check. Never persist public URLs or expose service-role credentials.
+5. Keep evidence metadata and append-only review events in separate relational records. A document replacement must not overwrite prior verification history.
+6. Enable RLS and grant only the table privileges required by the application. Since Supabase's Data API exposure defaults changed in 2026, explicitly review Data API exposure and SQL grants rather than assuming a new `public` table is automatically exposed.
+7. Test manager access, unrelated-fleet denial, driver self-access denial to manager-only evidence, invalid path denial, and signed-URL authorization with real Auth sessions.
+
+### Verification boundary
+
+This review inspected policies in the dedicated Test project only. It made no schema, Storage, Auth, or data changes. The proposed bucket, tables, policies, signed-URL flow, and review-event model remain design work until the full access matrix and rollback-only integration tests are ready.
