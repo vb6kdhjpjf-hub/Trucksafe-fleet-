@@ -181,18 +181,37 @@ export default function Home() {
     if(recoveryLink)setRecoveryMode(true);
 
     // Subscribe before reading the session so a PASSWORD_RECOVERY event is not missed.
+    const clearPrivateState=()=>{
+      authGenerationRef.current+=1;
+      fleetLoadRef.current+=1;
+      setFleet(null);setWorkspaceChecked(false);setWorkspaceError("");
+      setVehicles([]);setDrivers([]);setActiveTrips(0);setOpenIncidents(0);setIncidentAlerts([]);
+      setActiveTasks(0);setMaintenanceAlerts([]);setLiveLocations([]);
+      setRegistrationSchemaReady(false);setRegistrationUploadBusy("");setRegistrationViewBusy("");
+      setRegistrationReviewBusy("");setRegistrationReviewNotes({});
+      setShowVehicle(false);setRegistration("");setVehicleType("משאית");setBodyType("rigid_truck");
+      setVehicleMake("");setAssignedDriverId("");setRoutingVehicleType("StraightTruck");
+      setHeightCm("");setWidthCm("");setLengthCm("");setGrossWeightKg("");setEmptyWeightKg("");
+      setAxleCount("");setTrailerCount("0");setWeightPerAxleKg("");setEditingVehicleId("");
+      setPassword("");setNewPassword("");setRecoveryMode(false);setBusy(false);
+    };
+    const initialAuthGeneration=authGenerationRef.current;
     const {data:{subscription}}=supabase.auth.onAuthStateChange((event,next)=>{
       if(event==="PASSWORD_RECOVERY"){
         setRecoveryMode(true);
         setMessage("קישור האיפוס אומת. הזן סיסמה חדשה.");
       }
+      const nextUserId=next?.user?.id||null;
+      if(nextUserId&&authUserIdRef.current&&nextUserId!==authUserIdRef.current){
+        clearPrivateState();authUserIdRef.current=nextUserId;setSession(next);
+        if(typeof window!=="undefined")window.location.reload();
+        return;
+      }
+      if(nextUserId)authUserIdRef.current=nextUserId;
       setSession(next);
       if(!next){
-        setFleet(null);
-        setWorkspaceChecked(false);
-        setVehicles([]);
-        setDrivers([]);
-        setLiveLocations([]);
+        authUserIdRef.current=null;
+        clearPrivateState();
         if(event==="SIGNED_OUT")setLoading(false);
       }
     });
@@ -201,20 +220,24 @@ export default function Home() {
     // This prevents a deleted/expired account's cached browser session from opening
     // the "create organization" flow or being mistaken for a new user.
     supabase.auth.getUser().then(async ({data,error})=>{
-      if(!alive)return;
+      if(!alive||initialAuthGeneration!==authGenerationRef.current)return;
       if(error){
         setMessage("פג תוקף ההתחברות או שהחשבון אינו זמין. יש להתחבר מחדש עם החשבון הפעיל.");
         await supabase.auth.signOut();
-        if(alive){setSession(null);setFleet(null);setLoading(false);}
+        if(alive&&initialAuthGeneration===authGenerationRef.current){setSession(null);setFleet(null);setLoading(false);}
         return;
       }
       const {data:{session:currentSession}}=await supabase.auth.getSession();
-      if(!alive)return;
+      if(!alive||initialAuthGeneration!==authGenerationRef.current)return;
+      if(currentSession?.user?.id!==data.user?.id)return;
+      authUserIdRef.current=data.user?.id||null;
       setSession(currentSession);
       if(data.user&&!recoveryLink)await loadFleet(data.user);
-      if(alive)setLoading(false);
+      if(alive&&initialAuthGeneration===authGenerationRef.current)setLoading(false);
+    }).catch(error=>{
+      if(alive&&initialAuthGeneration===authGenerationRef.current){setMessage("לא ניתן לאמת את ההתחברות: "+(error?.message||"שגיאה לא ידועה"));setLoading(false);}
     });
-    return ()=>{alive=false;subscription.unsubscribe();};
+    return ()=>{alive=false;authGenerationRef.current+=1;fleetLoadRef.current+=1;subscription.unsubscribe();};
   },[]);
 
   async function authenticate(e){
