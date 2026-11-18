@@ -210,6 +210,7 @@ test("imports clear sensitive previews and reject stale identity checks after au
   assert.ok(source.includes("nextUserId !== authUserIdRef.current"));
   assert.ok(source.includes('setFleet(null); setRole(""); setFilename(""); setParsed(null)'));
   assert.ok(source.includes("authGeneration === authGenerationRef.current"));
+  assert.ok(source.includes("if (!alive || authGeneration !== authGenerationRef.current) return;"));
   assert.ok(source.includes("window.location.reload()"));
 });
 
