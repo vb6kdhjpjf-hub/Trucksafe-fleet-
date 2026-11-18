@@ -198,7 +198,7 @@ test("maintenance clears private fleet records and rejects stale queries after a
   const source = await readFile("app/maintenance/page.js", "utf8");
   assert.ok(source.includes("authUserIdRef=useRef(null)"));
   assert.ok(source.includes("nextUserId!==authUserIdRef.current"));
-  assert.ok(source.includes("if(!isCurrent())return"));
+  assert.ok(source.includes("authGeneration!==authGenerationRef.current"));
   assert.ok(source.includes("setRecords([]);setIncidents([]);setCompliance({})"));
   assert.ok(source.includes("window.location.reload()"));
 });
@@ -253,8 +253,8 @@ test("routing UI does not claim HERE is active while provider approval gate rema
 
 test("special equipment documents and records clear across auth changes", async () => {
   const source = await readFile("app/special-equipment/page.js", "utf8");
-  assert.match(source, /authGenerationRef\\s*=\\s*useRef\\(0\\)/);
-  assert.match(source, /authUserIdRef\\s*=\\s*useRef\\(null\\)/);
+  assert.ok(source.includes("authGenerationRef=useRef(0)"));
+  assert.ok(source.includes("authUserIdRef=useRef(null)"));
   assert.ok(source.includes("nextUserId!==authUserIdRef.current"));
   assert.ok(source.includes("authGeneration===authGenerationRef.current"));
   assert.ok(source.includes("setRows([]);setForm(empty);setChart(null);setManual(null)"));
