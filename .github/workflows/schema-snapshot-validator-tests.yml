@@ -1,0 +1,40 @@
+name: Schema snapshot validator tests
+
+on:
+  pull_request:
+    paths:
+      - ".github/scripts/validate_schema_snapshot.py"
+      - ".github/tests/test_validate_schema_snapshot.py"
+      - ".github/workflows/restore-test-schema.yml"
+      - ".github/workflows/schema-snapshot-validator-tests.yml"
+  push:
+    branches:
+      - "fix/restore-snapshot-sql-lexer"
+    paths:
+      - ".github/scripts/validate_schema_snapshot.py"
+      - ".github/tests/test_validate_schema_snapshot.py"
+      - ".github/workflows/restore-test-schema.yml"
+      - ".github/workflows/schema-snapshot-validator-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: schema-snapshot-validator-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run schema snapshot lexer tests
+        run: python -m unittest discover -s .github/tests -p 'test_validate_schema_snapshot.py' -v
