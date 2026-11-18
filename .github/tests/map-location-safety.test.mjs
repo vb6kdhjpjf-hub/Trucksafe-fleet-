@@ -183,3 +183,22 @@ test("fleet reports clear private aggregates and reject stale queries after auth
   assert.ok(source.includes("setTrips([]); setMaintenance([]); setIncidents([])"));
   assert.ok(source.includes("window.location.reload()"));
 });
+
+
+test("daily work plans clear private forms and reject stale fleet queries after auth changes", async () => {
+  const source = await readFile("app/daily-work/page.js", "utf8");
+  assert.ok(source.includes("const authUserIdRef = useRef(null)"));
+  assert.ok(source.includes("nextUserId !== authUserIdRef.current"));
+  assert.ok(source.includes("authGeneration !== authGenerationRef.current"));
+  assert.ok(source.includes("setPlans([]); setStopsByPlan({})"));
+  assert.ok(source.includes("window.location.reload()"));
+});
+
+test("maintenance clears private fleet records and rejects stale queries after auth changes", async () => {
+  const source = await readFile("app/maintenance/page.js", "utf8");
+  assert.ok(source.includes("authUserIdRef=useRef(null)"));
+  assert.ok(source.includes("nextUserId!==authUserIdRef.current"));
+  assert.ok(source.includes("authGeneration!==authGenerationRef.current"));
+  assert.ok(source.includes("setRecords([]);setIncidents([]);setCompliance({})"));
+  assert.ok(source.includes("window.location.reload()"));
+});
