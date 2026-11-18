@@ -97,6 +97,12 @@ export default function DriversPage() {
 
   async function saveDriver(e) {
     e.preventDefault();
+    const generation = authGenerationRef.current;
+    const requestingUserId = authUserIdRef.current;
+    const isCurrentSession = () => generation === authGenerationRef.current
+      && Boolean(requestingUserId) && requestingUserId === authUserIdRef.current
+      && requestingUserId === session?.user?.id;
+    if (!isCurrentSession()) return;
     if (!canManageDrivers) { setMessage("אין לך הרשאה לניהול נהגים."); return; }
     if (!fleet) return;
     if (!form.full_name.trim()) { setMessage("יש להזין שם מלא לנהג."); return; }
@@ -112,15 +118,23 @@ export default function DriversPage() {
       const result = wasEditing
         ? await supabase.from("drivers").update(payload).eq("id", editing.id).eq("fleet_id", fleet.id)
         : await supabase.from("drivers").insert({ ...payload, fleet_id: fleet.id, status: "active" });
+      if (!isCurrentSession()) return;
       if (result.error) { setMessage("לא הצלחנו לשמור את הנהג: " + result.error.message); return; }
       setShowForm(false); setEditing(null); setForm(emptyForm);
-      await loadDrivers(fleet.id); setMessage(wasEditing ? "פרטי הנהג עודכנו." : "הנהג נוסף לצי בהצלחה.");
+      await loadDrivers(fleet.id, generation);
+      if (isCurrentSession()) setMessage(wasEditing ? "פרטי הנהג עודכנו." : "הנהג נוסף לצי בהצלחה.");
     } catch (error) {
-      setMessage("שמירת הנהג נכשלה: " + (error?.message || "שגיאה לא ידועה"));
-    } finally { setBusy(false); }
+      if (isCurrentSession()) setMessage("שמירת הנהג נכשלה: " + (error?.message || "שגיאה לא ידועה"));
+    } finally { if (isCurrentSession()) setBusy(false); }
   }
 
   async function toggleStatus(driver) {
+    const generation = authGenerationRef.current;
+    const requestingUserId = authUserIdRef.current;
+    const isCurrentSession = () => generation === authGenerationRef.current
+      && Boolean(requestingUserId) && requestingUserId === authUserIdRef.current
+      && requestingUserId === session?.user?.id;
+    if (!isCurrentSession()) return;
     if (!canManageDrivers) { setMessage("אין לך הרשאה לניהול נהגים."); return; }
     if (!fleet || !driver?.id) return;
     const nextStatus = driver.status === "active" ? "off_duty" : "active";
@@ -129,20 +143,23 @@ export default function DriversPage() {
       if (nextStatus === "off_duty") {
         const { data: activeTrips, error: tripError } = await supabase.from("trips")
           .select("id").eq("fleet_id", fleet.id).eq("driver_id", driver.id).eq("status", "active").limit(1);
+        if (!isCurrentSession()) return;
         if (tripError) { setMessage("לא ניתן לבדוק נסיעות פעילות: " + tripError.message); return; }
         if (activeTrips?.length) {
           setMessage("לא ניתן להשבית נהג במהלך נסיעה פעילה. יש לסיים את הנסיעה תחילה.");
           return;
         }
       }
+      if (!isCurrentSession()) return;
       const { error } = await supabase.from("drivers").update({ status: nextStatus })
         .eq("id", driver.id).eq("fleet_id", fleet.id);
+      if (!isCurrentSession()) return;
       if (error) { setMessage("לא הצלחנו לעדכן את סטטוס הנהג: " + error.message); return; }
-      await loadDrivers(fleet.id);
-      setMessage(nextStatus === "active" ? "הנהג סומן כפעיל." : "הנהג סומן כלא פעיל.");
+      await loadDrivers(fleet.id, generation);
+      if (isCurrentSession()) setMessage(nextStatus === "active" ? "הנהג סומן כפעיל." : "הנהג סומן כלא פעיל.");
     } catch (error) {
-      setMessage("עדכון סטטוס הנהג נכשל: " + (error?.message || "שגיאה לא ידועה"));
-    } finally { setBusy(false); }
+      if (isCurrentSession()) setMessage("עדכון סטטוס הנהג נכשל: " + (error?.message || "שגיאה לא ידועה"));
+    } finally { if (isCurrentSession()) setBusy(false); }
   }
 
   const today = getIsraelCalendarDate();
