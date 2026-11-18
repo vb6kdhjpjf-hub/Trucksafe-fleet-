@@ -285,8 +285,11 @@ export default function TruckRoutingPage() {
     const savedProfile = getSavedTruckRoutingProfile(selectedVehicle);
     if (!savedProfile || !Number.isFinite(currentWeightKg) ||
         currentWeightKg < savedProfile.emptyWeightKg || currentWeightKg > savedProfile.grossWeightKg ||
-        !Number.isFinite(weightPerAxleKg) || weightPerAxleKg < 500 || weightPerAxleKg > currentWeightKg) {
-      setMessage("יש להזין משקל כולל בפועל ומשקל שקול בפועל על הסרן העמוס ביותר. אין להעריך או לחשב את משקל הסרן באמצעות חלוקת המשקל הכולל.");
+        !Number.isFinite(savedProfile.registeredMaxWeightPerAxleKg) ||
+        !Number.isFinite(weightPerAxleKg) || weightPerAxleKg < 500 ||
+        weightPerAxleKg > currentWeightKg ||
+        weightPerAxleKg > savedProfile.registeredMaxWeightPerAxleKg) {
+      setMessage("יש להזין משקל כולל ומשקל סרן שנמדדו בפועל. נדרשת גם מגבלת סרן מרבית מאומתת מרישיון הרכב; עומס הסרן בפועל אינו יכול לעלות עליה. אין להעריך את עומס הסרן באמצעות חלוקה במספר הסרנים.");
       return;
     }
     if (!providerReady) { setMessage("מנוע ניתוב המשאיות עדיין לא הופעל. אין לחשב מסלול עד להשלמת החיבור והבדיקות."); return; }
@@ -389,7 +392,7 @@ export default function TruckRoutingPage() {
           <div>גובה: {selectedProfile.heightCm} ס״מ · רוחב: {selectedProfile.widthCm} ס״מ · אורך: {selectedProfile.lengthCm} ס״מ</div>
           <div>משקל ריק: {selectedProfile.emptyWeightKg.toLocaleString("he-IL")} ק״ג · משקל כולל מותר: {selectedProfile.grossWeightKg.toLocaleString("he-IL")} ק״ג</div>
           <div>סרנים: {selectedProfile.axleCount} · נגררים: {selectedProfile.trailerCount} · מגבלת סרן רשומה: {selectedProfile.registeredMaxWeightPerAxleKg == null ? "לא הוזנה" : selectedProfile.registeredMaxWeightPerAxleKg.toLocaleString("he-IL") + " ק״ג"}</div>
-          <small style={{ color: "#667085" }}>המידות והנתונים נלקחים מפרופיל הרכב השמור שאומת מול מסמכי הרכב. משקל הסרן המוצג, אם קיים, הוא מגבלה רשומה בלבד ולא עומס בפועל. לצורך ניתוב נדרש להזין בנפרד את העומס שנמדד על הסרן העמוס ביותר, כולל מטען.</small>
+          <small style={{ color: "#667085" }}>המידות והנתונים נלקחים מפרופיל הרכב השמור שאומת מול מסמכי הרכב. מגבלת הסרן הרשומה היא תקרת החוק/הרישיון ואינה עומס בפועל. ניתוב חסום אם המגבלה אינה מוזנת ומאומתת, או אם העומס שנשקל על הסרן העמוס ביותר חורג ממנה.</small>
         </div> : <p style={{ color: "#8a4b12", fontSize: 13 }}>לא נמצאו כלי רכב זמינים עם פרופיל ניתוב מלא ואימות רישיון. יש להשלים את פרטי הרכב ואימות המסמכים בלוח הבקרה לפני תכנון מסלול.</p>}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 18 }}>
           <button type="submit" disabled={busy || !providerReady || !selectedVehicleId || !selectedProfile} style={button}><Route size={17} style={{ verticalAlign: "middle" }}/> {busy ? "מחשב מסלול..." : providerReady ? "חשב מסלול למשאית" : "ממתין לחיבור שירות הניווט"}</button>
