@@ -243,6 +243,15 @@ test("reports reject stale concurrent fleet loads after a newer report request s
   assert.ok(source.includes("reportRequestGenerationRef.current += 1"));
 });
 
+test("daily reports reject stale concurrent loads after a newer request starts", async () => {
+  const source = await readFile("app/daily-report/page.js", "utf8");
+  assert.ok(source.includes("const reportRequestGenerationRef = useRef(0)"));
+  assert.ok(source.includes("const requestGeneration = ++reportRequestGenerationRef.current"));
+  assert.ok(source.includes("requestGeneration === reportRequestGenerationRef.current"));
+  assert.ok(source.includes("if (!isCurrent()) return;"));
+  assert.ok(source.includes("reportRequestGenerationRef.current += 1"));
+});
+
 test("road restriction records and review state clear across auth changes", async () => {
   const source = await readFile("app/road-restrictions/page.js", "utf8");
   assert.ok(source.includes("const authUserIdRef = useRef(null)"));
