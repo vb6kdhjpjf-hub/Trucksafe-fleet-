@@ -17,27 +17,33 @@ export default function TripHistoryPage() {
   const [error, setError] = useState("");
   const authGenerationRef = useRef(0);
   const authUserIdRef = useRef(null);
+  const historyRequestGenerationRef = useRef(0);
+  const gpsRequestGenerationRef = useRef(new Map());
 
   async function loadHistory(id, authGeneration = authGenerationRef.current) {
     if (!id) return;
-    const { data, error: tripError } = await supabase.from("trips")
-      .select("id,status,origin_address,destination_address,started_at,ended_at,driver_id,vehicle_id")
-      .eq("fleet_id", id).order("started_at", { ascending: false }).limit(100);
-    if (authGeneration !== authGenerationRef.current) return;
-    if (tripError) { setError("לא ניתן לטעון היסטוריית נסיעות: " + tripError.message); return; }
-    const rows = await Promise.all((data || []).map(async trip => {
-      const [driverResult, vehicleResult] = await Promise.all([
-        supabase.from("drivers").select("full_name").eq("id", trip.driver_id).maybeSingle(),
-        supabase.from("vehicles").select("registration_number").eq("id", trip.vehicle_id).maybeSingle()
-      ]);
-      if (driverResult.error || vehicleResult.error) {
-        throw driverResult.error || vehicleResult.error;
-      }
-      return { ...trip, driverName: driverResult.data?.full_name || "לא צוין", vehicleName: vehicleResult.data?.registration_number || "לא צוין" };
-    }));
-    if (authGeneration !== authGenerationRef.current) return;
-    setTrips(rows);
-    setError("");
+    const requestGeneration = ++historyRequestGenerationRef.current;
+    const isCurrent = () => authGeneration === authGenerationRef.current && requestGeneration === historyRequestGenerationRef.current;
+    try {
+      const { data, error: tripError } = await supabase.from("trips")
+        .select("id,status,origin_address,destination_address,started_at,ended_at,driver_id,vehicle_id")
+        .eq("fleet_id", id).order("started_at", { ascending: false }).limit(100);
+      if (!isCurrent()) return;
+      if (tripError) { setError("לא ניתן לטעון היסטוריית נסיעות: " + tripError.message); return; }
+      const rows = await Promise.all((data || []).map(async trip => {
+        const [driverResult, vehicleResult] = await Promise.all([
+          supabase.from("drivers").select("full_name").eq("id", trip.driver_id).maybeSingle(),
+          supabase.from("vehicles").select("registration_number").eq("id", trip.vehicle_id).maybeSingle()
+        ]);
+        if (driverResult.error || vehicleResult.error) throw driverResult.error || vehicleResult.error;
+        return { ...trip, driverName: driverResult.data?.full_name || "לא צוין", vehicleName: vehicleResult.data?.registration_number || "לא צוין" };
+      }));
+      if (!isCurrent()) return;
+      setTrips(rows);
+      setError("");
+    } catch (error) {
+      if (isCurrent()) setError("שגיאה בטעינת היסטוריית הנסיעות: " + (error?.message || "שגיאה לא ידועה"));
+    }
   }
 
   useEffect(() => {
@@ -45,6 +51,8 @@ export default function TripHistoryPage() {
     let alive = true;
     const clearPrivateState = () => {
       authGenerationRef.current += 1;
+      historyRequestGenerationRef.current += 1;
+      gpsRequestGenerationRef.current.clear();
       setFleetId(null); setTrips([]); setExpanded({}); setPointsByTrip({}); setPointsLoading({}); setError("");
     };
     const initialAuthGeneration = authGenerationRef.current;
@@ -80,25 +88,34 @@ export default function TripHistoryPage() {
     }).catch(error => {
       if (alive && initialAuthGeneration === authGenerationRef.current) { setError("שגיאה בטעינת ההיסטוריה: " + error.message); setLoading(false); }
     });
-    return () => { alive = false; authGenerationRef.current += 1; subscription.unsubscribe(); };
+    return () => { alive = false; authGenerationRef.current += 1; historyRequestGenerationRef.current += 1; gpsRequestGenerationRef.current.clear(); subscription.unsubscribe(); };
   }, [router]);
 
   async function toggleTrip(trip) {
     const authGeneration = authGenerationRef.current;
     const opening = !expanded[trip.id];
     setExpanded(old => ({ ...old, [trip.id]: opening }));
-    if (!opening || Object.prototype.hasOwnProperty.call(pointsByTrip, trip.id)) return;
-    setPointsLoading(old => ({ ...old, [trip.id]: true }));
-    const { data, error: pointsError } = await supabase.from("trip_locations")
-      .select("latitude,longitude,recorded_at").eq("trip_id", trip.id)
-      .order("recorded_at", { ascending: true }).limit(3000);
-    if (authGeneration !== authGenerationRef.current) return;
-    if (pointsError) {
-      setError("לא ניתן לטעון נקודות GPS לנסיעה: " + pointsError.message);
-    } else {
-      setPointsByTrip(old => ({ ...old, [trip.id]: data || [] }));
+    const requestGeneration = (gpsRequestGenerationRef.current.get(trip.id) || 0) + 1;
+    gpsRequestGenerationRef.current.set(trip.id, requestGeneration);
+    if (!opening) {
+      setPointsLoading(old => ({ ...old, [trip.id]: false }));
+      return;
     }
-    setPointsLoading(old => ({ ...old, [trip.id]: false }));
+    if (Object.prototype.hasOwnProperty.call(pointsByTrip, trip.id)) return;
+    setPointsLoading(old => ({ ...old, [trip.id]: true }));
+    const isCurrent = () => authGeneration === authGenerationRef.current && gpsRequestGenerationRef.current.get(trip.id) === requestGeneration;
+    try {
+      const { data, error: pointsError } = await supabase.from("trip_locations")
+        .select("latitude,longitude,recorded_at").eq("trip_id", trip.id)
+        .order("recorded_at", { ascending: true }).limit(3000);
+      if (!isCurrent()) return;
+      if (pointsError) setError("לא ניתן לטעון נקודות GPS לנסיעה: " + pointsError.message);
+      else setPointsByTrip(old => ({ ...old, [trip.id]: data || [] }));
+    } catch (error) {
+      if (isCurrent()) setError("שגיאה בטעינת נקודות GPS: " + (error?.message || "שגיאה לא ידועה"));
+    } finally {
+      if (isCurrent()) setPointsLoading(old => ({ ...old, [trip.id]: false }));
+    }
   }
 
   const date = value => value ? new Date(value).toLocaleString("he-IL") : "—";
