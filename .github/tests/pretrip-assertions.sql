@@ -937,6 +937,9 @@ RESET ROLE;
 -- Exercise incident authorization as real PostgreSQL roles, not as the
 -- migration-test superuser. A reporter may create and read their own report,
 -- but cannot resolve it; a fleet manager must supply resolution evidence.
+-- Earlier membership-revocation assertions intentionally removed this fixture member.
+INSERT INTO public.fleet_members (fleet_id,user_id,role)
+VALUES ('10000000-0000-0000-0000-000000000001','50000000-0000-0000-0000-000000000001','driver');
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
 DO $test$
