@@ -39,8 +39,6 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 24
-      - name: Generate lockfile without running install scripts
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
       - name: Audit production dependencies
@@ -162,9 +160,6 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 24
-      - name: Generate lockfile without running install scripts
-        if: steps.auth-secrets.outputs.available == 'true'
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
       - name: Install locked dependencies
         id: install
         if: steps.auth-secrets.outputs.available == 'true'
@@ -192,31 +187,3 @@ jobs:
         run: |
           set +x
           node .github/tests/live-supabase-auth.integration.mjs --cleanup-only
-
-  lockfile-recovery:
-    if: github.ref == 'refs/heads/chore/reproducible-supabase-local-env'
-    needs: validate
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Check out recovery branch
-        uses: actions/checkout@v7
-        with:
-          ref: chore/reproducible-supabase-local-env
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-      - name: Generate and commit lockfile (temporary recovery)
-        run: |
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package-lock.json
-          if git diff --cached --quiet; then
-            echo "Lockfile already current."
-          else
-            git commit -m "chore: commit reproducible npm lockfile"
-            git push origin HEAD:chore/reproducible-supabase-local-env
-          fi
