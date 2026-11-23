@@ -34,6 +34,7 @@ export default function Home() {
   const [registration,setRegistration]=useState("");
   const [vehicleType,setVehicleType]=useState("משאית");
   const [vehicleMake,setVehicleMake]=useState("");
+  const [isDemo,setIsDemo]=useState(false);
   const [assignedDriverId,setAssignedDriverId]=useState("");
   const [testDueAt,setTestDueAt]=useState("");
   const [insuranceDueAt,setInsuranceDueAt]=useState("");
@@ -88,7 +89,7 @@ export default function Home() {
     setFleet({...current,role});
     setWorkspaceChecked(true);
     const [v,d,tr,inc,incRows,ta,active,maint,lockRows]=await Promise.all([
-      supabase.from("vehicles").select("id,registration_number,make,model,vehicle_type,status,assigned_driver_id,test_due_at,insurance_due_at,registration_due_at,next_service_at").eq("fleet_id",current.id).order("created_at",{ascending:false}),
+      supabase.from("vehicles").select("id,registration_number,make,model,vehicle_type,status,is_demo,assigned_driver_id,test_due_at,insurance_due_at,registration_due_at,next_service_at").eq("fleet_id",current.id).order("created_at",{ascending:false}),
       supabase.from("drivers").select("id,full_name,phone,status,license_number,license_class,license_expires_at").eq("fleet_id",current.id).order("created_at",{ascending:false}),
       supabase.from("trips").select("id",{count:"exact",head:true}).eq("fleet_id",current.id).eq("status","active"),
       supabase.from("incidents").select("id",{count:"exact",head:true}).eq("fleet_id",current.id).in("status",["open","investigating"]),
@@ -265,6 +266,7 @@ export default function Home() {
     setRegistration("");
     setVehicleType("משאית");
     setVehicleMake("");
+    setIsDemo(false);
     setAssignedDriverId("");
     setTestDueAt("");
     setInsuranceDueAt("");
@@ -278,6 +280,7 @@ export default function Home() {
     setRegistration(vehicle.registration_number||"");
     setVehicleType(vehicle.vehicle_type||"משאית");
     setVehicleMake([vehicle.make,vehicle.model].filter(Boolean).join(" "));
+    setIsDemo(Boolean(vehicle.is_demo));
     setAssignedDriverId(vehicle.assigned_driver_id||"");
     setTestDueAt(vehicle.test_due_at||"");
     setInsuranceDueAt(vehicle.insurance_due_at||"");
@@ -302,6 +305,7 @@ export default function Home() {
       vehicle_type:vehicleType,
       make:vehicleMake.trim()||null,
       model:null,
+      is_demo:isDemo,
       assigned_driver_id:assignedDriverId||null,
       test_due_at:testDueAt,
       insurance_due_at:insuranceDueAt,
@@ -409,6 +413,7 @@ export default function Home() {
         <label>מספר רישוי *<input required maxLength={20} value={registration} onChange={e=>setRegistration(e.target.value)} placeholder="12-345-67"/></label>
         <label>סוג רכב<select value={vehicleType} onChange={e=>setVehicleType(e.target.value)}><option>משאית</option><option>גורר</option><option>נגרר</option><option>מסחרית</option><option>רכב אחר</option></select></label>
         <label>יצרן / דגם<input maxLength={100} value={vehicleMake} onChange={e=>setVehicleMake(e.target.value)} placeholder="לדוגמה: Volvo FH"/></label>
+        <label style={{display:"flex",alignItems:"center",gap:8}}><input type="checkbox" checked={isDemo} onChange={e=>setIsDemo(e.target.checked)}/> רכב הדגמה — לא ניתן לפתוח איתו נסיעות</label>
         <label>נהג משויך<select value={assignedDriverId} onChange={e=>setAssignedDriverId(e.target.value)}><option value="">ללא נהג משויך</option>{drivers.filter(d=>d.status==="active").map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label>
         <label>טסט בתוקף עד *<input type="date" required value={testDueAt} onChange={e=>setTestDueAt(e.target.value)}/></label>
         <label>ביטוח בתוקף עד *<input type="date" required value={insuranceDueAt} onChange={e=>setInsuranceDueAt(e.target.value)}/></label>
@@ -416,7 +421,7 @@ export default function Home() {
         <label>טיפול תקופתי הבא<input type="date" value={nextServiceAt} onChange={e=>setNextServiceAt(e.target.value)}/></label>
         <div className="vehicle-form-actions"><button className="primary-btn" disabled={busy}>{busy?"שומר...":editingVehicleId?"שמירת עדכון":"שמירת רכב"}</button><button type="button" className="secondary-btn" disabled={busy} onClick={resetVehicleForm}>ביטול</button></div>
       </form>}
-      {vehicles.length===0?<div className="fleet-empty">עדיין לא הוספת כלי רכב. לחץ על "הוספת רכב" כדי להתחיל.</div>:<div className="vehicle-list">{vehicles.map(v=><div className="vehicle-row" key={v.id}><Truck size={20}/><div><b>{v.registration_number}</b><small>{[v.make,v.model,v.vehicle_type].filter(Boolean).join(" · ")}{v.assigned_driver_id ? " · נהג: "+(drivers.find(d=>d.id===v.assigned_driver_id)?.full_name||"לא נמצא") : " · ללא נהג משויך"}</small><small className="vehicle-compliance-line">טסט: {v.test_due_at||"חסר"} · ביטוח: {v.insurance_due_at||"חסר"} · רישיון רכב: {v.registration_due_at||"חסר"}</small></div><span className={!lockStatusAvailable||lockedVehicleIds.includes(v.id)?"status-late":""}>{!lockStatusAvailable?"מצב נעילה לא מאומת":lockedVehicleIds.includes(v.id)?"נעול עקב אירוע בטיחות":v.status==="available"?"זמין":v.status==="assigned"?"משויך":v.status==="on_trip"?"בנסיעה":v.status==="maintenance"?"בטיפול":v.status==="inactive"?"לא פעיל":v.status}</span>{canManageVehicles&&<button type="button" className="secondary-btn" onClick={()=>editVehicle(v)}><Pencil size={14}/> עדכון מסמכים</button>}</div>)}</div>}
+      {vehicles.length===0?<div className="fleet-empty">עדיין לא הוספת כלי רכב. לחץ על "הוספת רכב" כדי להתחיל.</div>:<div className="vehicle-list">{vehicles.map(v=><div className="vehicle-row" key={v.id}><Truck size={20}/><div><b>{v.registration_number} {v.is_demo&&<span className="role-pill">רכב הדגמה</span>}</b><small>{[v.make,v.model,v.vehicle_type].filter(Boolean).join(" · ")}{v.assigned_driver_id ? " · נהג: "+(drivers.find(d=>d.id===v.assigned_driver_id)?.full_name||"לא נמצא") : " · ללא נהג משויך"}</small><small className="vehicle-compliance-line">טסט: {v.test_due_at||"חסר"} · ביטוח: {v.insurance_due_at||"חסר"} · רישיון רכב: {v.registration_due_at||"חסר"}</small></div><span className={!lockStatusAvailable||lockedVehicleIds.includes(v.id)?"status-late":""}>{!lockStatusAvailable?"מצב נעילה לא מאומת":lockedVehicleIds.includes(v.id)?"נעול עקב אירוע בטיחות":v.status==="available"?"זמין":v.status==="assigned"?"משויך":v.status==="on_trip"?"בנסיעה":v.status==="maintenance"?"בטיפול":v.status==="inactive"?"לא פעיל":v.status}</span>{canManageVehicles&&<button type="button" className="secondary-btn" onClick={()=>editVehicle(v)}><Pencil size={14}/> עדכון מסמכים</button>}</div>)}</div>}
       </section>
       <p className="fleet-foot">TruckSafe Fleet V1 · מחובר למסד הנתונים · נתוני הצי מוצגים מהמערכת</p>
     </section>
