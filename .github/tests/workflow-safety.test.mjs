@@ -22,4 +22,99 @@ test("schema restore consumes the exact artifact from a user-selected successful
   assert.match(restore, /SCHEMA_BACKUP_RUN_ID: \$\{\{ inputs\.schema_backup_run_id \}\}/);
   assert.match(restore, /name: trucksafe-schema-only/);
   assert.match(restore, /run-id: \$\{\{ inputs\.schema_backup_run_id \}\}/);
-  assert.match(restore, ¶»§q«^
+  assert.match(restore, /gh run view "\$SCHEMA_BACKUP_RUN_ID"[^\n]*--json status,conclusion,workflowName/);
+  assert.match(restore, /workflowName.*Supabase schema-only backup/);
+  assert.match(restore, /if: \$\{\{ inputs\.confirm_restore == 'RESTORE' \}\}/);
+});
+
+test("schema restore is locked to the isolated Test project and refuses non-empty targets", () => {
+  assert.match(restore, /postgres\.yxxrgblpqzhnnyojbwcr/);
+  assert.match(restore, /Refusing connection: expected this test project's Session pooler/);
+  assert.match(restore, /table_count/);
+  assert.match(restore, /Refusing to overwrite a test database that already contains public tables/);
+  assert.match(restore, /--single-transaction/);
+  assert.doesNotMatch(restore, /SUPABASE_DB_URL|jqebxlhhffwiebijiug/);
+});
+
+
+test("database integration explicitly rejects the exact Production project ref", () => {
+  assert.match(validation, /if "yxxrgblpqzhnnyojbwcr" not in identity/);
+  assert.match(validation, /if "jqebxlhhffwiebijiug" in identity/);
+  assert.doesNotMatch(validation, /jqebxlhhffwiebijiugx/);
+});
+
+
+test("live Test Auth credentials are isolated from pull_request execution", () => {
+  const authJob = validation.slice(validation.indexOf("  auth-integration:"));
+  assert.ok(authJob.includes("github.event_name == 'push'"));
+  assert.ok(authJob.includes("refs/heads/test/isolated-e2e-ci"));
+  assert.ok(authJob.includes("github.event_name == 'workflow_dispatch'"));
+  assert.ok(authJob.includes("inputs.confirm_test_auth == true"));
+  assert.ok(!authJob.includes("github.event_name == 'pull_request'"));
+  assert.ok(liveAuth.includes("parsed.hostname !== `${TEST_PROJECT_REF}.supabase.co`"));
+  assert.ok(liveAuth.includes("parsed.hostname !== `${TEST_PROJECT_REF}.supabase.co`"));
+  assert.ok(liveAuth.includes("const TEST_PROJECT_REF = \"yxxrgblpqzhnnyojbwcr\";"));
+  assert.ok(!liveAuth.includes("jqebxlhhffwiebijiug"));
+  assert.ok(!authJob.includes("jqebxlhhffwiebijiug"));
+});
+
+ 
+test("live Auth cleanup always runs after the fixture attempt and uses only Auth Admin cleanup", () => {
+  const authJob = validation.slice(validation.indexOf("  auth-integration:"));
+  assert.match(authJob, /if: always\(\) && steps\.auth-secrets\.outputs\.available == 'true' && steps\.install\.outcome == 'success'/);
+  assert.match(authJob, /node \.github\/tests\/live-supabase-auth\.integration\.mjs --cleanup-only/);
+  assert.match(liveAuth, /admin\.auth\.admin\.createUser/);
+  assert.match(liveAuth, /admin\.auth\.admin\.deleteUser/);
+  assert.doesNotMatch(liveAuth, /INSERT\s+INTO\s+auth\.users/i);
+});
+
+test("live Auth fixture creates and cleans uniquely marked Test-only fleets and role memberships", () => {
+  assert.ok(liveAuth.includes("FIXTURE_FLEET_PREFIX"));
+  assert.ok(liveAuth.includes('"fleet_manager"'));
+  assert.ok(liveAuth.includes('admin.from("fleet_members").insert'));
+  assert.ok(liveAuth.includes("removeOwnedFixtureFleets"));
+  assert.ok(liveAuth.includes('const roles = ["owner", "fleet_manager", "dispatcher", "safety_manager", "driver", "ambiguous", "unassigned"]'));
+  assert.ok(liveAuth.includes("secondFleetName"));
+  assert.ok(liveAuth.includes("visibleMemberships.length !== 2"));
+  assert.ok(liveAuth.includes("assertActualHttpAuthorization"));
+  assert.ok(liveAuth.includes('expectedVisible = role === "owner" || role === "fleet_manager" ? 6 : 1'));
+  assert.ok(liveAuth.includes("fleet_manager_required"));
+  assert.ok(liveAuth.includes('parsed.hostname !== `${TEST_PROJECT_REF}.supabase.co`'));
+  assert.ok(liveAuth.includes('admin.auth.admin.createUser'));
+  assert.ok(liveAuth.includes('admin.auth.admin.deleteUser'));
+  assert.ok(liveAuth.includes('.from("fleets")\n      .insert'));
+  assert.ok(!liveAuth.includes("INSERT INTO auth.users"));
+});
+
+ 
+test("GitHub workflow actions use maintained Node 24-compatible releases", () => {
+  for (const [name, workflow] of [["backup", backup], ["restore", restore], ["validation", validation]]) {
+    assert.doesNotMatch(workflow, /actions\/(?:checkout|setup-node)@v[1-6](?:\b|$)/, name + " must not use deprecated Node 20 action majors");
+  }
+  assert.match(backup, /actions\/upload-artifact@v7/);
+  assert.match(restore, /actions\/download-artifact@v8/);
+});
+
+
+test("workflow config triggers validation for routing integration pull requests", () => {
+  const pullRequestBranches = validation.split("  pull_request:")[1]?.split("  workflow_dispatch:")[0] ?? "";
+  assert.ok(pullRequestBranches.includes("- fix/physical-clearance-routing-gate"));
+  assert.ok(pullRequestBranches.includes("- docs/route-assessment-atomic-trip-start"));
+  const pushBranches = validation.split("  push:")[1]?.split("  pull_request:")[0] ?? "";
+  assert.ok(pushBranches.includes("- chore/reproducible-supabase-local-env"));
+  const authJob = validation.slice(validation.indexOf("  auth-integration:"));
+  assert.ok(!authJob.includes("github.event_name == 'pull_request'"));
+});
+
+
+test("CI installs committed dependencies and the Supabase CLI is pinned for local-only development", () => {
+  assert.match(validation, /npm ci --no-audit --no-fund/);
+  assert.doesNotMatch(validation, /npm install --package-lock-only/);
+  assert.match(packageJson.devDependencies?.supabase ?? "", /^\d+\.\d+\.\d+$/);
+  assert.equal(packageLock.packages?.["node_modules/supabase"]?.version, packageJson.devDependencies.supabase);
+  assert.equal(packageLock.lockfileVersion, 3);
+  assert.match(supabaseConfig, /^project_id = "trucksafe-fleet-local"$/m);
+  assert.match(supabaseConfig, /^\[local_smtp\]$/m);
+  assert.doesNotMatch(supabaseConfig, /^\[inbucket\]$/m);
+  assert.doesNotMatch(supabaseConfig, /^\[remotes\./m);
+});
