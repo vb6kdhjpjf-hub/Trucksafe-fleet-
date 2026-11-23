@@ -3,16 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+import { csvDocument } from "../../lib/csv.mjs";
 import { ArrowRight, BarChart3, Download, RefreshCw, Route, Truck, Users } from "lucide-react";
 
-const kmBetween = (a, b) => {
-  const rad = n => n * Math.PI / 180;
-  const dLat = rad(Number(b.latitude) - Number(a.latitude));
-  const dLng = rad(Number(b.longitude) - Number(a.longitude));
-  const x = Math.sin(dLat / 2) ** 2 + Math.cos(rad(Number(a.latitude))) * Math.cos(rad(Number(b.latitude))) * Math.sin(dLng / 2) ** 2;
-  return 6371 * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-};
-const distanceFor = points => points.length < 2 ? null : points.slice(1).reduce((sum, p, i) => sum + kmBetween(points[i], p), 0);
 const durationFor = trip => trip.started_at && trip.ended_at ? Math.max(0, (new Date(trip.ended_at) - new Date(trip.started_at)) / 60000) : null;
 const fmt = n => n == null ? "—" : n < 10 ? n.toFixed(1) : Math.round(n).toLocaleString("he-IL");
 
@@ -114,7 +107,7 @@ export default function ReportsPage() {
       drivers.find(d => d.id === t.driver_id)?.full_name || "לא צוין",
       vehicles.find(v => v.id === t.vehicle_id)?.registration_number || "לא צוין",
       t.status || "", "", "", "", "", t.km == null ? "" : t.km.toFixed(2),
-      t.minutes == null ? "" : Math.round(t.minutes), t.points.length,
+      t.minutes == null ? "" : Math.round(t.minutes), t.pointsCount,
       t.origin_address || "", t.destination_address || ""
     ]);
     const maintenanceRows = filteredMaintenance.map(r => [
@@ -142,9 +135,9 @@ export default function ReportsPage() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  return <main dir="rtl" style={{ minHeight: "100vh", padding: 24, background: "#f5f7fb", color: "#172338" }}>
+  return <main className="truck-safe-tool-page" dir="rtl" style={{ minHeight: "100vh", padding: 24, background: "#f5f7fb", color: "#172338" }}>
     <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
-      <div><h1 style={{ margin: 0 }}>דוחות נסיעות</h1><p style={{ color: "#718096" }}>סיכום מרחקים וזמני נסיעה לפי נהג וכלי רכב</p></div>
+      <div><h1 style={{ margin: 0 }}>דוחות נסיעות</h1><p style={{ color: "#718096" }}>סיכום מרחקים וזמני נסיעה לפי נהג וכלי רכב</p><p style={{fontSize:12,color:"#8a5700",marginTop:4}}>מרחקי GPS הם אומדן קו-אווירי בין נקודות שנשמרו, לא מרחק כביש ולא מדידה מוסמכת. נקודות GPS מדווחות מהדפדפן ואינן מאומתות.</p></div>
       <div style={{ display: "flex", gap: 8 }}><button onClick={exportCsv} style={btn}><Download size={16}/> ייצוא לאקסל</button><button onClick={() => loadReport(fleetId)} style={btn}><RefreshCw size={16}/> רענון</button><button onClick={() => router.push("/")} style={btn}><ArrowRight size={16}/> לוח הבקרה</button></div>
     </header>
     {error && <p style={{ background: "#fff0f0", padding: 12, borderRadius: 10 }}>{error}</p>}
@@ -168,7 +161,7 @@ export default function ReportsPage() {
         <p style={{fontSize:13,color:"#718096"}}>נסיעות מתחשבות בסינון הנהג והרכב; תחזוקה ואירועים מתחשבים בסינון הרכב.</p>
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",textAlign:"right",fontSize:14}}>
-            <thead><tr>{["חודש","נסיעות","מרחק משוער","הוצאות תחזוקה","אירועים"].map(h=><th key={h} style={{padding:"10px 6px",borderBottom:"1px solid #edf0f5"}}>{h}</th>)}</tr></thead>
+            <thead><tr>{["חודש","נסיעות","מרחק GPS משוער","הוצאות תחזוקה","אירועים"].map(h=><th key={h} style={{padding:"10px 6px",borderBottom:"1px solid #edf0f5"}}>{h}</th>)}</tr></thead>
             <tbody>{monthlySnapshot.map(m=><tr key={m.key}>{[m.label,m.trips,fmt(m.km)+" ק״מ",m.spend.toLocaleString("he-IL")+" ₪",m.incidents].map((v,i)=><td key={i} style={{padding:"11px 6px",borderBottom:"1px solid #edf0f5"}}>{v}</td>)}</tr>)}</tbody>
           </table>
         </div>

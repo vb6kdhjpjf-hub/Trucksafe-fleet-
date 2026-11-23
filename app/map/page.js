@@ -24,24 +24,60 @@ export default function FleetMapPage() {
     if (!id || loadingLocations.current) return;
     loadingLocations.current = true;
     try {
-      const { data: trips, error: tripError } = await supabase.from("trips")
-        .select("id,driver_id,vehicle_id,origin_address,destination_address,started_at")
-        .eq("fleet_id", id).eq("status", "active");
-      if (tripError) throw tripError;
-      const points = await Promise.all((trips || []).map(async trip => {
-        const [latest, historyResult, driverResult, vehicleResult] = await Promise.all([
-          supabase.from("trip_locations").select("id,latitude,longitude,speed_kmh,recorded_at")
-            .eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(1).maybeSingle(),
-          supabase.from("trip_locations").select("latitude,longitude,recorded_at").eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(3000),
-          supabase.from("drivers").select("full_name").eq("id", trip.driver_id).maybeSingle(),
-          supabase.from("vehicles").select("registration_number").eq("id", trip.vehicle_id).maybeSingle()
-        ]);
-        const childError = latest.error || historyResult.error || driverResult.error || vehicleResult.error;
-        if (childError) throw childError;
-        const loc = latest.data;
-        return loc ? { ...trip, ...loc, history: (historyResult.data || []).reverse(), driver: driverResult.data?.full_name || "נהג", vehicle: vehicleResult.data?.registration_number || "רכב" } : null;
+      const { data, error: queryError } = await supabase.rpc("get_active_trip_map_data", {
+        p_fleet_id: id
+      });
+      let rows = data;
+      // The optimized map RPC is installed by the pending production migration.
+      // Until that rollout is approved, fall back to the same RLS-protected
+      // tables instead of failing the entire map screen.
+      if (queryError && (queryError.code === "PGRST202" || queryError.status === 404 || /get_active_trip_map_data|schema cache|could not find the function/i.test(queryError.message || ""))) {
+        const { data: trips, error: tripsError } = await supabase.from("trips")
+          .select("id,driver_id,vehicle_id,origin_address,destination_address,started_at")
+          .eq("fleet_id", id).eq("status", "active");
+        if (tripsError) throw tripsError;
+        if (!trips?.length) rows = [];
+        else {
+          const [{ data: drivers, error: driversError }, { data: vehicles, error: vehiclesError }] = await Promise.all([
+            supabase.from("drivers").select("id,full_name").eq("fleet_id", id),
+            supabase.from("vehicles").select("id,registration_number").eq("fleet_id", id)
+          ]);
+          if (driversError) throw driversError;
+          if (vehiclesError) throw vehiclesError;
+          rows = await Promise.all(trips.map(async trip => {
+            const { data: points, error: pointsError } = await supabase.from("trip_locations")
+              .select("latitude,longitude,speed_kmh,recorded_at")
+              .eq("trip_id", trip.id).order("recorded_at", { ascending: false }).limit(500);
+            if (pointsError) throw pointsError;
+            const ordered = (points || []).slice().reverse();
+            const latest = ordered[ordered.length - 1];
+            if (!latest) return null;
+            return {
+              trip_id: trip.id,
+              driver_id: trip.driver_id,
+              vehicle_id: trip.vehicle_id,
+              origin_address: trip.origin_address,
+              destination_address: trip.destination_address,
+              started_at: trip.started_at,
+              ...latest,
+              history: ordered,
+              driver_name: drivers?.find(item => item.id === trip.driver_id)?.full_name || "נהג",
+              vehicle_registration: vehicles?.find(item => item.id === trip.vehicle_id)?.registration_number || "רכב"
+            };
+          }));
+          rows = rows.filter(Boolean);
+        }
+      } else if (queryError) {
+        throw queryError;
+      }
+      const points = (rows || []).map(row => ({
+        ...row,
+        id: row.trip_id,
+        history: Array.isArray(row.history) ? row.history : [],
+        driver: row.driver_name || "נהג",
+        vehicle: row.vehicle_registration || "רכב"
       }));
-      setLocations(points.filter(Boolean));
+      setLocations(points);
       setError("");
     } catch (error) {
       setError("לא ניתן לרענן את מיקומי הנהגים: " + (error?.message || "שגיאה לא ידועה"));
@@ -78,9 +114,13 @@ export default function FleetMapPage() {
       const css = document.createElement("link");
       css.rel = "stylesheet";
       css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      css.integrity = "sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=";
+      css.crossOrigin = "anonymous";
       document.head.appendChild(css);
       const script = document.createElement("script");
       script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      script.integrity = "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=";
+      script.crossOrigin = "anonymous";
       script.onload = () => resolve(window.L);
       script.onerror = reject;
       document.body.appendChild(script);

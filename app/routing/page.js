@@ -209,13 +209,13 @@ export default function TruckRoutingPage() {
     }
   }
 
-  if (loading) return <main dir="rtl" style={{ padding: 24 }}>טוען...</main>;
+  if (loading) return <main className="truck-safe-tool-page" dir="rtl" style={{ padding: 24 }}>טוען...</main>;
 
   const field = { width: "100%", padding: 12, border: "1px solid #dce3ee", borderRadius: 10, marginTop: 6, background: "white", color: "#172338" };
   const label = { display: "block", fontSize: 13, fontWeight: 600, color: "#344054" };
   const button = { border: 0, borderRadius: 10, background: "#245bd7", color: "white", padding: "12px 18px", fontWeight: 700, cursor: "pointer", opacity: busy ? 0.65 : 1 };
 
-  return <main dir="rtl" style={{ minHeight: "100vh", background: "#f5f7fb", color: "#172338", padding: 18 }}>
+  return <main className="truck-safe-tool-page" dir="rtl" style={{ minHeight: "100vh", background: "#f5f7fb", color: "#172338", padding: 18 }}>
     <div style={{ maxWidth: 1100, margin: "0 auto" }}>
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
         <div><h1 style={{ margin: 0, fontSize: 25 }}><Truck size={24} style={{ verticalAlign: "middle" }}/> ניווט משאיות</h1><p style={{ color: "#718096", margin: "6px 0" }}>תכנון מסלול לפי מידות ומשקל הרכב והגבלות משאיות בישראל</p></div>

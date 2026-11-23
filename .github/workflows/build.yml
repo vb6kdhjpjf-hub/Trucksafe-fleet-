@@ -4,7 +4,8 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: [main, fix/pretrip-safe-integration]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -19,11 +20,13 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: .nvmrc
+      - name: Run security regression tests
+        run: npm run test:security
       - name: Generate dependency lockfile from package manifest
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
       - name: Audit production dependencies (fail on high or critical)
@@ -34,7 +37,7 @@ jobs:
         run: npm run build
       - name: Save audit report and lockfile for review
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: dependency-audit-and-lockfile
           path: |
