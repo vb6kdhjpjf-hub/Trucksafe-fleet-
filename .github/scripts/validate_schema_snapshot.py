@@ -135,7 +135,7 @@ def validate_schema_only_snapshot(sql: str) -> None:
     # A dump that explicitly disables it changes string-literal tokenization;
     # reject it rather than attempting to interpret a different lexical mode.
     setting_pattern = re.compile(
-        r"(?is)\bSET\s+(?:(?:SESSION|LOCAL)\s+)?standard_conforming_strings\b([^;]*);"
+        r"(?is)\bSET\s+(?:(?:SESSION|LOCAL)\s+)?standard_conforming_strings\b([^;]*)(?:;|$)"
     )
     for setting in setting_pattern.finditer(code):
         if not re.fullmatch(r"\s*(?:=|TO)\s*ON\s*", setting.group(1), re.IGNORECASE):
