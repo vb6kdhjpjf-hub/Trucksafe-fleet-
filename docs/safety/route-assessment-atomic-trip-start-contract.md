@@ -150,3 +150,19 @@ The following facts were verified by reading the candidate migrations and rollba
 5. Add two-session concurrency tests (not just sequential duplicate inserts) for same-task, same-driver and same-vehicle trip starts; concurrent task reassignment; driver deactivation; vehicle status changes; finish-vs-start; trailer/evidence mutation vs start; and assessment double-consumption. Run them only against disposable PostgreSQL/Test with rollback/cleanup guarantees.
 6. Test failed inspection separately: it must create an auditable failed inspection/incident but must not consume a route assessment or create a trip. A subsequent corrected inspection must use a still-valid assessment only if its immutable snapshot still matches.
 
+
+
+## Current application integration and CI boundary (23 November 2026)
+
+A further read-only pass inspected `app/api/truck-route/route.js`, `app/tasks/page.js`, `.github/workflows/isolated-validation.yml`, `.github/workflows/build.yml`, `package.json`, and the rollback-only SQL runner.
+
+- The route handler independently checks the provider-approval and restriction-coverage environment gates before HERE calls. It validates the saved vehicle profile, actual gross/axle weights, documents, special equipment, quota and the fleet restriction catalogue. It returns route geometry as section polylines and reports `scope: fleet_catalogue_only`; it does not persist a route assessment or return a durable assessment identifier.
+- The task UI's `confirmPreTrip()` calls `start_trip_with_inspection` directly. It does not call the route handler, submit an assessment ID, or bind the trip to a route geometry/restriction snapshot. This is the exact integration seam that must change before a route can be a trip-start prerequisite.
+- The current route endpoint is fail-closed while provider/coverage approvals are false, but the separate trip-start RPC can still start a trip without a route assessment. This contract must not be misread as proof that every trip is currently route-validated.
+- `package.json` does not pin the Supabase CLI as a project dependency, and `supabase/config.toml` is absent at the reviewed base commit. The repository currently has no checked-in CLI project configuration from which to safely run `supabase migration new`; do not install an unpinned latest CLI or hand-create a timestamped migration as a substitute.
+- The existing `isolated-validation.yml` workflow runs database integration only when all four dedicated Test secrets exist and checks the database URI against the Test project ref while explicitly rejecting Production. The SQL runner creates disposable Auth identities through Auth Admin API, runs each SQL fixture, and rolls back each fixture transaction; synthetic SQL JWT claim tests are explicitly not real Auth E2E.
+- The workflow's `pull_request.branches` filter currently lists `main`, `feat/ptv-safe-integration-v1`, and `test/isolated-e2e-ci`, but not PR #23's base branch `fix/physical-clearance-routing-gate`. Its push filter does not include the docs branch either. Therefore the absence of CI runs for this documentation-only PR is explained by workflow trigger configuration, not by a passing validation. Do not claim CI passed.
+
+### Safe implementation gate
+
+Before a schema migration can be generated, establish a repository-pinned CLI/configuration path and prove it targets local/disposable Test only. Then inventory every trip-start caller and route recalculation path, design a paired start/finish lock protocol, and add a rollback-only migration test plus two-session concurrency tests. Do not add an assessment table or replace the RPC until those prerequisites are satisfied. Production remains untouched.
