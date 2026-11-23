@@ -93,7 +93,7 @@ test("GitHub workflow actions use maintained Node 24-compatible releases", () =>
 });
 
 
-test("isolated rollback-only database validation runs for routing integration pull requests", () => {
+test("workflow config includes routing integration base for subsequent pull requests", () => {
   const pullRequestBranches = validation.split("  pull_request:")[1]?.split("  workflow_dispatch:")[0] ?? "";
   assert.ok(pullRequestBranches.includes("- fix/physical-clearance-routing-gate"));
   const authJob = validation.slice(validation.indexOf("  auth-integration:"));
