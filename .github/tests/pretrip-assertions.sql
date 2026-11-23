@@ -933,3 +933,86 @@ BEGIN
   END IF;
 END $test$;
 RESET ROLE;
+
+-- Exercise incident authorization as real PostgreSQL roles, not as the
+-- migration-test superuser. A reporter may create and read their own report,
+-- but cannot resolve it; a fleet manager must supply resolution evidence.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000001',false);
+DO $test$
+DECLARE
+  incident_id uuid;
+  affected integer;
+BEGIN
+  INSERT INTO public.incidents (
+    fleet_id, driver_id, vehicle_id, severity, incident_type,
+    description, status, reported_at, created_by
+  ) VALUES (
+    '10000000-0000-0000-0000-000000000001',
+    '20000000-0000-0000-0000-000000000001',
+    '30000000-0000-0000-0000-000000000001',
+    'medium', 'בדיקת הרשאות', 'דיווח בדיקה של הנהג',
+    'open', now(), '50000000-0000-0000-0000-000000000001'
+  ) RETURNING id INTO incident_id;
+
+  UPDATE public.incidents
+  SET status='resolved', resolution_notes='ניסיון סגירה לא מורשה'
+  WHERE id=incident_id;
+  GET DIAGNOSTICS affected = ROW_COUNT;
+  IF affected <> 0 THEN
+    RAISE EXCEPTION 'Reporting driver unexpectedly resolved their own incident';
+  END IF;
+  IF (SELECT status FROM public.incidents WHERE id=incident_id) <> 'open' THEN
+    RAISE EXCEPTION 'Driver changed incident state despite manager-only update policy';
+  END IF;
+END $test$;
+RESET ROLE;
+
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000002',false);
+DO $test$
+DECLARE
+  incident_id uuid;
+  affected integer;
+BEGIN
+  SELECT id INTO incident_id
+  FROM public.incidents
+  WHERE incident_type='בדיקת הרשאות'
+    AND created_by='50000000-0000-0000-0000-000000000001'
+    AND status='open'
+  LIMIT 1;
+  IF incident_id IS NULL THEN
+    RAISE EXCEPTION 'Driver-created incident was not visible to the fleet manager';
+  END IF;
+
+  BEGIN
+    UPDATE public.incidents
+    SET status='resolved', resolution_notes=NULL
+    WHERE id=incident_id;
+    RAISE EXCEPTION 'Incident resolution without corrective-action notes was accepted';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'Incident resolution without corrective-action notes was accepted' THEN
+      RAISE;
+    END IF;
+    IF SQLERRM NOT LIKE '%תיעוד טיפול%' THEN
+      RAISE;
+    END IF;
+  END;
+
+  UPDATE public.incidents
+  SET status='resolved',
+      resolution_notes='בוצעה בדיקה חוזרת ותועד תיקון הליקוי'
+  WHERE id=incident_id;
+  GET DIAGNOSTICS affected = ROW_COUNT;
+  IF affected <> 1 OR NOT EXISTS (
+    SELECT 1 FROM public.incidents
+    WHERE id=incident_id
+      AND status='resolved'
+      AND resolved_at IS NOT NULL
+      AND resolved_by='50000000-0000-0000-0000-000000000002'
+      AND resolution_notes='בוצעה בדיקה חוזרת ותועד תיקון הליקוי'
+  ) THEN
+    RAISE EXCEPTION 'Fleet manager could not resolve incident with server-stamped evidence';
+  END IF;
+END $test$;
+RESET ROLE;
