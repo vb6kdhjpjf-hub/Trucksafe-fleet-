@@ -5,6 +5,7 @@ on:
     branches:
       - test/isolated-e2e-ci
       - fix/physical-clearance-routing-gate
+      - chore/reproducible-supabase-local-env
   pull_request:
     branches:
       - main
@@ -54,4 +55,4 @@ jobs:
       group: isolated-supabase-test-project
       cancel-in-progress: false
     runs-on: ubuntu-latest
-    timeout-m¶»§q«^
+    timeout-mÂ¶Â»Â§qÂ«^
