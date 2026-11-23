@@ -166,3 +166,8 @@ A further read-only pass inspected `app/api/truck-route/route.js`, `app/tasks/pa
 ### Safe implementation gate
 
 Before a schema migration can be generated, establish a repository-pinned CLI/configuration path and prove it targets local/disposable Test only. Then inventory every trip-start caller and route recalculation path, design a paired start/finish lock protocol, and add a rollback-only migration test plus two-session concurrency tests. Do not add an assessment table or replace the RPC until those prerequisites are satisfied. Production remains untouched.
+
+
+## CI trigger deployment boundary
+
+The workflow branch-filter change in this PR is declarative only until the updated workflow file exists on the target branch. GitHub evaluates the `pull_request` workflow definition from the base branch, not from this PR's head. Therefore this PR cannot cause its own new trigger to execute, and the absence of a run is not a pass or a failure. The change enables subsequent pull requests targeting `fix/physical-clearance-routing-gate` after the workflow definition is present there. Do not merge this draft solely to obtain a CI run; keep it open until the normal review and integration sequence permits it.
