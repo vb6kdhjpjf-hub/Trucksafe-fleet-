@@ -76,7 +76,7 @@ The conditional consume must affect exactly one row, e.g. an UPDATE guarded by I
 
 ## Concurrency and uniqueness
 
-The current `EXISTS` checks for active trips are not sufficient under concurrent transactions. Before implementation, inspect all trip creation paths and existing constraints. Add database-enforced uniqueness for the actual business invariant (one active trip per vehicle and one active/planned trip per task), using partial unique indexes only after verifying status semantics and legacy data. Ensure all trip creation paths use the same invariant. Do not rely on client-side disabled buttons.
+The repository already contains migration `20261114130000_enforce_single_active_trip_assignments.sql`, which preflights and creates partial unique indexes for one active trip per driver, vehicle and task. Preserve and test these constraints; do not add redundant indexes. The current `start_trip_with_inspection` also checks for both `planned` and `active` trips for a task, but the existing unique task index covers only `active`. Before changing this behavior, inspect all trip creation/status-transition paths and confirm whether `planned` trips are a valid concurrent state or whether the active-only invariant is intentional. Add or adjust database-enforced uniqueness only if the verified business invariant requires it, with a legacy-data preflight and rollback-only concurrency tests. The existing partial indexes make concurrent duplicate active trips fail safely, but they do not by themselves make route-assessment consumption idempotent or serialize mutations against trip start. Do not rely on client-side disabled buttons.
 
 ## Invalidation requirements
 
@@ -117,7 +117,7 @@ Use actual Supabase Auth-issued signed sessions and the actual RPC boundary. Cov
 
 ## Safe implementation sequence
 
-1. Complete a read-only inventory of all trip creation and mutation paths, existing unique indexes, trigger lock behavior, and current status values.
+1. Complete a read-only inventory of all trip creation and mutation paths, the existing active-trip partial unique indexes (driver/vehicle/task), whether planned trips require a separate invariant, trigger lock behavior, and current status values.
 2. Design the schema and function replacement against that inventory; generate any migration using the repository's pinned Supabase CLI via `supabase migration new`, not a hand-invented migration filename.
 3. Implement only on a dedicated draft branch/PR. No hosted schema changes.
 4. Run SQL tests in rollback-only disposable PostgreSQL/Test CI and real Auth HTTP integration using dedicated Test fixtures. Never use Production for tests.
