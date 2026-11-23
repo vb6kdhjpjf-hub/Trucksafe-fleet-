@@ -1,31 +1,5 @@
-#:schema https://supabase.com/schemas/config/v1.json
-# For detailed configuration reference documentation, visit:
-# https://supabase.com/docs/guides/local-development/cli/config
-# A string used to distinguish different Supabase projects on the same host. Defaults to the
-# working directory name when running `supabase init`.
+# Local-only identifier; this is not a hosted Supabase project reference.
 project_id = "trucksafe-fleet-local"
 
-[api]
-enabled = true
-# Port to use for the API URL.
-port = 54321
-# Schemas to expose in your API. Tables, views and stored procedures in this schema will get API
-# endpoints. `public` and `graphql_public` schemas are included by default.
-schemas = ["public", "graphql_public"]
-# Extra schemas to add to the search_path of every request.
-extra_search_path = ["public", "extensions"]
-# The maximum number of rows returned from a view, table, or stored procedure. Limits payload size
-# for accidental or malicious requests.
-max_rows = 1000
-# The maximum number of connections in the local PostgREST database pool. Left unset, the default
-# pool size is unchanged.
-# db_pool = 10
-# Controls whether new tables, views, sequences and functions created in the `public` schema by
-# `postgres` are reachable through the Data API roles (`anon`, `authenticated`, `service_role`)
-# without explicit GRANTs, matching the cloud default. Set to `false` to require explicit GRANTs
-# instead. Left unset, a fresh project falls back to `true`.
-# auto_expose_new_tables = true
-
-[api.tls]
-# Enable HTTPS endpoints locally using a self-signed certificate.
-e¶»§q«^
+[db]
+major_version = 17
