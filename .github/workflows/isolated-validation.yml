@@ -10,6 +10,7 @@ on:
       - main
       - feat/ptv-safe-integration-v1
       - test/isolated-e2e-ci
+      - fix/physical-clearance-routing-gate
   workflow_dispatch:
     inputs:
       confirm_test_auth:
