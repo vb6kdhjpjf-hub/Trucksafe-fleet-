@@ -127,3 +127,26 @@ Use actual Supabase Auth-issued signed sessions and the actual RPC boundary. Cov
 ## Explicit non-goals
 
 This contract does not choose a provider, import road restrictions, certify nationwide coverage, estimate axle loads, legalize an unverified trailer combination, create Auth users outside the Auth Admin API, or authorize a Production/Test schema mutation.
+
+
+## Verified repository lock and status inventory (23 November 2026)
+
+The following facts were verified by reading the candidate migrations and rollback-only SQL tests on PR #19's head. They are not a claim that any migration has been applied to a hosted database.
+
+- `start_trip_with_inspection` locks task -> driver -> vehicle. It validates task status as `pending|assigned`, checks driver active/licence expiry, checks vehicle `available|assigned`, verifies vehicle document dates and registration evidence, rejects open safety incidents, then writes vehicle `on_trip`, an `active` trip, a passed inspection and task `in_progress` in one transaction.
+- Failed pre-trip checklist writes a failed inspection and safety incident and returns NULL; it creates no trip and leaves the vehicle/task transition untouched.
+- `finish_trip` reads trip parent IDs without a row lock, then locks task -> driver -> trip -> vehicle and revalidates the trip's task/driver IDs before completion.
+- Task assignment trigger runs on task INSERT/assignment UPDATE and locks driver -> vehicle after the task row is being written. It checks active driver, nonexpired licence date, same-fleet assignment, non-demo vehicle and vehicle status `available|assigned`.
+- Deferred constraint triggers enforce driver remains `active` while an active trip exists and vehicle remains `on_trip` exactly while an active trip exists. These guards also lock the driver or vehicle row at deferred-check time.
+- Three partial unique indexes enforce at most one `active` trip per driver, vehicle and task. The trip-start RPC additionally rejects any existing `planned|active` trip for the task, but its unique task index is active-only. No separate planned-trip writer was established in this read-only review.
+- The current trip-start RPC has no assessment ID, route geometry, measured gross/axle weight, trailer-combination ID or driver/vehicle licence-class decision input.
+
+### Consequences for implementation
+
+1. Preserve the existing task -> driver -> vehicle parent lock order. The new trailer rows must be locked in stable UUID order after vehicle; assessment lock must be placed consistently and must not introduce a cycle with any deferred trigger or writer.
+2. `finish_trip` currently locks task -> driver -> trip -> vehicle, not task -> driver -> vehicle -> trip. A replacement trip-start/finish protocol must be reviewed as a pair; do not casually add a trip lock before vehicle or reverse that order.
+3. Deferred driver/vehicle guards run at transaction end and participate in locking. Include them in deadlock tests; do not assume only explicit `FOR UPDATE` statements matter.
+4. Keep the active-only unique indexes. Before adding a planned-trip uniqueness constraint, inventory all planned-trip creation, cancellation and transition paths, verify legacy rows and define exactly which statuses reserve a driver/vehicle/task.
+5. Add two-session concurrency tests (not just sequential duplicate inserts) for same-task, same-driver and same-vehicle trip starts; concurrent task reassignment; driver deactivation; vehicle status changes; finish-vs-start; trailer/evidence mutation vs start; and assessment double-consumption. Run them only against disposable PostgreSQL/Test with rollback/cleanup guarantees.
+6. Test failed inspection separately: it must create an auditable failed inspection/incident but must not consume a route assessment or create a trip. A subsequent corrected inspection must use a still-valid assessment only if its immutable snapshot still matches.
+
