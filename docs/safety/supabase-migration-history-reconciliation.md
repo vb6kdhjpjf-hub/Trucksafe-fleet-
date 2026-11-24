@@ -109,3 +109,8 @@ The repository's earlier tracked migration branches were also inspected read-onl
 - The truck-profile migrations likewise alter existing vehicle/task structures rather than creating the fleet bootstrap schema.
 
 This confirms the missing core schema is not simply omitted from the current PR stack: the earliest historical migration branches inspected also assume that the application database had already been bootstrapped outside the tracked migration chain.
+
+
+## Test-only reconciliation artifact in the repository
+
+The branch also contains `.github/tests/test-db-migrations/20261110144502_reconcile_production_vehicle_and_road_safety_schema.sql`. Its header explicitly says it was applied only to the dedicated Test project, must not be placed under `supabase/migrations` or applied to Production, and is retained for audit/repeatability. Its SQL begins by altering the already-existing `public.road_restrictions` and `public.vehicles` tables. This independently confirms that the reconciliation entry is a Test-only compatibility migration, not the missing initial schema bootstrap.
