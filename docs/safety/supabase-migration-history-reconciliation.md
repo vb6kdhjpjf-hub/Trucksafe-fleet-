@@ -145,3 +145,28 @@ The September 2026 `Trucksafe-Fleet-V1.3.zip` was also recovered. Its `supabase/
 The missing-base-schema blocker is **partially resolved**: a plausible pre-8-November schema baseline has been recovered, with a successful backup workflow run and contemporaneous Production-project connection evidence. It is not yet promoted into the tracked migration chain because the ZIP does not itself carry the source project ref and the entire 46-file migration chain has not yet been replayed against it.
 
 Next safe validation: use this schema-only SQL in a disposable local Supabase stack, then apply the tracked migrations in order and record the first remaining incompatibility. Do not restore this snapshot to either hosted project, do not repair Test migration history, and do not modify Production. The separate Test history/version/name divergence still needs reconciliation after the local replay.
+
+
+## Verified disposable local replay — 24 November 2026
+
+The recovered 5 November schema-only snapshot was restored into a disposable local Supabase Postgres stack using pinned Supabase CLI 3.3.0. No hosted Production or Test connection string, access token, service-role key, or hosted database endpoint was supplied to the replay workflow.
+
+The first replay identified two genuine chain defects, both corrected in the tested branch before the successful clean replay:
+
+1. `20261110084244_add_road_restriction_location_and_verification.sql` added `empty_weight_kg` and then constrained it against `gross_weight_kg`, but did not create `gross_weight_kg`. The recovered 5 November snapshot lacks that column. The migration now adds `gross_weight_kg numeric` with `IF NOT EXISTS` before adding the constraint. The dedicated Test schema independently confirms the intended type is `numeric`.
+2. `20261112130000_add_lane_level_bridge_clearance_evidence.sql` already creates three named constraints. `20261115050950_add_lane_level_bridge_clearance_evidence.sql` attempted to add the same three names again without dropping/replacing them. The later migration now drops those three earlier constraints before recreating them with its stronger definitions.
+
+Successful final run: GitHub Actions run `45408928973` (`Temporary local Supabase schema replay`), completed successfully. It restored the snapshot, applied all 46 tracked migrations in order, and verified:
+- 46 rows in `supabase_migrations.schema_migrations`;
+- `public.road_restrictions` exists;
+- `public.vehicle_special_equipment` exists;
+- 25 public base tables;
+- 57 public RLS policies.
+
+The local database stack was stopped successfully with `supabase stop --no-backup`. The replay was isolated to an ephemeral GitHub-hosted runner and did not change either hosted Supabase project.
+
+### What this proves — and what it does not
+
+The recovered 5 November schema plus the corrected tracked migration chain now replays successfully in a clean local Postgres environment. The two migration defects above are fixed on the reproducibility PR branch.
+
+This does **not** reconcile the separate 43-row hosted Test migration history, prove that Test and Production have identical schema, or authorize any remote schema change. Production was inactive/unavailable to read-only introspection during this check. The Test migration-history divergence remains a separate, read-only reconciliation task. No deployment or merge was performed.
