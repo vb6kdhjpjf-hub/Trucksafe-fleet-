@@ -91,3 +91,10 @@ The untracked Test history entry `20261110144502_reconcile_production_vehicle_an
 4. Compare the candidate baseline and migration chain against the intended Test schema using a disposable local stack. Keep Test rollback-only and Production untouched until the mapping is reviewed.
 
 Until these steps are complete, do not run a clean reset as a release gate, repair remote migration history, synthesize a baseline from the current Test schema, or add route-assessment schema migrations.
+
+
+## Additional provenance check: Test-only reconciliation entry
+
+The Test history contains `20261110144502_reconcile_production_vehicle_and_road_safety_schema`, which is not tracked in this branch. Its recorded SQL was inspected read-only. It explicitly describes itself as a Test-only reconciliation against the then-deployed Production schema. It alters pre-existing `public.road_restrictions` and `public.vehicles`, replaces constraints and triggers, and creates/updates Storage buckets and policies. It does **not** create `public.road_restrictions`, `public.vehicles`, or the core fleet tables. Therefore it is not the missing bootstrap baseline; it is a later reconciliation that assumes those tables already existed.
+
+This makes the original pre-migration bootstrap DDL (or an authoritative schema-only backup from before the first road-safety migration) the remaining source needed to make a trustworthy clean local replay possible. The recorded reconciliation SQL is useful provenance evidence, but must not be promoted into a baseline or replayed as a substitute.
