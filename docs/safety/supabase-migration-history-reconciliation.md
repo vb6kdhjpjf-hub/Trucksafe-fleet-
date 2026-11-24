@@ -98,3 +98,14 @@ Until these steps are complete, do not run a clean reset as a release gate, repa
 The Test history contains `20261110144502_reconcile_production_vehicle_and_road_safety_schema`, which is not tracked in this branch. Its recorded SQL was inspected read-only. It explicitly describes itself as a Test-only reconciliation against the then-deployed Production schema. It alters pre-existing `public.road_restrictions` and `public.vehicles`, replaces constraints and triggers, and creates/updates Storage buckets and policies. It does **not** create `public.road_restrictions`, `public.vehicles`, or the core fleet tables. Therefore it is not the missing bootstrap baseline; it is a later reconciliation that assumes those tables already existed.
 
 This makes the original pre-migration bootstrap DDL (or an authoritative schema-only backup from before the first road-safety migration) the remaining source needed to make a trustworthy clean local replay possible. The recorded reconciliation SQL is useful provenance evidence, but must not be promoted into a baseline or replayed as a substitute.
+
+
+## Historical branch check
+
+The repository's earlier tracked migration branches were also inspected read-only:
+- `feat/pretrip-defect-reporting` contains only `20261104113000_pretrip_defect_reporting.sql`.
+- `feat/truck-vehicle-routing-profile` contains that migration plus demo-vehicle and truck-profile migrations before the road-restriction migrations.
+- The earliest pre-trip migration replaces `public.start_trip_with_inspection` and references existing `public.tasks`, `public.drivers`, `public.vehicles`, and `public.incidents`; it does not create those core tables.
+- The truck-profile migrations likewise alter existing vehicle/task structures rather than creating the fleet bootstrap schema.
+
+This confirms the missing core schema is not simply omitted from the current PR stack: the earliest historical migration branches inspected also assume that the application database had already been bootstrapped outside the tracked migration chain.
