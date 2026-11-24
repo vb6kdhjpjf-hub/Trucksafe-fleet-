@@ -14,6 +14,11 @@ alter table public.road_restrictions
   add column if not exists measurement_coverage jsonb;
 
 alter table public.road_restrictions
+  drop constraint if exists road_restrictions_passage_length_check,
+  drop constraint if exists road_restrictions_posted_clearance_status_check,
+  drop constraint if exists road_restrictions_posted_clearance_value_check;
+
+alter table public.road_restrictions
   add constraint road_restrictions_passage_length_check
     check (passage_length_m is null or (passage_length_m > 0 and passage_length_m <= 1000)),
   add constraint road_restrictions_posted_clearance_status_check
