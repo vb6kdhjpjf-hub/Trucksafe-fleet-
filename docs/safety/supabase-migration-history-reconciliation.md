@@ -114,3 +114,34 @@ This confirms the missing core schema is not simply omitted from the current PR 
 ## Test-only reconciliation artifact in the repository
 
 The branch also contains `.github/tests/test-db-migrations/20261110144502_reconcile_production_vehicle_and_road_safety_schema.sql`. Its header explicitly says it was applied only to the dedicated Test project, must not be placed under `supabase/migrations` or applied to Production, and is retained for audit/repeatability. Its SQL begins by altering the already-existing `public.road_restrictions` and `public.vehicles` tables. This independently confirms that the reconciliation entry is a Test-only compatibility migration, not the missing initial schema bootstrap.
+
+
+## Recovered pre-migration schema snapshot — 5 November 2026
+
+A previously uploaded Library artifact was recovered: `trucksafe-schema-only.zip`, containing a 52,451-byte `schema.sql` (1,630 lines). The ZIP entry timestamp is 2026-11-05 08:08:16 UTC; the Library copy was created at 08:36 UTC.
+
+Its provenance is now substantially clearer:
+- GitHub Actions run `41991417805`, workflow `Supabase schema-only backup`, on `main`, was dispatched at 2026-11-05 08:02:02 UTC and completed successfully at 08:08:20 UTC.
+- The successful workflow step was `supabase db dump --db-url="$SUPABASE_DB_URL" --file=schema.sql`; it explicitly exported schema only, no data, and uploaded the `trucksafe-schema-only` artifact.
+- In the same earlier conversation, the user showed the Supabase Session Pooler username `postgres.jqebxlhhffwiebijiugx`, which identifies the Production project `jqebxlhhffwiebijiug`. The dump itself does not embed a project ref and the GitHub secret value is not inspectable, so the Production source attribution is strongly supported by the contemporaneous conversation but is not encoded cryptographically in the ZIP.
+- The GitHub artifact retention was seven days and the original Actions artifact is now expired; the Library ZIP is the retained copy.
+
+### Snapshot contents
+
+The recovered SQL contains:
+- 12 public base tables: `drivers`, `fleet_members`, `fleets`, `incidents`, `inspections`, `maintenance_records`, `profiles`, `road_restrictions`, `tasks`, `trip_locations`, `trips`, and `vehicles`.
+- 41 public RLS policies.
+- 10 public/private application functions.
+- 12 public triggers. The custom `auth.users` profile trigger is not present in this dump and was handled separately by the later isolated restore workflow.
+- No top-level data INSERT statements and no COPY data blocks. The four textual INSERT statements are inside dollar-quoted function bodies, not seed/data statements.
+- SHA-256: `cf7d094dea68849d827478cd583824651f50f57b8a5e1fee0e8cf46b6bece838`.
+
+Crucially, this snapshot **does create** `public.road_restrictions` and the other core fleet tables. Its `road_restrictions` definition is the earlier 18-column base form; the later geospatial, provenance, and lane-level measurement fields are absent, consistent with the first tracked road-restriction migrations being dated 8 November onward. It also predates `vehicle_special_equipment`, which is expected to be introduced by later migrations.
+
+The September 2026 `Trucksafe-Fleet-V1.3.zip` was also recovered. Its `supabase/schema.sql` is only a small prototype schema for `trucks`, `drivers`, `trips`, and `alerts`; it is not the correct baseline for the current fleet application. The 5 November schema-only dump is the relevant candidate.
+
+### Updated blocker status
+
+The missing-base-schema blocker is **partially resolved**: a plausible pre-8-November schema baseline has been recovered, with a successful backup workflow run and contemporaneous Production-project connection evidence. It is not yet promoted into the tracked migration chain because the ZIP does not itself carry the source project ref and the entire 46-file migration chain has not yet been replayed against it.
+
+Next safe validation: use this schema-only SQL in a disposable local Supabase stack, then apply the tracked migrations in order and record the first remaining incompatibility. Do not restore this snapshot to either hosted project, do not repair Test migration history, and do not modify Production. The separate Test history/version/name divergence still needs reconciliation after the local replay.
