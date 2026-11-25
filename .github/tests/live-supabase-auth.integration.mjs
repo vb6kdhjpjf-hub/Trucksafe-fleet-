@@ -94,6 +94,15 @@ async function removeOwnedFixtureFleets(admin, users) {
 }
 
 async function cleanupMarkedFixtureUsers(admin) {
+  // One exact, previously verified orphan from a failed Test-only run. Its fleet
+  // and all incident/vehicle/equipment references are absent; removing this
+  // exact private object is safe and idempotent.
+  const { error: legacyOrphanError } = await admin.storage.from("incident-photos").remove([
+    "3d9dd6dd-c0ad-48cd-a5fe-fb04319dd33c/incidents/53138cdb-4170-4857-97f4-d2cb0785a654.jpg"
+  ]);
+  if (legacyOrphanError) {
+    throw new Error("Unable to remove the exact verified orphaned Test incident-photo object.");
+  }
   const users = await listMarkedFixtureUsers(admin);
   // Delete only uniquely marked fixture fleets first; cascades remove their memberships and dependent rows.
   await removeOwnedFixtureFleets(admin, users);
