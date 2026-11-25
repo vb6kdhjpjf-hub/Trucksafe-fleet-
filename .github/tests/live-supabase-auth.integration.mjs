@@ -594,7 +594,20 @@ async function assertBrowserWorkspaceAccess({
     async function loginFixture(fixture, role) {
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
       const page = await context.newPage();
-      page.on("pageerror", error => pageErrors.push(role + ": " + error.message));
+      const browserDiagnostics = [];
+      page.on("pageerror", error => {
+        pageErrors.push(role + ": " + error.message);
+        browserDiagnostics.push("pageerror: " + error.message);
+      });
+      page.on("console", message => {
+        if (message.type() === "error") browserDiagnostics.push("console: " + message.text());
+      });
+      page.on("requestfailed", request => {
+        browserDiagnostics.push("requestfailed: " + request.url() + " :: " + (request.failure()?.errorText || "unknown"));
+      });
+      page.on("response", response => {
+        if (response.status() >= 400) browserDiagnostics.push("http " + response.status() + ": " + response.url());
+      });
       const response = await page.goto(baseUrl + "/", { waitUntil: "domcontentloaded" });
       if (!response || response.status() !== 200) {
         throw new Error(role + " browser could not load the local TruckSafe homepage.");
@@ -603,7 +616,8 @@ async function assertBrowserWorkspaceAccess({
       const passwordInput = page.locator('form.auth-form input[type="password"]');
       await emailInput.waitFor({ state: "visible", timeout: 30000 }).catch(async () => {
         const visiblePage = (await page.locator("body").innerText()).slice(0, 700);
-        throw new Error(role + " browser did not render the sign-in form: " + visiblePage);
+        throw new Error(role + " browser did not render the sign-in form. Body: " + visiblePage +
+          " | Browser diagnostics: " + browserDiagnostics.slice(-20).join(" || "));
       });
       await emailInput.fill(fixture.user.email);
       await passwordInput.fill(fixture.password);
