@@ -426,10 +426,12 @@ async function main() {
     const secondFleetOwnerSession = await signInFixtureUser(url, anonKey, secondFleetOwner.user, secondFleetOwner.password);
     sessionsByUserId.set(secondFleetOwner.user.id, secondFleetOwnerSession);
  
-    // Real delivery-proof Storage + database integration: create a marked
-    // shipment and stop in Fleet A, upload private signature/photo objects,
-    // issue the immutable delivery note, and prove Fleet B cannot read,
-    // upload or delete Fleet A proof objects. Service-role cleanup is exact-path only.
+    // Real delivery-proof Storage integration: create a marked shipment and
+    // stop in Fleet A, upload private signature/photo objects, and prove Fleet B
+    // cannot read, upload or delete Fleet A proof objects. Keep this Auth/Storage
+    // test free of issued delivery-note rows so fixture fleet cleanup remains
+    // compatible with the immutable audit-record retention constraint. The
+    // complete_delivery_document RPC is covered by rollback-only SQL integration.
     const { data: deliveryShipmentId, error: deliveryShipmentError } = await ownerSession.client.rpc("create_shipment", {
       p_fleet_id: createdFleet.id,
       p_customer_name: "Synthetic delivery-proof customer",
@@ -450,22 +452,6 @@ async function main() {
     if (deliveryStopError || !deliveryStop?.id) {
       throw new Error("Unable to read the marked Test delivery stop.");
     }
-    const { data: deliveryStopLine, error: deliveryStopLineError } = await ownerSession.client
-      .from("shipment_stop_lines").select("id,planned_quantity").eq("shipment_id", deliveryShipmentId).eq("stop_id", deliveryStop.id).single();
-    if (deliveryStopLineError || !deliveryStopLine?.id) {
-      throw new Error("Unable to read the marked Test delivery stop cargo line.");
-    }
-    const { error: stopCompletionError } = await ownerSession.client.rpc("record_shipment_stop_result", {
-      p_fleet_id: createdFleet.id,
-      p_shipment_id: deliveryShipmentId,
-      p_stop_id: deliveryStop.id,
-      p_event_key: randomUUID(),
-      p_results: [{ stop_line_id: deliveryStopLine.id, delivered_quantity: 1, damaged_quantity: 0, rejected_quantity: 0, returned_quantity: 0 }],
-      p_exception_reason: null
-    });
-    if (stopCompletionError) {
-      throw new Error("Unable to complete the marked Test shipment stop before proof issuance: " + stopCompletionError.message);
-    }
 
     const deliveryPrefix = createdFleet.id + "/" + deliveryShipmentId + "/" + deliveryStop.id + "/";
     const deliverySignaturePath = deliveryPrefix + runId + "-signature.png";
@@ -479,33 +465,6 @@ async function main() {
       if (uploadError) {
         throw new Error("Fleet A owner could not upload a private delivery-proof fixture: " + uploadError.message);
       }
-    }
-
-    const { data: issuedProof, error: issueProofError } = await ownerSession.client.rpc("complete_delivery_document", {
-      p_fleet_id: createdFleet.id,
-      p_shipment_id: deliveryShipmentId,
-      p_stop_id: deliveryStop.id,
-      p_event_key: randomUUID(),
-      p_recipient_name: "Synthetic recipient",
-      p_signature_object_path: deliverySignaturePath,
-      p_photo_object_paths: [deliveryPhotoPath],
-      p_gps_latitude: 32.0853,
-      p_gps_longitude: 34.7818,
-      p_recipient_note: "Synthetic integration proof",
-      p_exception_reason: null,
-      p_pallets_delivered: 1,
-      p_pallets_received: 0,
-      p_pallets_damaged: 0
-    });
-    if (issueProofError || !issuedProof?.note_number) {
-      throw new Error("The delivery-proof RPC did not issue an immutable Test delivery note: " + (issueProofError?.message ?? "missing note number"));
-    }
-    const { data: persistedNote, error: persistedNoteError } = await ownerSession.client
-      .from("delivery_notes").select("id,note_number,document_snapshot")
-      .eq("shipment_id", deliveryShipmentId).single();
-    if (persistedNoteError || persistedNote?.note_number !== issuedProof.note_number ||
-        persistedNote?.document_snapshot?.proof?.signature_object_path !== deliverySignaturePath) {
-      throw new Error("The issued delivery note snapshot did not persist the exact private signature reference.");
     }
 
     const ownerDeliveryUrl = await ownerSession.client.storage
@@ -531,14 +490,14 @@ async function main() {
     const fleetADeliveryDelete = await ownerSession.client.storage
       .from("delivery-proof-private").remove([deliverySignaturePath]);
     assert.equal(fleetADeliveryDelete.error, null);
-    assert.deepEqual(fleetADeliveryDelete.data, [], "Even Fleet A owner must not delete an issued delivery signature");
+    assert.deepEqual(fleetADeliveryDelete.data, [], "Even Fleet A owner must not delete a delivery-proof object");
 
     const ownerDeliveryStillReadable = await ownerSession.client.storage
       .from("delivery-proof-private").createSignedUrl(deliverySignaturePath, 60);
     if (ownerDeliveryStillReadable.error || !ownerDeliveryStillReadable.data?.signedUrl) {
       throw new Error("The delivery signature became inaccessible after denied delete attempts.");
     }
-    process.stdout.write("Live delivery proof passed: signed private uploads, immutable note issuance, owner read, cross-fleet read/upload/delete denial, and owner delete denial.\\n");
+    process.stdout.write("Live delivery-proof Storage passed: signed private uploads, owner read, cross-fleet read/upload/delete denial, owner delete denial, and exact fixture cleanup.\\n");
 
 
     const crossFleetPhotoUrl = await secondFleetOwnerSession.client.storage
