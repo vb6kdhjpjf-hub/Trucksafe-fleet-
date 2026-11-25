@@ -2,7 +2,7 @@
 begin;
 -- Schema is provisioned by the dedicated Test-only migration rollout; this file is rollback-only behavior coverage.
 create temporary table shipment_test_results(scenario text primary key,outcome text not null) on commit drop;
-create temporary table shipment_test_fixture(fleet_id uuid,shipment_id uuid,stop_id uuid,owner_id uuid,driver_user_id uuid) on commit drop;
+create temporary table shipment_test_fixture(fleet_id uuid,shipment_id uuid,stop_id uuid,owner_id uuid,driver_user_id uuid,driver_id uuid,vehicle_id uuid) on commit drop;
 do $test$
 <<shipment_test_block>>
 declare
@@ -12,6 +12,7 @@ declare
  fleet_id uuid:='b2000000-0000-4000-8000-000000000001';
  other_fleet_id uuid:='b2000000-0000-4000-8000-000000000002';
  driver_id uuid:='c2000000-0000-4000-8000-000000000001';
+ vehicle_id uuid:='c2000000-0000-4000-8000-000000000002';
  shipment_id uuid; stop_id uuid; result jsonb; rejected boolean; msg text;
 begin
  -- @auth-fixture owner_id shipment-owner@example.invalid
@@ -25,8 +26,10 @@ begin
  (fleet_id,owner_id,'owner'),(fleet_id,driver_user_id,'driver') on conflict do nothing;
  insert into public.drivers(id,fleet_id,user_id,full_name,license_expires_at,status)
  values(driver_id,fleet_id,driver_user_id,'Shipment Test Driver',current_date+365,'active');
+ insert into public.vehicles(id,fleet_id,registration_number,make,model)
+ values(vehicle_id,fleet_id,'CI-SHIPMENT-VEHICLE','Synthetic','Shipment Assignment Fixture');
  shipment_id:=public.create_shipment(
-  fleet_id,'לקוח לדוגמה','PO-100','DEL-100',now()+interval '1 day',driver_id,null,'',
+  fleet_id,'לקוח לדוגמה','PO-100','DEL-100',now()+interval '1 day',driver_id,vehicle_id,'',
   '[{"description":"משטחי שתייה","unit":"pallet","planned_quantity":12},{"description":"קרטונים","unit":"carton","planned_quantity":24},{"description":"מוצר במשקל","unit":"kg","planned_quantity":125.5}]'::jsonb,
   '[{"address":"מחסן צפון","stop_type":"delivery","items":[{"line_index":0,"planned_quantity":12},{"line_index":1,"planned_quantity":24},{"line_index":2,"planned_quantity":125.5}]}]'::jsonb
  );
@@ -76,7 +79,7 @@ begin
   perform set_config('test.shipment_id',shipment_id::text,true);
   perform set_config('test.fleet_id',fleet_id::text,true);
   perform set_config('test.driver_user_id',driver_user_id::text,true);
-  insert into pg_temp.shipment_test_fixture values(shipment_test_block.fleet_id,shipment_test_block.shipment_id,shipment_test_block.stop_id,shipment_test_block.owner_id,shipment_test_block.driver_user_id);
+  insert into pg_temp.shipment_test_fixture values(shipment_test_block.fleet_id,shipment_test_block.shipment_id,shipment_test_block.stop_id,shipment_test_block.owner_id,shipment_test_block.driver_user_id,shipment_test_block.driver_id,shipment_test_block.vehicle_id);
   insert into public.fleet_members(fleet_id,user_id,role)
   values(shipment_test_block.fleet_id,shipment_test_block.driver_user_id,'driver')
   on conflict do nothing;
@@ -341,6 +344,16 @@ declare f record;
 begin
  select * into f from pg_temp.shipment_test_fixture;
  delete from public.fleet_members fm where fm.fleet_id=f.fleet_id and fm.user_id=f.driver_user_id;
+ perform set_config('request.jwt.claim.sub',f.owner_id::text,true);
+ delete from public.drivers where fleet_id=f.fleet_id and id=f.driver_id;
+ if exists(select 1 from public.shipments where fleet_id=f.fleet_id and id=f.shipment_id and assigned_driver_id is not null) then
+  raise exception 'Deleting an assigned driver did not safely unassign the shipment';
+ end if;
+ delete from public.vehicles where fleet_id=f.fleet_id and id=f.vehicle_id;
+ if exists(select 1 from public.shipments where fleet_id=f.fleet_id and id=f.shipment_id and assigned_vehicle_id is not null) then
+  raise exception 'Deleting an assigned vehicle did not safely unassign the shipment';
+ end if;
+ insert into pg_temp.shipment_test_results values('deleting an assigned driver or vehicle safely unassigns the shipment','PASS');
  insert into pg_temp.shipment_test_results values('suspended or removed drivers cannot write shipment results','PASS');
 end
 $driver_membership_revocation_test$;
