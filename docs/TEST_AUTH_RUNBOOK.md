@@ -29,7 +29,7 @@ A push to `test/isolated-e2e-ci` runs the live Auth check only when all three de
 
 The script has a hard HTTPS hostname guard for the exact Test project. It does not query or write Production. It never inserts into or deletes from `auth.users` directly. It does not change RLS, deploy an Edge Function, merge the PR, or deploy the app.
 
-A cleanup failure is treated as critical and stops the job. One exact legacy Test-only fleet and its seven marked Auth fixture identities are explicitly retained because that failed historical run contains an immutable delivery proof; cleanup verifies its exact fleet, proof, shipment, driver and both private objects before preserving it. The cleanup never disables immutable triggers or deletes referenced proof objects. All newly created run fixtures are still deleted and verified. A skipped live Auth job is not a passing live test.
+A cleanup failure is treated as critical and stops the job. One exact legacy Test-only fleet is retained because a failed historical run contains an immutable delivery proof. Only its exact owner and assigned-driver Auth identities (two of the original seven) are retained; the other five marked synthetic identities are deleted. Cleanup verifies the exact fleet, proof, shipment, driver and both private objects before preservation. The cleanup never disables immutable triggers or deletes referenced proof objects. All newly created run fixtures are still deleted and verified. A skipped live Auth job is not a passing live test.
 
 ## Current coverage boundaries
 
