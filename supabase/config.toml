@@ -1,0 +1,5 @@
+# Local-only identifier; this is not a hosted Supabase project reference.
+project_id = "trucksafe-fleet-local"
+
+[db]
+major_version = 17

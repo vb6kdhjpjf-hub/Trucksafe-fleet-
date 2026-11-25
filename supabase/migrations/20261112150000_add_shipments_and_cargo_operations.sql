@@ -1,10 +1,27 @@
--- Test schemas may not yet have the composite unique keys required by tenant-scoped foreign keys.
+-- Ensure tenant-scoped parent keys exist without duplicating an equivalent
+-- composite unique constraint created by another feature migration.
 do $constraints$
 begin
- if not exists(select 1 from pg_constraint where conrelid='public.vehicles'::regclass and conname='vehicles_fleet_id_id_key') then
+ if not exists(
+  select 1 from pg_constraint c
+  where c.conrelid='public.vehicles'::regclass and c.contype in ('p','u')
+   and (
+    select array_agg(a.attname order by k.ord)
+    from unnest(c.conkey) with ordinality as k(attnum,ord)
+    join pg_attribute a on a.attrelid=c.conrelid and a.attnum=k.attnum
+   )=array['fleet_id','id']::name[]
+ ) then
   alter table public.vehicles add constraint vehicles_fleet_id_id_key unique(fleet_id,id);
  end if;
- if not exists(select 1 from pg_constraint where conrelid='public.drivers'::regclass and conname='drivers_fleet_id_id_key') then
+ if not exists(
+  select 1 from pg_constraint c
+  where c.conrelid='public.drivers'::regclass and c.contype in ('p','u')
+   and (
+    select array_agg(a.attname order by k.ord)
+    from unnest(c.conkey) with ordinality as k(attnum,ord)
+    join pg_attribute a on a.attrelid=c.conrelid and a.attnum=k.attnum
+   )=array['fleet_id','id']::name[]
+ ) then
   alter table public.drivers add constraint drivers_fleet_id_id_key unique(fleet_id,id);
  end if;
 end
@@ -26,8 +43,8 @@ create table public.shipments (
  created_at timestamptz not null default now(),
  updated_at timestamptz not null default now(),
  constraint shipments_fleet_id_id_key unique(fleet_id,id),
- constraint shipments_driver_same_fleet_fkey foreign key(fleet_id,assigned_driver_id) references public.drivers(fleet_id,id),
- constraint shipments_vehicle_same_fleet_fkey foreign key(fleet_id,assigned_vehicle_id) references public.vehicles(fleet_id,id)
+ constraint shipments_driver_same_fleet_fkey foreign key(fleet_id,assigned_driver_id) references public.drivers(fleet_id,id) on delete set null (assigned_driver_id),
+ constraint shipments_vehicle_same_fleet_fkey foreign key(fleet_id,assigned_vehicle_id) references public.vehicles(fleet_id,id) on delete set null (assigned_vehicle_id)
 );
 create index shipments_fleet_status_scheduled_idx on public.shipments(fleet_id,status,scheduled_at desc);
 create index shipments_fleet_driver_status_idx on public.shipments(fleet_id,assigned_driver_id,status);
@@ -84,7 +101,7 @@ create table public.shipment_stop_lines (
  constraint shipment_stop_lines_stop_line_key unique(stop_id,shipment_line_id),
  constraint shipment_stop_lines_fleet_id_id_key unique(fleet_id,id),
  constraint shipment_stop_lines_stop_same_shipment_fkey foreign key(fleet_id,shipment_id,stop_id) references public.shipment_stops(fleet_id,shipment_id,id) on delete cascade,
- constraint shipment_stop_lines_line_same_shipment_fkey foreign key(fleet_id,shipment_id,shipment_line_id) references public.shipment_lines(fleet_id,shipment_id,id),
+ constraint shipment_stop_lines_line_same_shipment_fkey foreign key(fleet_id,shipment_id,shipment_line_id) references public.shipment_lines(fleet_id,shipment_id,id) on delete cascade,
  constraint shipment_stop_lines_outcome_check check(delivered_quantity+damaged_quantity+rejected_quantity<=planned_quantity and returned_quantity<=delivered_quantity)
 );
 create index shipment_stop_lines_stop_idx on public.shipment_stop_lines(fleet_id,stop_id);
@@ -307,3 +324,11 @@ comment on table public.shipments is 'Tenant-scoped shipment orders; operational
 comment on table public.shipment_lines is 'Cargo lines with explicit units; pallet/carton counts never imply a weight measurement.';
 comment on table public.shipment_stop_lines is 'Per-stop planned and actual quantities, including delivered, damaged, rejected and returned amounts.';
 comment on table public.shipment_stop_events is 'Append-only, idempotent record of stop result submissions.';
+
+-- Index the foreign-key paths used by shipment, stop and cargo rows.
+create index if not exists shipment_stop_events_performed_by_idx on public.shipment_stop_events(performed_by);
+create index if not exists shipment_stop_events_fleet_shipment_stop_idx on public.shipment_stop_events(fleet_id,shipment_id,stop_id);
+create index if not exists shipment_stop_lines_fleet_shipment_line_idx on public.shipment_stop_lines(fleet_id,shipment_id,shipment_line_id);
+create index if not exists shipment_stop_lines_fleet_shipment_stop_idx on public.shipment_stop_lines(fleet_id,shipment_id,stop_id);
+create index if not exists shipments_created_by_idx on public.shipments(created_by);
+create index if not exists shipments_fleet_vehicle_idx on public.shipments(fleet_id,assigned_vehicle_id);

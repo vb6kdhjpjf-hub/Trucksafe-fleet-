@@ -1,10 +1,8 @@
 -- Rollback-only shipment and unit-safe cargo operation tests. Test project only.
 begin;
-\ir ../../supabase/migrations/20261112150000_add_shipments_and_cargo_operations.sql
-\ir ../../supabase/migrations/20261112160000_add_delivery_notes_and_proof_of_delivery.sql
-\ir ../../supabase/migrations/20261118190000_harden_shipment_driver_membership.sql
+-- Schema is provisioned by the dedicated Test-only migration rollout; this file is rollback-only behavior coverage.
 create temporary table shipment_test_results(scenario text primary key,outcome text not null) on commit drop;
-create temporary table shipment_test_fixture(fleet_id uuid,shipment_id uuid,stop_id uuid,owner_id uuid,driver_user_id uuid) on commit drop;
+create temporary table shipment_test_fixture(fleet_id uuid,shipment_id uuid,stop_id uuid,owner_id uuid,driver_user_id uuid,driver_id uuid,vehicle_id uuid) on commit drop;
 do $test$
 <<shipment_test_block>>
 declare
@@ -14,6 +12,7 @@ declare
  fleet_id uuid:='b2000000-0000-4000-8000-000000000001';
  other_fleet_id uuid:='b2000000-0000-4000-8000-000000000002';
  driver_id uuid:='c2000000-0000-4000-8000-000000000001';
+ vehicle_id uuid:='c2000000-0000-4000-8000-000000000002';
  shipment_id uuid; stop_id uuid; result jsonb; rejected boolean; msg text;
 begin
  -- @auth-fixture owner_id shipment-owner@example.invalid
@@ -27,8 +26,10 @@ begin
  (fleet_id,owner_id,'owner'),(fleet_id,driver_user_id,'driver') on conflict do nothing;
  insert into public.drivers(id,fleet_id,user_id,full_name,license_expires_at,status)
  values(driver_id,fleet_id,driver_user_id,'Shipment Test Driver',current_date+365,'active');
+ insert into public.vehicles(id,fleet_id,registration_number,make,model)
+ values(vehicle_id,fleet_id,'CI-SHIPMENT-VEHICLE','Synthetic','Shipment Assignment Fixture');
  shipment_id:=public.create_shipment(
-  fleet_id,'לקוח לדוגמה','PO-100','DEL-100',now()+interval '1 day',driver_id,null,'',
+  fleet_id,'לקוח לדוגמה','PO-100','DEL-100',now()+interval '1 day',driver_id,vehicle_id,'',
   '[{"description":"משטחי שתייה","unit":"pallet","planned_quantity":12},{"description":"קרטונים","unit":"carton","planned_quantity":24},{"description":"מוצר במשקל","unit":"kg","planned_quantity":125.5}]'::jsonb,
   '[{"address":"מחסן צפון","stop_type":"delivery","items":[{"line_index":0,"planned_quantity":12},{"line_index":1,"planned_quantity":24},{"line_index":2,"planned_quantity":125.5}]}]'::jsonb
  );
@@ -78,7 +79,7 @@ begin
   perform set_config('test.shipment_id',shipment_id::text,true);
   perform set_config('test.fleet_id',fleet_id::text,true);
   perform set_config('test.driver_user_id',driver_user_id::text,true);
-  insert into pg_temp.shipment_test_fixture values(shipment_test_block.fleet_id,shipment_test_block.shipment_id,shipment_test_block.stop_id,shipment_test_block.owner_id,shipment_test_block.driver_user_id);
+  insert into pg_temp.shipment_test_fixture values(shipment_test_block.fleet_id,shipment_test_block.shipment_id,shipment_test_block.stop_id,shipment_test_block.owner_id,shipment_test_block.driver_user_id,shipment_test_block.driver_id,shipment_test_block.vehicle_id);
   insert into public.fleet_members(fleet_id,user_id,role)
   values(shipment_test_block.fleet_id,shipment_test_block.driver_user_id,'driver')
   on conflict do nothing;
@@ -252,11 +253,111 @@ begin
 end
 $delivery_document_test$;
 
+do $delivery_photo_limits_test$
+declare
+ f record;
+ test_shipment_id uuid;
+ test_stop_id uuid;
+ test_stop_line_id uuid;
+ photo_paths text[]:=array[]::text[];
+ photo_path text;
+ i integer;
+ rejected boolean;
+ msg text;
+begin
+ select * into f from pg_temp.shipment_test_fixture;
+ perform set_config('request.jwt.claim.sub',f.owner_id::text,true);
+ perform set_config('request.jwt.claim.role','authenticated',true);
+
+ test_shipment_id:=public.create_shipment(
+  f.fleet_id,'Synthetic photo limit customer','CI-PHOTO-LIMIT','CI-PHOTO-LIMIT',now()+interval '1 day',
+  null,null,'Rollback-only photo size fixture',
+  '[{"description":"Synthetic cargo","unit":"package","planned_quantity":1}]'::jsonb,
+  '[{"address":"Synthetic test stop","stop_type":"delivery","items":[{"line_index":0,"planned_quantity":1}]}]'::jsonb
+ );
+ select s.id into test_stop_id from public.shipment_stops s
+ where s.fleet_id=f.fleet_id and s.shipment_id=test_shipment_id;
+ select sl.id into test_stop_line_id from public.shipment_stop_lines sl
+ where sl.fleet_id=f.fleet_id and sl.shipment_id=test_shipment_id and sl.stop_id=test_stop_id;
+ perform public.record_shipment_stop_result(
+  f.fleet_id,test_shipment_id,test_stop_id,'13000000-0000-4000-8000-000000000101'::uuid,
+  jsonb_build_array(jsonb_build_object('stop_line_id',test_stop_line_id,'delivered_quantity',1,
+   'damaged_quantity',0,'rejected_quantity',0,'returned_quantity',0)),null
+ );
+
+ for i in 1..5 loop
+  photo_path:=f.fleet_id::text||'/'||test_shipment_id::text||'/'||test_stop_id::text||'/'||gen_random_uuid()::text||'.jpg';
+  photo_paths:=array_append(photo_paths,photo_path);
+  insert into storage.objects(bucket_id,name,owner,metadata)
+  values('delivery-proof-private',photo_path,f.owner_id,
+   jsonb_build_object('mimetype','image/jpeg','size','10485761'));
+ end loop;
+
+ rejected:=false;
+ begin
+  perform public.complete_delivery_document(
+   f.fleet_id,test_shipment_id,test_stop_id,'13000000-0000-4000-8000-000000000102'::uuid,
+   null,null,photo_paths,null,null,null,'Manager-approved signature exception',0,0,0
+  );
+ exception when others then
+  get stacked diagnostics msg=message_text;
+  rejected:=msg ilike '%Each delivery photo must be PNG, JPEG or WEBP and no larger than 10 MiB%';
+ end;
+ if not rejected then raise exception 'Server accepted a delivery photo larger than 10 MiB'; end if;
+ if exists(select 1 from public.delivery_proofs where fleet_id=f.fleet_id and stop_id=test_stop_id) then
+  raise exception 'Rejected per-file size validation left a delivery proof row';
+ end if;
+ insert into pg_temp.shipment_test_results values('delivery proof RPC enforces the 10 MiB per-photo limit','PASS');
+
+ update storage.objects set metadata=jsonb_build_object('mimetype','image/jpeg','size','9437184')
+ where bucket_id='delivery-proof-private' and name=any(photo_paths);
+ rejected:=false;
+ begin
+  perform public.complete_delivery_document(
+   f.fleet_id,test_shipment_id,test_stop_id,'13000000-0000-4000-8000-000000000103'::uuid,
+   null,null,photo_paths,null,null,null,'Manager-approved signature exception',0,0,0
+  );
+ exception when others then
+  get stacked diagnostics msg=message_text;
+  rejected:=msg ilike '%Combined delivery photos cannot exceed 40 MiB%';
+ end;
+ if not rejected then raise exception 'Server accepted combined delivery photos larger than 40 MiB'; end if;
+ if exists(select 1 from public.delivery_proofs where fleet_id=f.fleet_id and stop_id=test_stop_id) then
+  raise exception 'Rejected aggregate size validation left a delivery proof row';
+ end if;
+ insert into pg_temp.shipment_test_results values('delivery proof RPC enforces the 40 MiB aggregate photo limit','PASS');
+
+ -- A shipment owns its cargo lines, stops and stop allocations. Removing it
+ -- must cascade through both stop and line relationships without FK-order failures.
+ delete from public.shipments where fleet_id=f.fleet_id and id=test_shipment_id;
+ if exists(select 1 from public.shipment_lines where fleet_id=f.fleet_id and shipment_id=test_shipment_id)
+  or exists(select 1 from public.shipment_stops where fleet_id=f.fleet_id and shipment_id=test_shipment_id)
+  or exists(select 1 from public.shipment_stop_lines where fleet_id=f.fleet_id and shipment_id=test_shipment_id) then
+  raise exception 'Shipment deletion left dependent cargo or stop rows behind';
+ end if;
+ insert into pg_temp.shipment_test_results values('shipment deletion cascades through cargo lines, stops and stop allocations','PASS');
+end
+$delivery_photo_limits_test$;
+
+
+
+
+
 do $driver_membership_revocation_test$
 declare f record;
 begin
  select * into f from pg_temp.shipment_test_fixture;
  delete from public.fleet_members fm where fm.fleet_id=f.fleet_id and fm.user_id=f.driver_user_id;
+ perform set_config('request.jwt.claim.sub',f.owner_id::text,true);
+ delete from public.drivers where fleet_id=f.fleet_id and id=f.driver_id;
+ if exists(select 1 from public.shipments where fleet_id=f.fleet_id and id=f.shipment_id and assigned_driver_id is not null) then
+  raise exception 'Deleting an assigned driver did not safely unassign the shipment';
+ end if;
+ delete from public.vehicles where fleet_id=f.fleet_id and id=f.vehicle_id;
+ if exists(select 1 from public.shipments where fleet_id=f.fleet_id and id=f.shipment_id and assigned_vehicle_id is not null) then
+  raise exception 'Deleting an assigned vehicle did not safely unassign the shipment';
+ end if;
+ insert into pg_temp.shipment_test_results values('deleting an assigned driver or vehicle safely unassigns the shipment','PASS');
  insert into pg_temp.shipment_test_results values('suspended or removed drivers cannot write shipment results','PASS');
 end
 $driver_membership_revocation_test$;
@@ -311,6 +412,19 @@ begin
    and qual like '%has_fleet_role%'
  ) then
   raise exception 'Scoped authenticated delivery proof read policy is missing';
+ end if;
+ if not exists(
+  select 1 from pg_policies
+  where schemaname='storage' and tablename='objects'
+   and policyname='delivery_proof_objects_delete_own_unreferenced'
+   and cmd='DELETE' and roles = array['authenticated']::name[]
+   and qual like '%delivery-proof-private%'
+   and qual like '%owner_id%'
+   and qual like '%delivery_proofs%'
+   and qual like '%is_active_assigned_fleet_driver%'
+   and qual like '%has_fleet_role%'
+ ) then
+  raise exception 'Narrow own-unreferenced delivery proof cleanup policy is missing';
  end if;
  insert into pg_temp.shipment_test_results
  values('delivery proof storage is private, type-limited and protected by scoped fleet policies','PASS');

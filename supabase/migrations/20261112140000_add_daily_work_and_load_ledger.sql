@@ -468,3 +468,10 @@ comment on table public.daily_work_stops is
   'Ordered daily pickup/unloading stops. Each stop is completed only by the transactional measured-load RPC.';
 comment on table public.daily_load_events is
   'Append-only ledger of measured load changes; direct authenticated writes are revoked.';
+
+-- Index the foreign-key paths used by fleet-scoped daily-work and load rows.
+create index if not exists daily_load_events_performed_by_idx on public.daily_load_events(performed_by);
+create index if not exists daily_load_events_fleet_plan_idx on public.daily_load_events(fleet_id,plan_id);
+create index if not exists daily_load_events_fleet_stop_idx on public.daily_load_events(fleet_id,stop_id);
+create index if not exists daily_work_plans_created_by_idx on public.daily_work_plans(created_by);
+create index if not exists daily_work_stops_fleet_plan_idx on public.daily_work_stops(fleet_id,plan_id);

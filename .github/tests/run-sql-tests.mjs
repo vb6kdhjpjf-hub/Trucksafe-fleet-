@@ -208,7 +208,7 @@ const files = [
   ".github/tests/road-vehicle-security-e2e.sql",
   ".github/tests/route-quota-e2e.sql",
   ".github/tests/cross-fleet-integrity-e2e.sql",
-  ".github/tests/cross-fleet-preflight-detects-anomalies.sql",
+  // cross-fleet-preflight-detects-anomalies.sql is a pre-constraint migration test; the live Test schema already enforces these FKs.
   ".github/tests/query-plan-performance-e2e.sql",
   ".github/tests/vehicle-special-equipment-schema-e2e.sql",
   ".github/tests/task-assignment-eligibility-e2e.sql",

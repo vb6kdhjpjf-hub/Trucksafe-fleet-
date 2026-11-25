@@ -5,6 +5,9 @@ import test from "node:test";
 const backup = await readFile(".github/workflows/supabase-schema-backup.yml", "utf8");
 const restore = await readFile(".github/workflows/restore-test-schema.yml", "utf8");
 const validation = await readFile(".github/workflows/isolated-validation.yml", "utf8");
+const packageJson = JSON.parse(await readFile("package.json", "utf8"));
+const packageLock = JSON.parse(await readFile("package-lock.json", "utf8"));
+const supabaseConfig = await readFile("supabase/config.toml", "utf8");
 const liveAuth = await readFile(".github/tests/live-supabase-auth.integration.mjs", "utf8");
 
 test("schema backup exports schema only and retains its artifact for seven days", () => {
@@ -96,6 +99,21 @@ test("GitHub workflow actions use maintained Node 24-compatible releases", () =>
 test("workflow config triggers validation for routing integration pull requests", () => {
   const pullRequestBranches = validation.split("  pull_request:")[1]?.split("  workflow_dispatch:")[0] ?? "";
   assert.ok(pullRequestBranches.includes("- fix/physical-clearance-routing-gate"));
+  assert.ok(pullRequestBranches.includes("- docs/route-assessment-atomic-trip-start"));
+  const pushBranches = validation.split("  push:")[1]?.split("  pull_request:")[0] ?? "";
+  assert.ok(pushBranches.includes("- chore/reproducible-supabase-local-env"));
   const authJob = validation.slice(validation.indexOf("  auth-integration:"));
   assert.ok(!authJob.includes("github.event_name == 'pull_request'"));
+});
+
+
+test("CI installs committed dependencies and the Supabase CLI is pinned for local-only development", () => {
+  assert.match(validation, /npm ci --no-audit --no-fund/);
+  assert.doesNotMatch(validation, /npm install --package-lock-only/);
+  assert.match(packageJson.devDependencies?.supabase ?? "", /^\d+\.\d+\.\d+$/);
+  assert.equal(packageLock.packages?.["node_modules/supabase"]?.version, packageJson.devDependencies.supabase);
+  assert.equal(packageLock.lockfileVersion, 3);
+  assert.match(supabaseConfig, /^project_id = "trucksafe-fleet-local"$/m);
+  assert.match(supabaseConfig, /^\[db\]$/m);
+  assert.doesNotMatch(supabaseConfig, /^\[remotes\./m);
 });

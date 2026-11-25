@@ -21,6 +21,7 @@ alter table public.road_restrictions
   add column if not exists expires_at timestamptz;
 
 alter table public.vehicles
+  add column if not exists gross_weight_kg numeric,
   add column if not exists empty_weight_kg numeric;
 
 comment on column public.road_restrictions.latitude is 'Latitude for a point restriction; WGS84 decimal degrees.';

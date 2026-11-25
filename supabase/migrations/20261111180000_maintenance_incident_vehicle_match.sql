@@ -14,3 +14,5 @@ ALTER TABLE public.maintenance_records
     REFERENCES public.incidents (fleet_id, vehicle_id, id)
     ON DELETE SET NULL (incident_id)
     NOT VALID;
+
+create index if not exists maintenance_records_fleet_vehicle_incident_idx on public.maintenance_records(fleet_id,vehicle_id,incident_id);

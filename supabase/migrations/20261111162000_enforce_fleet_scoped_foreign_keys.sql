@@ -2,8 +2,29 @@
 -- Apply only after the isolated cross-fleet integration test passes.
 -- PostgreSQL 15+ is required for column-list ON DELETE SET NULL.
 
-ALTER TABLE public.vehicles
-  ADD CONSTRAINT vehicles_fleet_id_id_key UNIQUE (fleet_id, id);
+-- A prior Test-only equipment migration may already have installed an
+-- equivalent composite unique key under a different constraint name. Reuse it
+-- instead of creating a duplicate unique index.
+DO $vehicle_fleet_key$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint c
+    WHERE c.conrelid = 'public.vehicles'::regclass
+      AND c.contype IN ('p', 'u')
+      AND (
+        SELECT array_agg(a.attname ORDER BY k.ord)
+        FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+        JOIN pg_attribute a
+          ON a.attrelid = c.conrelid
+         AND a.attnum = k.attnum
+      ) = ARRAY['fleet_id', 'id']::name[]
+  ) THEN
+    ALTER TABLE public.vehicles
+      ADD CONSTRAINT vehicles_fleet_id_id_key UNIQUE (fleet_id, id);
+  END IF;
+END
+$vehicle_fleet_key$;
 
 ALTER TABLE public.tasks
   ADD CONSTRAINT tasks_fleet_id_id_key UNIQUE (fleet_id, id);
@@ -97,3 +118,18 @@ ALTER TABLE public.trip_locations
     FOREIGN KEY (trip_id, driver_id)
     REFERENCES public.trips (id, driver_id)
     ON DELETE CASCADE;
+
+-- Child-side indexes for the fleet-scoped composite foreign keys.
+create index if not exists incidents_fleet_driver_idx on public.incidents(fleet_id,driver_id);
+create index if not exists incidents_fleet_trip_idx on public.incidents(fleet_id,trip_id);
+create index if not exists incidents_fleet_vehicle_idx on public.incidents(fleet_id,vehicle_id);
+create index if not exists inspections_fleet_driver_idx on public.inspections(fleet_id,driver_id);
+create index if not exists inspections_fleet_trip_idx on public.inspections(fleet_id,trip_id);
+create index if not exists inspections_fleet_vehicle_idx on public.inspections(fleet_id,vehicle_id);
+create index if not exists maintenance_records_fleet_incident_idx on public.maintenance_records(fleet_id,incident_id);
+create index if not exists tasks_fleet_assigned_driver_idx on public.tasks(fleet_id,assigned_driver_id);
+create index if not exists tasks_fleet_assigned_vehicle_idx on public.tasks(fleet_id,assigned_vehicle_id);
+create index if not exists trip_locations_trip_driver_idx on public.trip_locations(trip_id,driver_id);
+create index if not exists trips_fleet_driver_idx on public.trips(fleet_id,driver_id);
+create index if not exists trips_fleet_task_idx on public.trips(fleet_id,task_id);
+create index if not exists trips_fleet_vehicle_idx on public.trips(fleet_id,vehicle_id);

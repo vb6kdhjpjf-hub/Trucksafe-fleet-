@@ -16,6 +16,28 @@ import {
 const TEST_PROJECT_REF = "yxxrgblpqzhnnyojbwcr";
 const PAGE_SIZE = 1000;
 
+// A prior failed Test-only CI run created one immutable delivery proof without
+// an accompanying delivery note. Its BEFORE DELETE trigger intentionally
+// blocks fleet cascades, so preserve this exact marked fixture as an audit
+// artifact rather than disabling immutability or deleting referenced files.
+const RETAINED_LEGACY_PROOF_FIXTURE = Object.freeze({
+  runId: "cd14e032-4945-4f3e-8850-2611f3e272cc",
+  fleetId: "e773391e-bf75-47d1-b487-bdf2c89151ee",
+  fleetName: "TRUCKSAFE_CI_FIXTURE_cd14e032-4945-4f3e-8850-2611f3e272cc",
+  ownerUserId: "1f665508-748e-4984-835e-28a22e5d85a6",
+  driverUserId: "6f20f22b-eb91-4343-a627-2245c97b43b2",
+  driverId: "a527a29a-a809-4e8c-8e80-15de79dd52d7",
+  shipmentId: "cf140548-399d-489f-a3bf-7867a66acdf1",
+  stopId: "a4f3ae70-0cd0-44cd-837d-ebd4f763f542",
+  proofId: "e9d50660-d36d-41d3-8ed4-180573227607",
+  eventKey: "d142d489-86c7-492b-86d5-67a210a72179",
+  signaturePath: "e773391e-bf75-47d1-b487-bdf2c89151ee/cf140548-399d-489f-a3bf-7867a66acdf1/a4f3ae70-0cd0-44cd-837d-ebd4f763f542/cd14e032-4945-4f3e-8850-2611f3e272cc-signature.png",
+  photoPath: "e773391e-bf75-47d1-b487-bdf2c89151ee/cf140548-399d-489f-a3bf-7867a66acdf1/a4f3ae70-0cd0-44cd-837d-ebd4f763f542/cd14e032-4945-4f3e-8850-2611f3e272cc-photo.png"
+});
+const RETAINED_LEGACY_FIXTURE_ROLES = [
+  "ambiguous", "dispatcher", "driver", "fleet_manager", "owner", "safety_manager", "unassigned"
+];
+
 function readConfig() {
   const url = process.env.SUPABASE_TEST_URL;
   const anonKey = process.env.SUPABASE_TEST_ANON_KEY;
@@ -51,7 +73,90 @@ async function listMarkedFixtureUsers(admin) {
   return matches;
 }
 
-async function removeOwnedFixtureFleets(admin, users) {
+async function identifyRetainedLegacyProofFixture(admin, users) {
+  const suffix = `-${RETAINED_LEGACY_PROOF_FIXTURE.runId}@example.com`;
+  const retainedUsers = users.filter(user => typeof user.email === "string" && user.email.endsWith(suffix));
+  if (retainedUsers.length === 0) return [];
+  const expectedEmails = new Set(RETAINED_LEGACY_FIXTURE_ROLES.map(
+    role => `trucksafe-ci-${role}${suffix}`
+  ));
+  // The first cleanup attempt may see all seven historical fixture users;
+  // after a partial or successful cleanup, only the owner and driver remain.
+  // Any in-between subset is also safe, provided every identity is allowlisted.
+  if (retainedUsers.length < 2 || retainedUsers.length > expectedEmails.size ||
+      retainedUsers.some(user => !expectedEmails.has(user.email) ||
+        user.app_metadata?.trucksafe_ci_fixture !== FIXTURE_MARKER)) {
+    throw new Error("Refusing to preserve a legacy Test fixture: its exact Auth identities do not match the approved immutable-proof marker.");
+  }
+  const owner = retainedUsers.find(user => user.email === `trucksafe-ci-owner${suffix}`);
+  const driver = retainedUsers.find(user => user.email === `trucksafe-ci-driver${suffix}`);
+  if (owner?.id !== RETAINED_LEGACY_PROOF_FIXTURE.ownerUserId ||
+      driver?.id !== RETAINED_LEGACY_PROOF_FIXTURE.driverUserId) {
+    throw new Error("Refusing to preserve a legacy Test fixture: owner or driver identity changed.");
+  }
+
+  const { data: fleet, error: fleetError } = await admin
+    .from("fleets")
+    .select("id,name,owner_user_id")
+    .eq("id", RETAINED_LEGACY_PROOF_FIXTURE.fleetId)
+    .maybeSingle();
+  if (fleetError || !fleet ||
+      fleet.name !== RETAINED_LEGACY_PROOF_FIXTURE.fleetName ||
+      fleet.owner_user_id !== owner.id) {
+    throw new Error("Refusing to preserve a legacy Test fixture: the exact marked fleet does not match.");
+  }
+
+  const { data: proof, error: proofError } = await admin
+    .from("delivery_proofs")
+    .select("id,fleet_id,shipment_id,stop_id,event_key,proof_status,performed_by,signature_object_path,photo_object_paths")
+    .eq("id", RETAINED_LEGACY_PROOF_FIXTURE.proofId)
+    .maybeSingle();
+  if (proofError || !proof ||
+      proof.fleet_id !== fleet.id ||
+      proof.shipment_id !== RETAINED_LEGACY_PROOF_FIXTURE.shipmentId ||
+      proof.stop_id !== RETAINED_LEGACY_PROOF_FIXTURE.stopId ||
+      proof.event_key !== RETAINED_LEGACY_PROOF_FIXTURE.eventKey ||
+      proof.proof_status !== "signed" ||
+      proof.performed_by !== driver.id ||
+      proof.signature_object_path !== RETAINED_LEGACY_PROOF_FIXTURE.signaturePath ||
+      JSON.stringify(proof.photo_object_paths) !== JSON.stringify([RETAINED_LEGACY_PROOF_FIXTURE.photoPath])) {
+    throw new Error("Refusing to preserve a legacy Test fixture: immutable delivery-proof evidence does not match the exact allowlist.");
+  }
+
+  const { data: driverRow, error: driverError } = await admin
+    .from("drivers")
+    .select("id,user_id")
+    .eq("id", RETAINED_LEGACY_PROOF_FIXTURE.driverId)
+    .eq("fleet_id", fleet.id)
+    .maybeSingle();
+  if (driverError || !driverRow || driverRow.user_id !== driver.id) {
+    throw new Error("Refusing to preserve a legacy Test fixture: the marked proof performer no longer matches its driver record.");
+  }
+
+  const { data: shipment, error: shipmentError } = await admin
+    .from("shipments")
+    .select("id,fleet_id,assigned_driver_id")
+    .eq("id", RETAINED_LEGACY_PROOF_FIXTURE.shipmentId)
+    .maybeSingle();
+  if (shipmentError || !shipment ||
+      shipment.fleet_id !== fleet.id ||
+      shipment.assigned_driver_id !== RETAINED_LEGACY_PROOF_FIXTURE.driverId) {
+    throw new Error("Refusing to preserve a legacy Test fixture: its shipment/driver relationship changed.");
+  }
+
+  const { data: notes, error: notesError } = await admin
+    .from("delivery_notes")
+    .select("id")
+    .eq("fleet_id", fleet.id);
+  if (notesError || notes?.length) {
+    throw new Error("Refusing to preserve a legacy Test fixture: unexpected immutable delivery notes were found.");
+  }
+
+  // Only the owner and assigned driver are required to preserve and exercise
+  // the immutable proof. Any other allowlisted legacy accounts are removed.
+  return [owner.id, driver.id];
+}
+async function removeOwnedFixtureFleets(admin, users, retainedUserIds = new Set()) {
   for (const user of users) {
     const { data: fleets, error: listError } = await admin
       .from("fleets")
@@ -63,6 +168,14 @@ async function removeOwnedFixtureFleets(admin, users) {
     )) {
       if (fleet.owner_user_id !== user.id || !fleet.name.startsWith(FIXTURE_FLEET_PREFIX)) {
         throw new Error("Refusing cleanup: fixture fleet ownership or marker did not match exactly.");
+      }
+      if (fleet.id === RETAINED_LEGACY_PROOF_FIXTURE.fleetId &&
+          retainedUserIds.has(RETAINED_LEGACY_PROOF_FIXTURE.ownerUserId)) {
+        if (user.id !== RETAINED_LEGACY_PROOF_FIXTURE.ownerUserId ||
+            fleet.name !== RETAINED_LEGACY_PROOF_FIXTURE.fleetName) {
+          throw new Error("Refusing cleanup: retained immutable fixture fleet ownership unexpectedly changed.");
+        }
+        continue;
       }
       const { data: deleted, error: deleteError } = await admin
         .from("fleets")
@@ -94,20 +207,62 @@ async function removeOwnedFixtureFleets(admin, users) {
 }
 
 async function cleanupMarkedFixtureUsers(admin) {
+  // One exact, previously verified orphan from a failed Test-only run. Its
+  // fleet was left behind because it contains an immutable delivery proof.
+  const { error: legacyOrphanError } = await admin.storage.from("incident-photos").remove([
+    "3d9dd6dd-c0ad-48cd-a5fe-fb04319dd33c/incidents/53138cdb-4170-4857-97f4-d2cb0785a654.jpg"
+  ]);
+  if (legacyOrphanError) {
+    throw new Error("Unable to remove the exact verified orphaned Test incident-photo object.");
+  }
   const users = await listMarkedFixtureUsers(admin);
-  // Delete only uniquely marked fixture fleets first; cascades remove their memberships and dependent rows.
-  await removeOwnedFixtureFleets(admin, users);
+  const retainedUsers = await identifyRetainedLegacyProofFixture(admin, users);
+  const retainedUserIds = new Set(retainedUsers);
+  await removeOwnedFixtureFleets(admin, users, retainedUserIds);
   for (const user of users) {
+    if (retainedUserIds.has(user.id)) continue;
     const { error } = await admin.auth.admin.deleteUser(user.id);
-    if (error) throw new Error("Unable to delete a marked disposable TruckSafe Test Auth user.");
+    if (error) {
+      const { data: stillPresent, error: lookupError } = await admin.auth.admin.getUserById(user.id);
+      if (!lookupError && stillPresent?.user) {
+        throw new Error("Unable to delete a marked disposable TruckSafe Test Auth user.");
+      }
+    }
   }
-  const remaining = await listMarkedFixtureUsers(admin);
-  if (remaining.length !== 0) {
-    throw new Error("Post-cleanup assertion failed: marked disposable Test Auth users remain.");
-  }
-  return users.length;
-}
 
+  // Auth Admin listUsers is eventually consistent. Retry deletion of only the
+  // exact, still-marked test identities before declaring cleanup complete.
+  let remaining = [];
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    remaining = await listMarkedFixtureUsers(admin);
+    const unexpected = remaining.filter(user => !retainedUserIds.has(user.id));
+    if (unexpected.length === 0 && remaining.length === retainedUserIds.size) break;
+    for (const user of unexpected) {
+      if (!isTruckSafeFixtureUser(user)) {
+        throw new Error("Refusing cleanup retry: a remaining Auth identity is not an exact TruckSafe Test fixture.");
+      }
+      const { error } = await admin.auth.admin.deleteUser(user.id);
+      if (error) {
+        const { data: stillPresent, error: lookupError } = await admin.auth.admin.getUserById(user.id);
+        if (!lookupError && stillPresent?.user) {
+          throw new Error("Unable to retry deletion of a marked disposable TruckSafe Test Auth user.");
+        }
+      }
+    }
+    if (attempt < 4) {
+      await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+    }
+  }
+  remaining = await listMarkedFixtureUsers(admin);
+  const unexpected = remaining.filter(user => !retainedUserIds.has(user.id));
+  if (unexpected.length !== 0 || remaining.length !== retainedUserIds.size) {
+    throw new Error("Post-cleanup assertion failed: unexpected marked disposable Test Auth users remain.");
+  }
+  if (retainedUserIds.size) {
+    process.stdout.write("Retained the exact legacy Test fleet and its two required Auth identities (owner and assigned driver); all other marked fixtures were cleaned.\\n");
+  }
+  return users.length - retainedUserIds.size;
+}
 async function createFixtureUser(admin, email, password) {
   const { data, error } = await admin.auth.admin.createUser({
     email,
@@ -139,6 +294,156 @@ async function signInFixtureUser(url, anonKey, user, password) {
     auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false }
   });
   return { client: apiClient, authClient: client, token };
+}
+
+async function signInRetainedLegacyProofUsers(url, anonKey, admin) {
+  const legacyUsers = [];
+  for (const [userId, expectedEmail] of [
+    [RETAINED_LEGACY_PROOF_FIXTURE.ownerUserId,
+      `trucksafe-ci-owner-${RETAINED_LEGACY_PROOF_FIXTURE.runId}@example.com`],
+    [RETAINED_LEGACY_PROOF_FIXTURE.driverUserId,
+      `trucksafe-ci-driver-${RETAINED_LEGACY_PROOF_FIXTURE.runId}@example.com`]
+  ]) {
+    const { data, error } = await admin.auth.admin.getUserById(userId);
+    if (error || !data?.user ||
+        data.user.email !== expectedEmail ||
+        data.user.app_metadata?.trucksafe_ci_fixture !== FIXTURE_MARKER) {
+      throw new Error("The retained immutable-proof Test identities could not be verified.");
+    }
+    const password = randomBytes(36).toString("base64url");
+    const { data: updated, error: passwordError } = await admin.auth.admin.updateUserById(userId, { password });
+    if (passwordError || !updated?.user || updated.user.id !== userId) {
+      throw new Error("Unable to rotate credentials for the retained Test-only immutable-proof identity.");
+    }
+    const session = await signInFixtureUser(url, anonKey, updated.user, password);
+    legacyUsers.push({ user: updated.user, session });
+  }
+  return {
+    owner: legacyUsers.find(item => item.user.id === RETAINED_LEGACY_PROOF_FIXTURE.ownerUserId).session,
+    driver: legacyUsers.find(item => item.user.id === RETAINED_LEGACY_PROOF_FIXTURE.driverUserId).session
+  };
+}
+
+async function ensureRetainedLegacyProofObjects({ admin, ownerSession, driverSession }) {
+  const bucket = "delivery-proof-private";
+  const folder = [
+    RETAINED_LEGACY_PROOF_FIXTURE.fleetId,
+    RETAINED_LEGACY_PROOF_FIXTURE.shipmentId,
+    RETAINED_LEGACY_PROOF_FIXTURE.stopId
+  ].join("/");
+  const { data: items, error: listError } = await admin.storage
+    .from(bucket).list(folder, { limit: 50 });
+  if (listError) {
+    throw new Error("Unable to inspect the exact retained Test proof folder before recovery.");
+  }
+  const existingNames = new Set((items ?? []).map(item => item.name));
+  const proofEntries = [
+    {
+      path: RETAINED_LEGACY_PROOF_FIXTURE.signaturePath,
+      filename: RETAINED_LEGACY_PROOF_FIXTURE.signaturePath.split("/").at(-1),
+      uploader: driverSession
+    },
+    {
+      path: RETAINED_LEGACY_PROOF_FIXTURE.photoPath,
+      filename: RETAINED_LEGACY_PROOF_FIXTURE.photoPath.split("/").at(-1),
+      uploader: ownerSession
+    }
+  ];
+  const existingPaths = proofEntries
+    .filter(entry => existingNames.has(entry.filename))
+    .map(entry => entry.path);
+
+  // These are exclusively synthetic CI files. A prior service-role recovery
+  // left owner_id NULL, which made delete-denial assertions inconclusive.
+  // Re-create only these two allowlisted objects through the original signed
+  // uploader identities: driver owns the signature, fleet owner owns the photo.
+  if (existingPaths.length) {
+    const { data: removed, error: removeError } = await admin.storage
+      .from(bucket).remove(existingPaths);
+    if (removeError || removed?.length !== existingPaths.length) {
+      throw new Error("Unable to replace the exact retained synthetic proof files with correctly owned Test uploads.");
+    }
+  }
+
+  const bytes = Buffer.from("TruckSafe synthetic delivery proof image fixture");
+  for (const entry of proofEntries) {
+    const { error } = await entry.uploader.client.storage.from(bucket).upload(entry.path, bytes, {
+      contentType: "image/png",
+      upsert: false
+    });
+    if (error) {
+      throw new Error("Unable to re-upload the exact synthetic proof file through its original Test identity: " + error.message);
+    }
+  }
+}
+async function assertRetainedLegacyProofStorageAccess({ ownerSession, driverSession, admin }) {
+  const bucket = "delivery-proof-private";
+  const proofPaths = [
+    RETAINED_LEGACY_PROOF_FIXTURE.signaturePath,
+    RETAINED_LEGACY_PROOF_FIXTURE.photoPath
+  ];
+  await ensureRetainedLegacyProofObjects({ admin, ownerSession, driverSession });
+  for (const [role, session] of [["owner", ownerSession], ["assigned driver", driverSession]]) {
+    for (const path of proofPaths) {
+      const { data, error } = await session.client.storage.from(bucket).createSignedUrl(path, 60);
+      if (error || !data?.signedUrl) {
+        throw new Error(`The retained ${role} could not read its fleet's immutable delivery-proof object.`);
+      }
+    }
+  }
+
+  const immutableDeleteAttempts = [
+    ["assigned driver", driverSession, RETAINED_LEGACY_PROOF_FIXTURE.signaturePath],
+    ["fleet owner", ownerSession, RETAINED_LEGACY_PROOF_FIXTURE.photoPath],
+    ["fleet owner cross-user", ownerSession, RETAINED_LEGACY_PROOF_FIXTURE.signaturePath],
+    ["assigned driver cross-user", driverSession, RETAINED_LEGACY_PROOF_FIXTURE.photoPath]
+  ];
+  for (const [role, session, path] of immutableDeleteAttempts) {
+    const result = await session.client.storage.from(bucket).remove([path]);
+    assert.equal(result.error, null, `${role} immutable-proof deletion should be RLS-filtered rather than leak a provider error`);
+    assert.deepEqual(result.data, [], `${role} must not delete the referenced delivery-proof object`);
+  }
+
+  const folder = [
+    RETAINED_LEGACY_PROOF_FIXTURE.fleetId,
+    RETAINED_LEGACY_PROOF_FIXTURE.shipmentId,
+    RETAINED_LEGACY_PROOF_FIXTURE.stopId
+  ].join("/") + "/";
+  const ownerOrphan = folder + randomUUID() + "-owner-cleanup.png";
+  const driverOrphan = folder + randomUUID() + "-driver-cleanup.png";
+  const exactCleanupPaths = [ownerOrphan, driverOrphan];
+  const bytes = Buffer.from("TruckSafe immutable-proof cleanup policy fixture");
+  try {
+    const [ownerUpload, driverUpload] = await Promise.all([
+      ownerSession.client.storage.from(bucket).upload(ownerOrphan, bytes, { contentType: "image/png", upsert: false }),
+      driverSession.client.storage.from(bucket).upload(driverOrphan, bytes, { contentType: "image/png", upsert: false })
+    ]);
+    if (ownerUpload.error || driverUpload.error) {
+      throw new Error("The retained owner and assigned driver must be able to upload scoped temporary proof objects.");
+    }
+
+    const ownerCannotDeleteDriverObject = await ownerSession.client.storage.from(bucket).remove([driverOrphan]);
+    assert.equal(ownerCannotDeleteDriverObject.error, null);
+    assert.deepEqual(ownerCannotDeleteDriverObject.data, [], "Fleet owner must not delete another user's unreferenced proof upload");
+
+    const driverCannotDeleteOwnerObject = await driverSession.client.storage.from(bucket).remove([ownerOrphan]);
+    assert.equal(driverCannotDeleteOwnerObject.error, null);
+    assert.deepEqual(driverCannotDeleteOwnerObject.data, [], "Assigned driver must not delete another user's unreferenced proof upload");
+
+    const ownerOwnCleanup = await ownerSession.client.storage.from(bucket).remove([ownerOrphan]);
+    assert.equal(ownerOwnCleanup.error, null);
+    assert.equal(ownerOwnCleanup.data?.length, 1, "Fleet owner can delete their own unreferenced upload");
+
+    const driverOwnCleanup = await driverSession.client.storage.from(bucket).remove([driverOrphan]);
+    assert.equal(driverOwnCleanup.error, null);
+    assert.equal(driverOwnCleanup.data?.length, 1, "Assigned driver can delete their own unreferenced upload");
+    process.stdout.write("Live immutable-proof Storage passed: signed reads for owner/driver, referenced-object delete denial for both roles, cross-user orphan delete denial, and same-user orphan cleanup.\\n");
+  } finally {
+    const { error: cleanupError } = await admin.storage.from(bucket).remove(exactCleanupPaths);
+    if (cleanupError) {
+      throw new Error("Unable to remove the exact temporary Storage cleanup-policy fixtures from Test.");
+    }
+  }
 }
 
 async function assertMembershipAccess({ client, token, userId, fleetId, role }) {
@@ -337,6 +642,7 @@ async function main() {
   let httpServer;
   let incidentPhotoFixturePath = null;
   let registrationDocumentFixturePath = null;
+  const deliveryProofFixturePaths = [];
 
   try {
     httpServer = await startLocalHttpServer(url, anonKey);
@@ -424,6 +730,168 @@ async function main() {
     const secondFleetOwner = fixtures.find(item => item.role === "ambiguous");
     const secondFleetOwnerSession = await signInFixtureUser(url, anonKey, secondFleetOwner.user, secondFleetOwner.password);
     sessionsByUserId.set(secondFleetOwner.user.id, secondFleetOwnerSession);
+
+    // Use the explicitly retained Test-only immutable proof fixture to verify
+    // real Storage RLS against referenced objects. No immutable rows are added.
+    const retainedProofSessions = await signInRetainedLegacyProofUsers(url, anonKey, admin);
+    await assertRetainedLegacyProofStorageAccess({
+      ownerSession: retainedProofSessions.owner,
+      driverSession: retainedProofSessions.driver,
+      admin
+    });
+
+    // Give the signed driver identity an active driver record and Fleet A membership
+    // before creating the delivery fixture, so the Storage policy's assigned-driver
+    // branch is exercised with a real signed JWT (not only the owner role).
+    const deliveryDriverFixture = fixtures.find(item => item.role === "driver");
+    const { error: deliveryDriverMembershipError } = await admin.from("fleet_members").insert({
+      fleet_id: createdFleet.id, user_id: deliveryDriverFixture.user.id, role: "driver"
+    });
+    if (deliveryDriverMembershipError) {
+      throw new Error("Unable to create the marked assigned-driver membership for delivery proof.");
+    }
+    const { data: deliveryDriver, error: deliveryDriverError } = await admin.from("drivers").insert({
+      fleet_id: createdFleet.id,
+      user_id: deliveryDriverFixture.user.id,
+      full_name: "TruckSafe CI Delivery Driver",
+      license_expires_at: "2099-12-31",
+      status: "active"
+    }).select("id").single();
+    if (deliveryDriverError || !deliveryDriver?.id) {
+      throw new Error("Unable to create the marked active driver record for delivery proof.");
+    }
+    const deliveryDriverSession = await signInFixtureUser(url, anonKey, deliveryDriverFixture.user, deliveryDriverFixture.password);
+    sessionsByUserId.set(deliveryDriverFixture.user.id, deliveryDriverSession);
+ 
+    // Real delivery-proof Storage integration: create a marked shipment and
+    // stop in Fleet A, upload private signature/photo objects, and prove Fleet B
+    // cannot read, upload or delete Fleet A proof objects. Keep this Auth/Storage
+    // test free of issued delivery-note rows so fixture fleet cleanup remains
+    // compatible with the immutable audit-record retention constraint. The
+    // complete_delivery_document RPC is covered by rollback-only SQL integration.
+    const { data: deliveryShipmentId, error: deliveryShipmentError } = await ownerSession.client.rpc("create_shipment", {
+      p_fleet_id: createdFleet.id,
+      p_customer_name: "Synthetic delivery-proof customer",
+      p_customer_reference: "CI-" + runId.slice(0, 12),
+      p_delivery_reference: "CI-DELIVERY-" + runId.slice(0, 12),
+      p_scheduled_at: new Date().toISOString(),
+      p_assigned_driver_id: deliveryDriver.id,
+      p_assigned_vehicle_id: null,
+      p_notes: "Disposable integration fixture",
+      p_lines: [{ description: "Synthetic cargo", unit: "package", planned_quantity: 1 }],
+      p_stops: [{ stop_type: "delivery", address: "Synthetic Test address", items: [{ line_index: 0, planned_quantity: 1 }] }]
+    });
+    if (deliveryShipmentError || !deliveryShipmentId) {
+      throw new Error("Unable to create a marked Test-only shipment for delivery-proof integration: " + (deliveryShipmentError?.message ?? "missing shipment id"));
+    }
+    const { data: deliveryStop, error: deliveryStopError } = await ownerSession.client
+      .from("shipment_stops").select("id,status").eq("shipment_id", deliveryShipmentId).single();
+    if (deliveryStopError || !deliveryStop?.id) {
+      throw new Error("Unable to read the marked Test delivery stop.");
+    }
+
+    const deliveryPrefix = createdFleet.id + "/" + deliveryShipmentId + "/" + deliveryStop.id + "/";
+    const deliverySignaturePath = deliveryPrefix + runId + "-signature.png";
+    const deliveryPhotoPath = deliveryPrefix + runId + "-photo.png";
+    deliveryProofFixturePaths.push(deliverySignaturePath, deliveryPhotoPath);
+    const proofBytes = Buffer.from("TruckSafe synthetic delivery proof image fixture");
+    const deliveryUploadSessions = [deliveryDriverSession, ownerSession];
+    for (let index = 0; index < deliveryProofFixturePaths.length; index += 1) {
+      const { error: uploadError } = await deliveryUploadSessions[index].client.storage
+        .from("delivery-proof-private")
+        .upload(deliveryProofFixturePaths[index], proofBytes, { contentType: "image/png", upsert: false });
+      if (uploadError) {
+        throw new Error((index === 0 ? "Assigned Fleet A driver" : "Fleet A owner") +
+          " could not upload a private delivery-proof fixture: " + uploadError.message);
+      }
+    }
+
+    const deliveryInvalidMimePath = deliveryPrefix + runId + "-invalid.pdf";
+    const deliveryOversizePath = deliveryPrefix + runId + "-oversized.png";
+    deliveryProofFixturePaths.push(deliveryInvalidMimePath, deliveryOversizePath);
+    const rejectedMimeUpload = await ownerSession.client.storage
+      .from("delivery-proof-private").upload(deliveryInvalidMimePath, Buffer.from("not an image"), {
+        contentType: "application/pdf", upsert: false
+      });
+    assert.ok(rejectedMimeUpload.error, "Delivery-proof bucket must reject non-image MIME types");
+
+    const oversizedBytes = Buffer.alloc(10 * 1024 * 1024 + 1, 0x61);
+    const rejectedOversizeUpload = await ownerSession.client.storage
+      .from("delivery-proof-private").upload(deliveryOversizePath, oversizedBytes, {
+        contentType: "image/png", upsert: false
+      });
+    assert.ok(rejectedOversizeUpload.error, "Delivery-proof bucket must enforce its 10 MiB per-object limit");
+
+    const driverDeliveryUrl = await deliveryDriverSession.client.storage
+      .from("delivery-proof-private").createSignedUrl(deliverySignaturePath, 60);
+    if (driverDeliveryUrl.error || !driverDeliveryUrl.data?.signedUrl) {
+      throw new Error("The active assigned driver could not read its own delivery signature.");
+    }
+    const ownerDeliveryUrl = await ownerSession.client.storage
+      .from("delivery-proof-private").createSignedUrl(deliverySignaturePath, 60);
+    if (ownerDeliveryUrl.error || !ownerDeliveryUrl.data?.signedUrl) {
+      throw new Error("Fleet A owner could not create a short-lived URL for its own delivery signature.");
+    }
+    const fleetBDeliveryUrl = await secondFleetOwnerSession.client.storage
+      .from("delivery-proof-private").createSignedUrl(deliverySignaturePath, 60);
+    assert.ok(fleetBDeliveryUrl.error, "Fleet B owner must not read Fleet A delivery proof by guessed object path");
+
+    const fleetBDeliveryDelete = await secondFleetOwnerSession.client.storage
+      .from("delivery-proof-private").remove([deliverySignaturePath]);
+    assert.equal(fleetBDeliveryDelete.error, null);
+    assert.deepEqual(fleetBDeliveryDelete.data, [], "Fleet B owner must not delete Fleet A's delivery signature");
+
+    const fleetBDeliveryUpload = await secondFleetOwnerSession.client.storage
+      .from("delivery-proof-private").upload(deliveryPrefix + runId + "-tamper.png", proofBytes, {
+        contentType: "image/png", upsert: false
+      });
+    assert.ok(fleetBDeliveryUpload.error, "Fleet B owner must not upload into Fleet A's delivery-proof path");
+
+    // An assigned driver may remove only their own unreferenced failed-upload
+    // object. The fleet owner cannot delete an object uploaded by that driver.
+    const deliveryOrphanPath = deliveryPrefix + runId + "-orphan.png";
+    deliveryProofFixturePaths.push(deliveryOrphanPath);
+    const { error: orphanUploadError } = await deliveryDriverSession.client.storage
+      .from("delivery-proof-private").upload(deliveryOrphanPath, proofBytes, {
+        contentType: "image/png", upsert: false
+      });
+    if (orphanUploadError) {
+      throw new Error("Assigned driver could not upload a disposable unreferenced proof object: " + orphanUploadError.message);
+    }
+    const ownerOrphanDelete = await ownerSession.client.storage
+      .from("delivery-proof-private").remove([deliveryOrphanPath]);
+    assert.equal(ownerOrphanDelete.error, null);
+    assert.deepEqual(ownerOrphanDelete.data, [], "Fleet A owner must not delete a proof object uploaded by a different user");
+    const driverOrphanDelete = await deliveryDriverSession.client.storage
+      .from("delivery-proof-private").remove([deliveryOrphanPath]);
+    assert.equal(driverOrphanDelete.error, null);
+    assert.equal(driverOrphanDelete.data?.length, 1, "Assigned driver must be able to clean up their own unreferenced upload");
+    const { data: orphanRemainder, error: orphanListError } = await admin.storage
+      .from("delivery-proof-private").list(deliveryPrefix, { search: runId + "-orphan.png", limit: 5 });
+    if (orphanListError || orphanRemainder?.some(item => item.name === runId + "-orphan.png")) {
+      throw new Error("The authorized orphan cleanup did not remove the exact disposable proof object.");
+    }
+
+    // These signed Storage fixtures remain intentionally unreferenced: verify
+    // ownership-based cleanup of failed uploads without inserting an immutable
+    // delivery_proofs row that would prevent the marked fleet from being removed.
+    const ownerCannotDeleteDriverSignature = await ownerSession.client.storage
+      .from("delivery-proof-private").remove([deliverySignaturePath]);
+    assert.equal(ownerCannotDeleteDriverSignature.error, null);
+    assert.deepEqual(ownerCannotDeleteDriverSignature.data, [], "Fleet owner cannot delete a proof object uploaded by the assigned driver");
+
+    const ownerOwnPhotoDelete = await ownerSession.client.storage
+      .from("delivery-proof-private").remove([deliveryPhotoPath]);
+    assert.equal(ownerOwnPhotoDelete.error, null);
+    assert.equal(ownerOwnPhotoDelete.data?.length, 1, "Fleet owner can clean up their own unreferenced photo upload");
+
+    const driverOwnSignatureDelete = await deliveryDriverSession.client.storage
+      .from("delivery-proof-private").remove([deliverySignaturePath]);
+    assert.equal(driverOwnSignatureDelete.error, null);
+    assert.equal(driverOwnSignatureDelete.data?.length, 1, "Assigned driver can clean up their own unreferenced signature upload");
+
+    process.stdout.write("Live delivery-proof Storage passed: assigned-driver/owner uploads and reads, cross-fleet denial, immutable proof delete denial, own-unreferenced cleanup, MIME/size rejection, and exact fixture cleanup.\\n");
+
 
     const crossFleetPhotoUrl = await secondFleetOwnerSession.client.storage
       .from("incident-photos")
@@ -648,7 +1116,7 @@ async function main() {
     process.stdout.write("Live cross-fleet BOLA checks passed: Fleet A owner could not read, insert, update or delete Fleet B vehicle, incident and maintenance records by identifier.\\n");
 
     const additionalMembers = fixtures
-      .filter(item => item.role === "fleet_manager" || item.role === "dispatcher" || item.role === "safety_manager" || item.role === "driver" || item.role === "ambiguous")
+      .filter(item => item.role === "fleet_manager" || item.role === "dispatcher" || item.role === "safety_manager" || item.role === "ambiguous")
       .map(item => ({ fleet_id: createdFleet.id, user_id: item.user.id, role: item.role === "ambiguous" ? "driver" : item.role }));
     const { error: memberInsertError } = await admin.from("fleet_members").insert(additionalMembers);
     if (memberInsertError) {
@@ -825,6 +1293,14 @@ async function main() {
           .remove([registrationDocumentFixturePath]);
         if (registrationCleanupError) {
           throw new Error("Unable to remove the marked private vehicle registration fixture from Test Storage.");
+        }
+      }
+      if (deliveryProofFixturePaths.length) {
+        const { error: deliveryProofCleanupError } = await admin.storage
+          .from("delivery-proof-private")
+          .remove(deliveryProofFixturePaths);
+        if (deliveryProofCleanupError) {
+          throw new Error("Unable to remove the exact marked delivery-proof fixture objects from Test Storage.");
         }
       }
       const removed = await cleanupMarkedFixtureUsers(admin);

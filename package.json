@@ -27,5 +27,8 @@
   },
   "overrides": {
     "postcss": "^8.5.32"
+  },
+  "devDependencies": {
+    "supabase": "3.3.0"
   }
 }
