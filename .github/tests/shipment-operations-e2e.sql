@@ -285,9 +285,9 @@ begin
  for i in 1..5 loop
   photo_path:=f.fleet_id::text||'/'||test_shipment_id::text||'/'||test_stop_id::text||'/'||gen_random_uuid()::text||'.jpg';
   photo_paths:=array_append(photo_paths,photo_path);
-  insert into storage.objects(bucket_id,name,owner,metadata,path_tokens)
+  insert into storage.objects(bucket_id,name,owner,metadata)
   values('delivery-proof-private',photo_path,f.owner_id,
-   jsonb_build_object('mimetype','image/jpeg','size','10485761'),string_to_array(photo_path,'/'));
+   jsonb_build_object('mimetype','image/jpeg','size','10485761'));
  end loop;
 
  rejected:=false;
