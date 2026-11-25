@@ -467,6 +467,19 @@ async function main() {
       }
     }
 
+    const rejectedMimeUpload = await ownerSession.client.storage
+      .from("delivery-proof-private").upload(deliveryPrefix + runId + "-invalid.pdf", Buffer.from("not an image"), {
+        contentType: "application/pdf", upsert: false
+      });
+    assert.ok(rejectedMimeUpload.error, "Delivery-proof bucket must reject non-image MIME types");
+
+    const oversizedBytes = Buffer.alloc(10 * 1024 * 1024 + 1, 0x61);
+    const rejectedOversizeUpload = await ownerSession.client.storage
+      .from("delivery-proof-private").upload(deliveryPrefix + runId + "-oversized.png", oversizedBytes, {
+        contentType: "image/png", upsert: false
+      });
+    assert.ok(rejectedOversizeUpload.error, "Delivery-proof bucket must enforce its 10 MiB per-object limit");
+
     const ownerDeliveryUrl = await ownerSession.client.storage
       .from("delivery-proof-private").createSignedUrl(deliverySignaturePath, 60);
     if (ownerDeliveryUrl.error || !ownerDeliveryUrl.data?.signedUrl) {
