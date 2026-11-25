@@ -507,3 +507,41 @@ The three missing module migrations were reviewed beyond their grants, including
 6. Do not infer that successful SQL application alone proves the UI flows work. The app integration and Storage upload/read paths must be exercised end-to-end.
 
 This review is static SQL analysis of the tracked branch files, not execution against a hosted DB. It does not resolve Test's migration ledger or certify Production compatibility. No hosted DB, Storage bucket, policy, grant, or migration was changed.
+
+
+## Read-only Production recovery and catalog preflight — 25 November 2026
+
+Production project `jqebxlhhffwiebijiugx` was restored from its paused state and subsequently accepted a read-only SQL connection. This section records catalog metadata only; no application rows were read and no schema, grants, Auth settings, Storage configuration, or migration history were changed.
+
+### Current Production baseline
+
+- Project connection is available; a read-only `current_database()/current_user()/now()` probe succeeded.
+- Production has 12 public base tables: the same 12-table core baseline named in the recovered 5 November schema-only snapshot.
+- All 12 public base tables have RLS enabled; zero public base tables were found with RLS disabled.
+- Production migration history currently contains 35 rows. This is distinct from Test's 43 rows and the repository's 46 tracked migration files; counts alone do not establish migration equivalence.
+- Production currently lacks `public.vehicle_special_equipment` and the daily-work, shipments/cargo, and delivery-note/proof module tables. No attempt was made to add them.
+- Read-only prerequisite inspection confirms the core `drivers`, `vehicles`, `tasks`, `fleets`, and `fleet_members` relations contain expected identity/fleet keys and the current truck dimensions, registration verification, and assignment fields used by later feature migrations. This is a preflight observation, not approval to apply those migrations.
+
+### Production security advisor
+
+The Security Advisor reports:
+- Two authenticated-callable SECURITY DEFINER RPCs: `public.finish_trip(uuid, uuid)` and `public.start_trip_with_inspection(...)`.
+- One Auth warning: leaked-password protection is disabled.
+
+The two RPCs are intended trip lifecycle entry points. Earlier read-only function-body inspection in Test showed explicit identity, fleet, role/assignment, and state checks with a pinned empty search_path; do not infer Production's exact function body from Test. Production RPC definitions and grants must be checked independently before any security change. Do not blindly revoke EXECUTE from authenticated users because that would break the trip workflow.
+
+Leaked-password protection is a dashboard/Auth configuration item. It was not changed during this database-only audit; enabling it should be scheduled with an Auth configuration review and a sign-in/password-reset regression test.
+
+### Performance advisor
+
+Production reports two unindexed foreign keys:
+- `road_restrictions.road_restrictions_verified_by_fkey`
+- `vehicles.vehicles_registration_verified_by_fkey`
+
+It also reports 35 unused-index notices. These are informational on a database with limited/unknown representative workload. No index was dropped or added. Before adding the two FK indexes, inspect exact existing index definitions and expected write/read workload; before removing unused indexes, collect representative query plans and usage over a meaningful active period.
+
+### Disposition and next gate
+
+Production is reachable again, but its 35-row migration history is not yet reconciled with the 46-file tracked chain. The 5 November schema-only snapshot remains the recovered core baseline candidate; its content matches the current 12-table core inventory, but it does not encode a cryptographic project ref. The missing feature modules are not present in Production and must not be applied as an unreviewed batch.
+
+Next safe work is a read-only object-level comparison of Production against the disposable local 46-migration replay, including table/column/constraint/index/policy/function/trigger/Storage differences and exact migration-name/version mapping. Keep both hosted projects unchanged until the diff and a reversible Test-only rollout plan are reviewed. No hosted schema/data mutation, Auth setting change, grant change, migration, merge, or deployment was performed in this audit.
