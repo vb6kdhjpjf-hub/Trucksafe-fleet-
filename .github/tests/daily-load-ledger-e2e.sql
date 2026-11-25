@@ -1,7 +1,7 @@
 -- Rollback-only daily work plan and measured load ledger integration tests.
 -- Runs only against the dedicated TruckSafe Fleet Test project.
 begin;
-\ir ../../supabase/migrations/20261112140000_add_daily_work_and_load_ledger.sql
+-- Schema is provisioned by the dedicated Test-only migration rollout; this file is rollback-only behavior coverage.
 
 create temporary table daily_load_test_results(scenario text primary key,outcome text not null) on commit drop;
 
