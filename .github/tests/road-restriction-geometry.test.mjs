@@ -5,7 +5,8 @@ import {
   decodeFlexiblePolyline,
   routePassesNearRestriction,
   isRestrictionVerificationFresh,
-  evaluateFleetRestrictions
+  evaluateFleetRestrictions,
+  selectSafeTruckRoute
 } from "../../lib/road-restriction-geometry.mjs";
 
 const coordinates = [[32.84, 35.50], [32.84, 35.51], [32.84, 35.52]];
@@ -22,16 +23,67 @@ const verifiedRestriction = overrides => ({
   is_active: true,
   verification_status: "verified",
   source_url: "https://example.org/official-notice",
+  source_name: "Official Road Authority",
   verified_at: "2026-11-07T12:00:00.000Z",
   verified_by: "reviewer-1",
   source_last_checked_at: "2026-11-08T12:00:00.000Z",
   verification_note: "Verified test fixture",
   restriction_type: "height",
   max_height_m: 4,
+  structure_id: "bridge-123",
+  road_segment_id: "road-90-seg-2",
+  country_code: "IL",
+  direction: "forward",
+  lane_id: "lane-1",
+  passage_length_m: 18,
+  measured_clearance_m: 4.62,
+  posted_clearance_status: "posted",
+  posted_clearance_m: 4.4,
+  measurement_date: "2026-11-08",
+  measurement_accuracy_cm: 1,
+  measurement_method: "calibrated laser survey",
+  surveyor: "licensed survey team",
+  measurement_document_url: "https://example.org/survey/001",
+  measurement_coverage: {
+    both_sides_measured: true,
+    lane_center_measured: true,
+    left_edge_measured: true,
+    right_edge_measured: true,
+    hanging_installations_checked: true,
+    passage_center_measured: false
+  },
   ...overrides
 });
 
 const vehicle = { heightCm: 420, widthCm: 250, lengthCm: 900 };
+
+const polylineAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+function encodeTestVarint(value) {
+  let remaining = value >>> 0;
+  let output = "";
+  while (remaining > 0x1f) {
+    output += polylineAlphabet[(remaining & 0x1f) | 0x20];
+    remaining >>>= 5;
+  }
+  return output + polylineAlphabet[remaining];
+}
+function encodeTestSigned(value) {
+  return encodeTestVarint(value < 0 ? ~(value << 1) : value << 1);
+}
+function encodeUncheckedTestPolyline(coordinates) {
+  const factor = 100000;
+  let previousLat = 0;
+  let previousLng = 0;
+  let output = encodeTestVarint(1) + encodeTestVarint(5);
+  for (const [latitude, longitude] of coordinates) {
+    const lat = Math.round(latitude * factor);
+    const lng = Math.round(longitude * factor);
+    output += encodeTestSigned(lat - previousLat) + encodeTestSigned(lng - previousLng);
+    previousLat = lat;
+    previousLng = lng;
+  }
+  return output;
+}
 
 test("decodes the PTV adapter polyline and preserves Israel coordinates", () => {
   const decoded = decodeFlexiblePolyline(polyline);
@@ -128,6 +180,21 @@ test("does not reject a route for a distant, verified restriction", () => {
   assert.deepEqual(result.unresolved, []);
 });
 
+
+test("fails closed when provider route geometry leaves supported Israel operating bounds", () => {
+  const outsidePolyline = encodeUncheckedTestPolyline([[32.84, 35.99], [32.84, 36.01]]);
+  const result = evaluateFleetRestrictions({
+    sections: [{ polyline: outsidePolyline, summary: { length: 1800, duration: 180 } }],
+    restrictions: [verifiedRestriction({})],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now
+  });
+  assert.equal(result.validated, false);
+  assert.equal(result.unresolved[0].reason, "route_geometry_outside_supported_israel_bounds");
+});
+
 test("fails closed when the loaded restriction catalogue is empty", () => {
   const result = evaluateFleetRestrictions({
     sections,
@@ -204,6 +271,24 @@ test("fails closed when an active catalogue record is unverified or has an inval
   assert.equal(invalidLimit.unresolved[0].reason, "missing_or_invalid_restriction_limit");
 });
 
+test("fails closed for axle-specific limits until actual axle-load enforcement exists", () => {
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [verifiedRestriction({
+      restriction_type: "axle_weight",
+      max_axle_weight_t: 5
+    })],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now
+  });
+  assert.equal(result.validated, false);
+  assert.equal(result.conflicts.length, 0);
+  assert.equal(result.unresolved.length, 1);
+  assert.equal(result.unresolved[0].reason, "restriction_type_requires_manual_review");
+});
+
 test("ignores an expired restriction after validating its review record", () => {
   const result = evaluateFleetRestrictions({
     sections,
@@ -216,4 +301,166 @@ test("ignores an expired restriction after validating its review record", () => 
   assert.equal(result.validated, true);
   assert.deepEqual(result.conflicts, []);
   assert.deepEqual(result.unresolved, []);
+});
+
+
+test("blocks a time-window restriction that begins during the journey", () => {
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [verifiedRestriction({
+      restriction_type: "time_window",
+      valid_from: "12:00:30",
+      valid_until: "12:02:00"
+    })],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now: new Date("2026-11-09T09:59:00.000Z")
+  });
+  assert.equal(result.validated, false);
+  assert.equal(result.conflicts.length, 1);
+  assert.equal(result.conflicts[0].restrictionType, "time_window");
+});
+
+test("blocks a date-based road closure that starts after departure but before arrival", () => {
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [verifiedRestriction({
+      restriction_type: "closed",
+      active_from: "2026-11-10",
+      active_until: "2026-11-10"
+    })],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now: new Date("2026-11-09T21:59:00.000Z")
+  });
+  assert.equal(result.validated, false);
+  assert.equal(result.conflicts.length, 1);
+  assert.equal(result.conflicts[0].restrictionType, "closed");
+});
+
+test("fails closed for impossible calendar dates in restriction validity", () => {
+  for (const overrides of [
+    { active_from: "2026-02-30" },
+    { active_until: "2026-13-01" }
+  ]) {
+    const result = evaluateFleetRestrictions({
+      sections,
+      restrictions: [verifiedRestriction(overrides)],
+      restrictionCatalogLoaded: true,
+      vehicle,
+      currentWeightKg: 10000,
+      now
+    });
+    assert.equal(result.validated, false);
+    assert.equal(result.unresolved[0].reason, "invalid_active_date_range");
+  }
+});
+
+test("detects a scheduled restriction crossing midnight in Israel local time", () => {
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [verifiedRestriction({
+      restriction_type: "time_window",
+      active_from: "2026-11-09",
+      active_until: "2026-11-10",
+      valid_from: "23:59:30",
+      valid_until: "00:01:00"
+    })],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now: new Date("2026-11-09T21:59:00.000Z")
+  });
+  assert.equal(result.validated, false);
+  assert.equal(result.conflicts.length, 1);
+  assert.equal(result.conflicts[0].restrictionType, "time_window");
+});
+
+
+test("selects a safe alternative when the fastest route conflicts with a verified restriction", () => {
+  const alternateCoordinates = coordinates.map(([lat,lng]) => [lat + 0.02,lng]);
+  const alternatePolyline = encodePTVCoordinatesAsFlexiblePolyline(alternateCoordinates);
+  const result = selectSafeTruckRoute({
+    routes: [
+      { sections: [{ polyline, summary: { length: 1800, duration: 180 } }] },
+      { sections: [{ polyline: alternatePolyline, summary: { length: 2200, duration: 210 } }] }
+    ],
+    restrictions: [verifiedRestriction({ max_height_m: 3.5 })],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now
+  });
+  assert.equal(result.routeIndex, 1);
+  assert.equal(result.restrictionCheck.validated, true);
+  assert.equal(result.rejected[0].reason, "fleet_restriction_conflict");
+});
+
+test("does not select any alternative when the restriction catalogue was not loaded", () => {
+  const result = selectSafeTruckRoute({
+    routes: [{ sections }],
+    restrictions: [verifiedRestriction({})],
+    restrictionCatalogLoaded: false,
+    vehicle,
+    currentWeightKg: 10000,
+    now
+  });
+  assert.equal(result.route, null);
+  assert.equal(result.rejected[0].reason, "unresolved_fleet_restrictions");
+});
+
+test("rejects provider-critical alternatives and selects the next validated route", () => {
+  const alternateCoordinates = coordinates.map(([lat,lng]) => [lat + 0.02,lng]);
+  const alternatePolyline = encodePTVCoordinatesAsFlexiblePolyline(alternateCoordinates);
+  const result = selectSafeTruckRoute({
+    routes: [
+      { notices: [{ severity: "critical", code: "providerWarning" }], sections },
+      { sections: [{ polyline: alternatePolyline, summary: { length: 2200, duration: 210 } }] }
+    ],
+    restrictions: [verifiedRestriction({ latitude: 32.84, longitude: 35.505 })],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now
+  });
+  assert.equal(result.routeIndex, 1);
+  assert.equal(result.rejected[0].reason, "provider_restriction_notice");
+});
+
+
+test("fails closed for a legacy verified height restriction without lane-level survey evidence", () => {
+  const legacy = verifiedRestriction({
+    lane_id: null,
+    measurement_coverage: null,
+    surveyor: null
+  });
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [legacy],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now
+  });
+  assert.equal(result.validated, false);
+  assert.equal(result.unresolved[0].reason, "height_clearance_evidence_incomplete");
+});
+
+test("requires posted sign data to remain separate from physical measured clearance", () => {
+  const invalid = verifiedRestriction({
+    posted_clearance_status: "unknown",
+    posted_clearance_m: 4.4
+  });
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [invalid],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now
+  });
+  assert.equal(result.validated, false);
+  assert.equal(result.unresolved[0].reason, "height_clearance_evidence_incomplete");
 });

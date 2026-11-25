@@ -3,10 +3,18 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 import { ArrowRight, AlertTriangle, Plus, RefreshCw, ShieldAlert } from "lucide-react";
 
-const blank = { road_name: "", restriction_type: "height", direction: "", max_height_m: "", max_weight_t: "", max_width_m: "", max_length_m: "", valid_from: "", valid_until: "", active_from: "", active_until: "", latitude: "", longitude: "", start_latitude: "", start_longitude: "", end_latitude: "", end_longitude: "", location_accuracy_m: "", measured_clearance_m: "", measurement_date: "", measurement_accuracy_cm: "", measurement_method: "", measurement_location_note: "", measurement_document_url: "", source_type: "user_report", source_name: "", source_url: "", source_reference: "", source_updated_at: "", expires_at: "", notes: "" };
+const blank = { road_name: "", restriction_type: "height", direction: "", max_height_m: "", max_weight_t: "", max_width_m: "", max_length_m: "", valid_from: "", valid_until: "", active_from: "", active_until: "", latitude: "", longitude: "", start_latitude: "", start_longitude: "", end_latitude: "", end_longitude: "", location_accuracy_m: "", measured_clearance_m: "", measurement_date: "", measurement_accuracy_cm: "", measurement_method: "", measurement_location_note: "", measurement_document_url: "", structure_id: "", road_segment_id: "", lane_id: "", passage_length_m: "", surveyor: "", posted_clearance_status: "unknown", posted_clearance_m: "", measurement_coverage: { both_sides_measured: false, lane_center_measured: false, left_edge_measured: false, right_edge_measured: false, hanging_installations_checked: false, passage_center_measured: false }, source_type: "user_report", source_name: "", source_url: "", source_reference: "", source_updated_at: "", expires_at: "", notes: "" };
 const labels = { height: "גובה מרבי", weight: "משקל מרבי", width: "רוחב מרבי", length: "אורך מרבי", hazmat: "חומרים מסוכנים", time_window: "הגבלת שעות", closed: "כביש סגור", other: "אחר" };
+const isValidMeasurementDate = value => {
+  if (typeof value !== "string" || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === value &&
+    value <= new Date().toISOString().slice(0, 10);
+};
 
 export default function RoadRestrictionsPage() {
   const router = useRouter();
@@ -34,11 +42,15 @@ export default function RoadRestrictionsPage() {
       if (!alive) return;
       if (error || !data.session) { router.replace("/"); return; }
       setSession(data.session);
-      const { data: member, error: memberError } = await supabase.from("fleet_members").select("fleet_id,role").eq("user_id", data.session.user.id).limit(1).maybeSingle();
+      const { data: workspace, error: workspaceError } = await resolveFleetWorkspace(supabase, data.session.user.id);
       if (!alive) return;
-      if (memberError || !member) { setMessage(memberError?.message || "לא נמצא צי לחשבון."); setLoading(false); return; }
-      setFleet({ id: member.fleet_id, role: member.role });
-      await load(member.fleet_id);
+      if (workspaceError) {
+        if (workspaceError.code === "AUTH_REQUIRED" || workspaceError.code === "NO_FLEET") router.replace("/");
+        else setMessage("לא הצלחנו לאמת את הצי: " + workspaceError.message);
+        setLoading(false); return;
+      }
+      setFleet(workspace.fleet);
+      await load(workspace.fleet.id);
       if (alive) setLoading(false);
     }).catch(e => { if (alive) { setMessage("שגיאה בטעינה: " + e.message); setLoading(false); } });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => { if (!session) router.replace("/"); });
@@ -89,7 +101,7 @@ export default function RoadRestrictionsPage() {
       const numeric = value => value === "" ? null : Number(value);
       const payload = {
         fleet_id: fleet.id, created_by: session?.user?.id, road_name: form.road_name.trim(),
-        restriction_type: form.restriction_type, direction: form.direction.trim() || null,
+        restriction_type: form.restriction_type, direction: form.direction || null,
         max_height_m: numeric(form.max_height_m), max_weight_t: numeric(form.max_weight_t),
         max_width_m: numeric(form.max_width_m), max_length_m: numeric(form.max_length_m),
         valid_from: form.valid_from || null, valid_until: form.valid_until || null,
@@ -105,6 +117,14 @@ export default function RoadRestrictionsPage() {
         measurement_method: form.measurement_method.trim() || null,
         measurement_location_note: form.measurement_location_note.trim() || null,
         measurement_document_url: form.measurement_document_url.trim() || null,
+        structure_id: form.structure_id.trim() || null,
+        road_segment_id: form.road_segment_id.trim() || null,
+        lane_id: form.lane_id.trim() || null,
+        passage_length_m: numeric(form.passage_length_m),
+        surveyor: form.surveyor.trim() || null,
+        posted_clearance_status: form.posted_clearance_status,
+        posted_clearance_m: form.posted_clearance_status === "posted" ? numeric(form.posted_clearance_m) : null,
+        measurement_coverage: form.measurement_coverage,
         source_type: form.source_type,
         source_name: form.source_name.trim() || null,
         source_url: form.source_url.trim() || null,
@@ -167,12 +187,29 @@ export default function RoadRestrictionsPage() {
         const measured = Number(row.measured_clearance_m);
         const posted = Number(row.max_height_m);
         const margin = measured - posted;
-        if (!Number.isFinite(measured) || !row.measurement_date ||
-            !Number.isFinite(Number(row.measurement_accuracy_cm)) || Number(row.measurement_accuracy_cm) > 1 ||
+        const coverage = row.measurement_coverage;
+        const completeCoverage = coverage && typeof coverage === "object" &&
+          coverage.both_sides_measured === true &&
+          coverage.lane_center_measured === true &&
+          coverage.left_edge_measured === true &&
+          coverage.right_edge_measured === true &&
+          coverage.hanging_installations_checked === true &&
+          typeof coverage.passage_center_measured === "boolean" &&
+          (Number(row.passage_length_m) <= 20 || coverage.passage_center_measured === true);
+        const postedEvidenceValid = row.posted_clearance_status === "posted"
+          ? Number.isFinite(Number(row.posted_clearance_m)) && Number(row.posted_clearance_m) >= 0.5 && Number(row.posted_clearance_m) <= 20
+          : ["not_posted", "unknown"].includes(row.posted_clearance_status) && row.posted_clearance_m == null;
+        if (!Number.isFinite(measured) || measured < 0.5 || measured > 20 ||
+            !isValidMeasurementDate(row.measurement_date) ||
+            !Number.isFinite(Number(row.measurement_accuracy_cm)) || Number(row.measurement_accuracy_cm) <= 0 || Number(row.measurement_accuracy_cm) > 1 ||
             !row.measurement_method?.trim() || String(row.measurement_location_note || "").trim().length < 12 ||
             !/^https:\/\//i.test(String(row.measurement_document_url || "")) ||
+            !row.structure_id?.trim() || !row.road_segment_id?.trim() || !row.lane_id?.trim() ||
+            !["forward", "backward"].includes(row.direction) ||
+            !Number.isFinite(Number(row.passage_length_m)) || Number(row.passage_length_m) <= 0 || Number(row.passage_length_m) > 1000 ||
+            !row.surveyor?.trim() || !completeCoverage || !postedEvidenceValid ||
             !Number.isFinite(margin) || margin < 0.20 || margin > 0.29) {
-          setMessage("לאימות הגבלת גובה נדרשים מדידה מתועדת, דיוק של עד 1 ס״מ, תאריך, שיטת מדידה, תיאור הנתיבים/המיקומים והפרש בטיחות של 20–29 ס״מ מהגובה הרשום.");
+          setMessage("לאימות גובה נדרשים מזהי מבנה, מקטע ונתיב, כיוון, אורך מעבר, מודד, תיעוד מדידה וכיסוי מלא של הנתיב, סטטוס שילוט והפרש בטיחות של 20–29 ס״מ.");
           return;
         }
       }
@@ -239,7 +276,7 @@ export default function RoadRestrictionsPage() {
       {showForm && <form onSubmit={save} style={{ marginTop: 18, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12 }}>
         <label>שם הכביש / המקטע *<input required style={field} value={form.road_name} onChange={e => setForm({ ...form, road_name: e.target.value })}/></label>
         <label>סוג הגבלה<select style={field} value={form.restriction_type} onChange={e => setForm({ ...form, restriction_type: e.target.value })}>{Object.entries(labels).map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></label>
-        <label>כיוון / מקטע<input style={field} value={form.direction} onChange={e => setForm({ ...form, direction: e.target.value })} placeholder="לדוגמה: לכיוון צפון"/></label>
+        <label>כיוון נסיעה<select style={field} value={form.direction} onChange={e => setForm({ ...form, direction: e.target.value })}><option value="">לא צוין</option><option value="forward">כיוון קדימה (forward)</option><option value="backward">כיוון הפוך (backward)</option></select></label>
         <label>קו רוחב נקודתי<input type="number" step="any" style={field} value={form.latitude} onChange={e => setForm({ ...form, latitude: e.target.value })} placeholder="WGS84"/></label>
         <label>קו אורך נקודתי<input type="number" step="any" style={field} value={form.longitude} onChange={e => setForm({ ...form, longitude: e.target.value })} placeholder="WGS84"/></label>
         <label>תחילת מקטע – קו רוחב<input type="number" step="any" style={field} value={form.start_latitude} onChange={e => setForm({ ...form, start_latitude: e.target.value })}/></label>
@@ -260,6 +297,14 @@ export default function RoadRestrictionsPage() {
         <label>דיוק המדידה (ס״מ)<input type="number" min="0.1" max="10" step="0.1" style={field} value={form.measurement_accuracy_cm} onChange={e => setForm({ ...form, measurement_accuracy_cm: e.target.value })} placeholder="לפי מסמך המדידה"/></label>
         <label>שיטת המדידה<input style={field} value={form.measurement_method} onChange={e => setForm({ ...form, measurement_method: e.target.value })} placeholder="למשל: מד לייזר"/></label>
         <label>קישור למסמך מדידה (HTTPS)<input type="url" style={field} value={form.measurement_document_url} onChange={e => setForm({ ...form, measurement_document_url: e.target.value })} placeholder="https://..."/></label>
+        <label>מזהה מבנה / גשר<input style={field} value={form.structure_id} onChange={e => setForm({ ...form, structure_id: e.target.value })}/></label>
+        <label>מזהה מקטע כביש<input style={field} value={form.road_segment_id} onChange={e => setForm({ ...form, road_segment_id: e.target.value })}/></label>
+        <label>מזהה נתיב<input style={field} value={form.lane_id} onChange={e => setForm({ ...form, lane_id: e.target.value })}/></label>
+        <label>אורך המעבר (מטר)<input type="number" min="0.1" max="1000" step="0.1" style={field} value={form.passage_length_m} onChange={e => setForm({ ...form, passage_length_m: e.target.value })}/></label>
+        <label>מודד / גורם מבצע<input style={field} value={form.surveyor} onChange={e => setForm({ ...form, surveyor: e.target.value })}/></label>
+        <label>מצב גובה משולט<select style={field} value={form.posted_clearance_status} onChange={e => setForm({ ...form, posted_clearance_status: e.target.value, posted_clearance_m: e.target.value === "posted" ? form.posted_clearance_m : "" })}><option value="unknown">לא ידוע</option><option value="posted">מופיע בשילוט</option><option value="not_posted">לא מופיע בשילוט</option></select></label>
+        {form.posted_clearance_status === "posted" && <label>גובה לפי שילוט (מטר)<input type="number" min="0.5" max="20" step="0.01" style={field} value={form.posted_clearance_m} onChange={e => setForm({ ...form, posted_clearance_m: e.target.value })}/></label>}
+        <div style={{ gridColumn: "1/-1", border: "1px solid #dce3ee", borderRadius: 8, padding: 12 }}><b>כיסוי המדידה — יש לסמן רק בדיקות שבוצעו בפועל</b><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 8, marginTop: 10 }}>{[["both_sides_measured","נמדדו שני צדי המעבר"],["lane_center_measured","נמדד מרכז הנתיב"],["left_edge_measured","נמדדה השפה השמאלית"],["right_edge_measured","נמדדה השפה הימנית"],["hanging_installations_checked","נבדקו מתקנים תלויים"],["passage_center_measured","נמדד מרכז מעבר שאורכו מעל 20 מטר"]].map(([key,label]) => <label key={key} style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={form.measurement_coverage[key]} onChange={e => setForm({ ...form, measurement_coverage: { ...form.measurement_coverage, [key]: e.target.checked } })}/>{label}</label>)}</div></div>
         <label style={{ gridColumn: "1/-1" }}>פירוט נתיבים ומיקומי מדידה<textarea rows="2" style={field} value={form.measurement_location_note} onChange={e => setForm({ ...form, measurement_location_note: e.target.value })} placeholder="יש לתעד את המדידות הרלוונטיות בכל נתיב ובמיקומים שנדרשו"/></label>
         </>} 
         <label>משקל מרבי (טון)<input type="number" min="0.1" step="0.1" style={field} value={form.max_weight_t} onChange={e => setForm({ ...form, max_weight_t: e.target.value })}/></label>

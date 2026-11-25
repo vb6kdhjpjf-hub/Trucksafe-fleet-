@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 import { Truck, ArrowRight, Plus, AlertTriangle, MapPin, LogOut, CheckCircle2 } from "lucide-react";
 
 const emptyForm = { incident_type: "תקלה ברכב", severity: "medium", description: "", location_text: "", driver_id: "", vehicle_id: "" };
@@ -24,6 +25,7 @@ export default function IncidentsPage() {
   const [gps,setGps] = useState({latitude:null,longitude:null});
   const [gpsBusy,setGpsBusy] = useState(false);
   const [photoFile,setPhotoFile] = useState(null);
+  const [resolutionNotes,setResolutionNotes] = useState({});
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למסד הנתונים אינו מוגדר."); setLoading(false); return; }
@@ -40,12 +42,14 @@ export default function IncidentsPage() {
   },[router]);
 
   async function loadWorkspace(user) {
-    const {data:membership,error} = await supabase.from("fleet_members").select("fleet_id,role").eq("user_id",user.id).limit(1).maybeSingle();
-    if (error) { setMessage("לא הצלחנו לטעון את פרטי הצי: "+error.message); return; }
-    if (!membership) { router.replace("/"); return; }
-    const {data:current,error:fleetError} = await supabase.from("fleets").select("id,name").eq("id",membership.fleet_id).single();
-    if (fleetError) { setMessage("שגיאה בטעינת הצי: "+fleetError.message); return; }
-    setFleet({...current,role:membership.role});
+    const { data, error } = await resolveFleetWorkspace(supabase, user.id);
+    if (error) {
+      if (error.code === "AUTH_REQUIRED" || error.code === "NO_FLEET") router.replace("/");
+      else setMessage("לא הצלחנו לאמת את הצי: " + error.message);
+      return;
+    }
+    const current = data.fleet;
+    setFleet(current);
     await loadIncidents(current.id);
     const [d,v] = await Promise.all([
       supabase.from("drivers").select("id,full_name").eq("fleet_id",current.id),
@@ -88,13 +92,15 @@ export default function IncidentsPage() {
     e.preventDefault();
     if (!fleet || !session) return;
     if (!form.description.trim()) { setMessage("יש לתאר את האירוע לפני השליחה."); return; }
+    if (form.driver_id && !drivers.some(driver=>driver.id===form.driver_id)) { setMessage("הנהג שנבחר אינו שייך לצי הפעיל. רענן את הרשימה ובחר נהג תקין."); return; }
+    if (form.vehicle_id && !vehicles.some(vehicle=>vehicle.id===form.vehicle_id)) { setMessage("הרכב שנבחר אינו שייך לצי הפעיל. רענן את הרשימה ובחר רכב תקין."); return; }
     if ((gps.latitude == null) !== (gps.longitude == null)) { setMessage("נתוני המיקום אינם מלאים. נסה לקלוט GPS מחדש או נקה את המיקום."); return; }
     setBusy(true); setMessage("");
     let photoPath = null;
     try {
       if (photoFile) {
         if (!["image/jpeg","image/png","image/webp"].includes(photoFile.type)) { setMessage("אפשר להעלות תמונה מסוג JPG, PNG או WEBP בלבד."); return; }
-        if (photoFile.size > 8 * 1024 * 1024) { setMessage("גודל התמונה המרבי הוא 8MB."); return; }
+        if (photoFile.size > 5 * 1024 * 1024) { setMessage("גודל התמונה המרבי הוא 5MB."); return; }
         const extension = photoFile.type === "image/png" ? "png" : photoFile.type === "image/webp" ? "webp" : "jpg";
         photoPath = fleet.id+"/incidents/"+crypto.randomUUID()+"."+extension;
         const {error:uploadError} = await supabase.storage.from("incident-photos").upload(photoPath,photoFile,{contentType:photoFile.type,upsert:false});
@@ -133,11 +139,17 @@ export default function IncidentsPage() {
     if (!fleet || !["owner","fleet_manager","safety_manager"].includes(fleet.role)) {
       setMessage("אין לחשבון שלך הרשאה לסמן אירוע כטופל."); return;
     }
+    const resolutionNote=(resolutionNotes[incident.id]||"").trim();
+    if(resolutionNote.length<5){setMessage("יש לתעד את אופן הטיפול באירוע (לפחות 5 תווים).");return;}
+    if(resolutionNote.length>1000){setMessage("תיעוד הטיפול מוגבל ל-1,000 תווים.");return;}
     setBusy(true); setMessage("");
-    const {error} = await supabase.from("incidents").update({status:"resolved",resolved_at:new Date().toISOString()}).eq("id",incident.id).eq("fleet_id",fleet.id);
-    if (error) setMessage("לא הצלחנו לעדכן את האירוע: "+error.message);
-    else { await loadIncidents(fleet.id); setMessage("האירוע סומן כטופל."); }
-    setBusy(false);
+    try {
+      const {error} = await supabase.from("incidents").update({status:"resolved",resolution_notes:resolutionNote}).eq("id",incident.id).eq("fleet_id",fleet.id);
+      if (error) setMessage("לא הצלחנו לעדכן את האירוע: "+error.message);
+      else { await loadIncidents(fleet.id); setResolutionNotes(current=>({...current,[incident.id]:""})); setMessage("האירוע סומן כטופל ותיעוד הטיפול נשמר."); }
+    } catch(error) {
+      setMessage("עדכון האירוע נכשל: "+(error?.message||"שגיאה לא ידועה"));
+    } finally { setBusy(false); }
   }
 
   async function signOut() { await supabase.auth.signOut(); router.replace("/"); }
@@ -180,7 +192,10 @@ export default function IncidentsPage() {
             {item.photo_url&&<div className="task-assignees"><a className="nav-link" href={item.photo_url} target="_blank" rel="noreferrer">צפייה בתמונת האירוע</a></div>}
             {item.driver_id&&<div className="task-assignees"><span>נהג: {drivers.find(d=>d.id===item.driver_id)?.full_name||"לא ידוע"}</span></div>}
             {item.vehicle_id&&<div className="task-assignees"><span>רכב: {vehicles.find(v=>v.id===item.vehicle_id)?.registration_number||"לא ידוע"}</span></div>}
-            {canResolveIncidents&&item.status!=="resolved"&&<div className="task-actions"><button className="primary-btn" disabled={busy} onClick={()=>resolveIncident(item)}><CheckCircle2 size={14}/> סימון כטופל</button></div>}
+            {canResolveIncidents&&item.status!=="resolved"&&<div className="task-actions" style={{display:"grid",gap:8}}>
+              <label>תיעוד הטיפול (חובה, 5–1,000 תווים)<textarea rows={2} maxLength={1000} value={resolutionNotes[item.id]||""} onChange={e=>setResolutionNotes(current=>({...current,[item.id]:e.target.value}))} placeholder="מה נעשה כדי לטפל באירוע?"/></label>
+              <button className="primary-btn" disabled={busy} onClick={()=>resolveIncident(item)}><CheckCircle2 size={14}/> שמירת תיעוד וסימון כטופל</button>
+            </div>}
           </article>)}</div>}
       </section>
       <p className="fleet-foot">TruckSafe Fleet V1 · דיווחי הבטיחות נשמרים במסד הנתונים של הצי</p>

@@ -1,11 +1,17 @@
 import { createClient } from "@supabase/supabase-js";
 import { buildPTVPredefinedProfilesRequest, getPTVTruckProfileCandidates } from "../../../lib/ptv-vehicle-profiles.mjs";
+import { resolveFleetApiAccess } from "../../../lib/fleet-api-access.mjs";
+import { checkTruckRouteQuota } from "../../../lib/truck-route-quota.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const response = (body, status = 200) =>
   Response.json(body, { status, headers: { "Cache-Control": "no-store, max-age=0" } });
+
+export async function GET() {
+  return response({ ok: false, reason: "method_not_allowed" }, 405);
+}
 
 export async function POST(request) {
   try {
@@ -25,27 +31,24 @@ export async function POST(request) {
       global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
     });
-    const { data: authData, error: authError } = await db.auth.getUser(token);
-    if (authError || !authData?.user) {
-      return response({ ok: false, reason: "invalid_session" }, 401);
-    }
-
-    const { data: membership, error: membershipError } = await db
-      .from("fleet_members")
-      .select("fleet_id,role")
-      .eq("user_id", authData.user.id)
-      .limit(1)
-      .maybeSingle();
-    if (membershipError || !membership) {
-      return response({ ok: false, reason: "fleet_membership_required" }, 403);
-    }
-    if (!["owner", "fleet_manager"].includes(membership.role)) {
-      return response({ ok: false, reason: "fleet_manager_required" }, 403);
-    }
+    const gate = await resolveFleetApiAccess(db, token, { allowedRoles: ["owner", "fleet_manager"] });
+    if (gate.status === 401) return response({ ok: false, reason: gate.reason }, 401);
+    if (gate.status === 403) return response({ ok: false, reason: gate.reason }, 403);
+    const { membership } = gate.data;
 
     const apiKey = process.env.PTV_API_KEY;
     if (typeof apiKey !== "string" || !apiKey.trim()) {
       return response({ ok: false, reason: "ptv_key_not_configured" }, 503);
+    }
+
+    // Diagnostic requests also call paid provider APIs; share the authenticated
+    // per-user quota and fail closed if its database-backed guard is unavailable.
+    const quota = await checkTruckRouteQuota(db);
+    if (!quota.allowed) {
+      return response({
+        ok: false,
+        reason: quota.reason === "quota_exceeded" ? "provider_request_quota_exceeded" : "provider_request_quota_unavailable"
+      }, quota.status);
     }
 
     const requestConfig = buildPTVPredefinedProfilesRequest(apiKey);
