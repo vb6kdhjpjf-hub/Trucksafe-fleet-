@@ -226,3 +226,8 @@ The private schema is not usable by `anon` (`USAGE=false`) and is usable by `aut
 - Test catalog now confirms 13 public tables / 36 public policies, versus 25 / 57 in the successful local replay.
 - The Test-only reconciliation artifact is provenance evidence for a one-off Test schema alignment, not a reproducible migration baseline.
 - No remote changes were made. Do not repair Test migration history, apply missing migrations, or deploy until the per-migration mapping and intended target schema are reviewed. Production remains outside this audit because it was not available for read-only introspection.
+
+
+### Additional RPC exposure check
+
+Four public invoker read functions currently have `EXECUTE` for `anon`: `get_active_trip_map_data`, `get_latest_trip_locations`, `get_trip_distance_summaries`, and `get_trip_history_data`. Their definitions query fleet trip/location tables directly and do not perform an explicit `auth.uid()` check inside the function body. However, they are `SECURITY INVOKER`, and the underlying table RLS policies are restricted to `authenticated`; this is not evidence of an RLS bypass or anonymous access to trip data. It is still a least-privilege hardening candidate: after checking frontend usage and automated tests, consider revoking `EXECUTE` from `anon` on these read RPCs. No grant was changed during this audit.
