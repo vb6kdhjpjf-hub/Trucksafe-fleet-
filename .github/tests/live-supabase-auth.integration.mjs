@@ -599,9 +599,15 @@ async function assertBrowserWorkspaceAccess({
       if (!response || response.status() !== 200) {
         throw new Error(role + " browser could not load the local TruckSafe homepage.");
       }
-      await page.getByLabel("כתובת אימייל").fill(fixture.user.email);
-      await page.getByLabel("סיסמה", { exact: true }).fill(fixture.password);
-      await page.getByRole("button", { name: "התחברות", exact: true }).click();
+      const emailInput = page.locator('form.auth-form input[type="email"]');
+      const passwordInput = page.locator('form.auth-form input[type="password"]');
+      await emailInput.waitFor({ state: "visible", timeout: 30000 }).catch(async () => {
+        const visiblePage = (await page.locator("body").innerText()).slice(0, 700);
+        throw new Error(role + " browser did not render the sign-in form: " + visiblePage);
+      });
+      await emailInput.fill(fixture.user.email);
+      await passwordInput.fill(fixture.password);
+      await page.locator('form.auth-form button[type="submit"]').click();
       return { context, page };
     }
 
