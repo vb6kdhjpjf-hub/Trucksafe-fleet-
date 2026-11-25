@@ -84,7 +84,7 @@ create table public.shipment_stop_lines (
  constraint shipment_stop_lines_stop_line_key unique(stop_id,shipment_line_id),
  constraint shipment_stop_lines_fleet_id_id_key unique(fleet_id,id),
  constraint shipment_stop_lines_stop_same_shipment_fkey foreign key(fleet_id,shipment_id,stop_id) references public.shipment_stops(fleet_id,shipment_id,id) on delete cascade,
- constraint shipment_stop_lines_line_same_shipment_fkey foreign key(fleet_id,shipment_id,shipment_line_id) references public.shipment_lines(fleet_id,shipment_id,id),
+ constraint shipment_stop_lines_line_same_shipment_fkey foreign key(fleet_id,shipment_id,shipment_line_id) references public.shipment_lines(fleet_id,shipment_id,id) on delete cascade,
  constraint shipment_stop_lines_outcome_check check(delivered_quantity+damaged_quantity+rejected_quantity<=planned_quantity and returned_quantity<=delivered_quantity)
 );
 create index shipment_stop_lines_stop_idx on public.shipment_stop_lines(fleet_id,stop_id);
