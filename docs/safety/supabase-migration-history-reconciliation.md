@@ -591,3 +591,45 @@ Latest CI for commit `343dcd745e5ae0acd5f4fecc60508c0c44366d0a` completed succes
 - `auth-integration`: skipped by workflow policy; no live Auth end-to-end pass is claimed.
 
 This is useful evidence for the application and rollback-only database tests on Test, but it does not validate the Production migration path, external routing provider integration, or live Auth flows. Production and Test remain unchanged by this validation.
+
+
+## Cross-environment object-level drift review — 25 November 2026
+
+A read-only comparison of the current Production and Test catalogs was completed for public columns, constraints, triggers, and functions. This is a targeted object inventory, not a complete schema dump/diff.
+
+### Confirmed Test-only feature additions
+
+The Test project contains a more advanced safety/compliance slice than Production:
+
+1. **Special-equipment profiles**
+   - Test-only table `public.vehicle_special_equipment` with fleet/vehicle-scoped travel and working dimensions, axle configuration, evidence status, and supporting document paths.
+   - Four authenticated RLS policies: fleet-member SELECT; owner/fleet-manager INSERT, UPDATE, DELETE.
+   - Review RPC `review_vehicle_special_equipment` delegates to a private SECURITY DEFINER helper. The helper pins an empty search_path, requires an authenticated reviewer with owner/fleet-manager role, validates vehicle registration evidence, body-type/equipment-kind match, bounded travel/working dimensions, and private-storage evidence before changing verification status.
+   - Test-only triggers invalidate evidence when relevant vehicle classification changes and guard evidence fields.
+2. **Vehicle classification**
+   - Test adds `vehicles.body_type` and its validation constraint, not present in Production.
+3. **Road restriction evidence model**
+   - Test adds `structure_id`, `road_segment_id`, `lane_id`, passage length, posted-clearance status/value, surveyor, and measurement coverage fields, plus stricter evidence/coverage constraints. These are absent from Production.
+4. **Trip-state consistency**
+   - Test adds driver/trip/vehicle state-consistency triggers and constraints that are absent from Production.
+5. **Route quota**
+   - Test adds `consume_truck_route_quota()`, an authenticated-only invoker RPC with pinned empty search_path and per-user advisory-lock serialization over the rolling 10-minute request window. Its backing quota table is in the private schema.
+
+### Security and behavior notes
+
+- Test's public special-equipment policies are scoped to `authenticated`; the table has RLS enabled. No anonymous policy was observed.
+- The public review RPC is SECURITY INVOKER, denies anon EXECUTE, and permits authenticated EXECUTE. Its private helper is SECURITY DEFINER but resides in the non-exposed `private` schema, pins an empty search_path, and performs explicit identity/role/evidence checks.
+- The registration-review helper follows the same public-invoker/private-definer pattern.
+- The two trip lifecycle SECURITY DEFINER RPCs remain authenticated-only and pin an empty search_path. Their warnings are expected advisor prompts; do not remove their authenticated grants without replacing the workflow.
+- These findings are a static catalog/function-body review. They do not replace tests for Storage upload/read, cross-fleet denial, evidence invalidation, or real authenticated browser flows.
+
+### Recommended staged rollout plan (not executed)
+
+1. Preserve Production as-is; do not replay the 46-file branch migration chain into it.
+2. Recover provenance and intended ordering for the Test-only feature migrations; reconcile against the 35-row Production ledger and the historical 5 November schema baseline.
+3. Build a fresh disposable local database from the intended migration chain and run all schema replay, RLS, RPC, trigger, and rollback-only integration tests.
+4. On Test only, after explicit rollout approval, apply a reviewed migration set in a maintenance window; immediately run catalog checks, RLS/advisor checks, Storage evidence tests, and cross-fleet negative tests.
+5. Only after Test acceptance, prepare a separate Production change plan with exact SQL, preflight counts, backups, rollback strategy, and an explicit maintenance/approval gate. Do not use a blind migration-history repair.
+6. Before real fleet use, complete live Auth E2E, password leaked-protection configuration review, provider/routing integration, and verified road-restriction data sourcing. No nationwide safe-routing claim is supportable until authoritative restriction data is available and maintained.
+
+No hosted database, Auth, Storage, grants, or application data was changed during this review. No merge or deployment was performed.
