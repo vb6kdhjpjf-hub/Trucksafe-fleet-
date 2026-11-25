@@ -22,7 +22,7 @@ A push to `test/isolated-e2e-ci` runs the live Auth check only when all three de
 7. Builds the production Next.js app against the dedicated Test public URL/anon key with provider keys empty and coverage approval false. The app server process is explicitly stripped of the Test service-role secret and bound only to `127.0.0.1`.
 8. Invokes the actual exported POST handlers in-process and sends the same signed identities over real HTTP requests to `ptv-profile-check`, `ptv-routing-check`, and `truck-route`. Owner/manager pass the PTV role gate and stop at the missing-key 503; driver receives 403; the unassigned and ambiguous users receive 403; a deliberately invalid bearer receives 401. Fleet members with exactly one membership reach the truck-route coverage gate and receive 503 because coverage approval is explicitly false. All HTTP route responses are checked for `Cache-Control: no-store`.
 9. Deletes uniquely marked fixture fleets first (cascading app rows and memberships), verifies each fleet is gone, then deletes only marked Auth users through Auth Admin API and asserts no marked users remain.
-10. Creates one synthetic shipment/stop in Fleet A and uploads signature/photo fixtures to the private `delivery-proof-private` bucket using Fleet A's signed session. It verifies Fleet A can create a short-lived signed read URL, while Fleet B cannot read by guessed path, upload into Fleet A's path, or delete either object; even Fleet A cannot delete immutable proof objects.
+10. Creates one synthetic shipment/stop in Fleet A and uploads signature/photo fixtures to the private `delivery-proof-private` bucket using Fleet A's signed session. It verifies an active assigned driver and Fleet A owner can upload, the driver and owner can create short-lived signed read URLs, while Fleet B cannot read by guessed path, upload into Fleet A's path, or delete either object; neither the assigned driver nor Fleet A owner can delete immutable proof objects.
 11. Verifies Storage rejects PDF MIME and an object larger than 10 MiB. The service-role cleanup removes only the two exact random fixture object paths before deleting the marked fleets and Auth identities. A cleanup failure is critical and stops the job.
 12. The rollback-only SQL suite separately exercises delivery-note issuance, idempotency, immutable snapshots, authorized signature exceptions, and server-side 10 MiB per-photo / 40 MiB aggregate limits.
 
@@ -38,7 +38,7 @@ The SQL RLS integration suite remains rollback-only and uses synthetic JWT claim
 
 ## Important workflow trigger distinction
 
-The `auth-integration` job is intentionally restricted to a direct `push` on `test/isolated-e2e-ci`, or a manual dispatch on that branch with explicit confirmation. Pull-request events do not receive the live Test Auth secrets.
+The `auth-integration` job is intentionally restricted to direct pushes on `test/isolated-e2e-ci` and the dedicated current-candidate validation branch `test/current-candidate-auth-e2e` (plus the separately guarded routing-fix test branch), or a manual dispatch on `test/isolated-e2e-ci` with explicit confirmation. Pull-request events do not receive the live Test Auth secrets.
 
 
 The HTTP checks run against a local production-mode Next.js server on 127.0.0.1, not a deployed server. They stop at deliberately disabled configuration/safety gates; they do not test paid provider integrations, vehicle-specific route calculation, post-gate quota behavior, browser sessions, or production deployment.
