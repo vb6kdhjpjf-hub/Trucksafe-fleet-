@@ -275,6 +275,97 @@ async function signInFixtureUser(url, anonKey, user, password) {
   return { client: apiClient, authClient: client, token };
 }
 
+async function signInRetainedLegacyProofUsers(url, anonKey, admin) {
+  const legacyUsers = [];
+  for (const [userId, expectedEmail] of [
+    [RETAINED_LEGACY_PROOF_FIXTURE.ownerUserId,
+      `trucksafe-ci-owner-${RETAINED_LEGACY_PROOF_FIXTURE.runId}@example.com`],
+    [RETAINED_LEGACY_PROOF_FIXTURE.driverUserId,
+      `trucksafe-ci-driver-${RETAINED_LEGACY_PROOF_FIXTURE.runId}@example.com`]
+  ]) {
+    const { data, error } = await admin.auth.admin.getUserById(userId);
+    if (error || !data?.user ||
+        data.user.email !== expectedEmail ||
+        data.user.app_metadata?.trucksafe_ci_fixture !== FIXTURE_MARKER) {
+      throw new Error("The retained immutable-proof Test identities could not be verified.");
+    }
+    const password = randomBytes(36).toString("base64url");
+    const { data: updated, error: passwordError } = await admin.auth.admin.updateUserById(userId, { password });
+    if (passwordError || !updated?.user || updated.user.id !== userId) {
+      throw new Error("Unable to rotate credentials for the retained Test-only immutable-proof identity.");
+    }
+    const session = await signInFixtureUser(url, anonKey, updated.user, password);
+    legacyUsers.push({ user: updated.user, session });
+  }
+  return {
+    owner: legacyUsers.find(item => item.user.id === RETAINED_LEGACY_PROOF_FIXTURE.ownerUserId).session,
+    driver: legacyUsers.find(item => item.user.id === RETAINED_LEGACY_PROOF_FIXTURE.driverUserId).session
+  };
+}
+
+async function assertRetainedLegacyProofStorageAccess({ ownerSession, driverSession, admin }) {
+  const bucket = "delivery-proof-private";
+  const proofPaths = [
+    RETAINED_LEGACY_PROOF_FIXTURE.signaturePath,
+    RETAINED_LEGACY_PROOF_FIXTURE.photoPath
+  ];
+  for (const [role, session] of [["owner", ownerSession], ["assigned driver", driverSession]]) {
+    for (const path of proofPaths) {
+      const { data, error } = await session.client.storage.from(bucket).createSignedUrl(path, 60);
+      if (error || !data?.signedUrl) {
+        throw new Error(`The retained ${role} could not read its fleet's immutable delivery-proof object.`);
+      }
+    }
+  }
+
+  for (const [role, session] of [["owner", ownerSession], ["assigned driver", driverSession]]) {
+    const result = await session.client.storage.from(bucket).remove(proofPaths);
+    assert.equal(result.error, null, `${role} immutable-proof deletion should be RLS-filtered rather than leak a provider error`);
+    assert.deepEqual(result.data, [], `${role} must not delete any object referenced by the immutable delivery proof`);
+  }
+
+  const folder = [
+    RETAINED_LEGACY_PROOF_FIXTURE.fleetId,
+    RETAINED_LEGACY_PROOF_FIXTURE.shipmentId,
+    RETAINED_LEGACY_PROOF_FIXTURE.stopId
+  ].join("/") + "/";
+  const ownerOrphan = folder + randomUUID() + "-owner-cleanup.png";
+  const driverOrphan = folder + randomUUID() + "-driver-cleanup.png";
+  const exactCleanupPaths = [ownerOrphan, driverOrphan];
+  const bytes = Buffer.from("TruckSafe immutable-proof cleanup policy fixture");
+  try {
+    const [ownerUpload, driverUpload] = await Promise.all([
+      ownerSession.client.storage.from(bucket).upload(ownerOrphan, bytes, { contentType: "image/png", upsert: false }),
+      driverSession.client.storage.from(bucket).upload(driverOrphan, bytes, { contentType: "image/png", upsert: false })
+    ]);
+    if (ownerUpload.error || driverUpload.error) {
+      throw new Error("The retained owner and assigned driver must be able to upload scoped temporary proof objects.");
+    }
+
+    const ownerCannotDeleteDriverObject = await ownerSession.client.storage.from(bucket).remove([driverOrphan]);
+    assert.equal(ownerCannotDeleteDriverObject.error, null);
+    assert.deepEqual(ownerCannotDeleteDriverObject.data, [], "Fleet owner must not delete another user's unreferenced proof upload");
+
+    const driverCannotDeleteOwnerObject = await driverSession.client.storage.from(bucket).remove([ownerOrphan]);
+    assert.equal(driverCannotDeleteOwnerObject.error, null);
+    assert.deepEqual(driverCannotDeleteOwnerObject.data, [], "Assigned driver must not delete another user's unreferenced proof upload");
+
+    const ownerOwnCleanup = await ownerSession.client.storage.from(bucket).remove([ownerOrphan]);
+    assert.equal(ownerOwnCleanup.error, null);
+    assert.equal(ownerOwnCleanup.data?.length, 1, "Fleet owner can delete their own unreferenced upload");
+
+    const driverOwnCleanup = await driverSession.client.storage.from(bucket).remove([driverOrphan]);
+    assert.equal(driverOwnCleanup.error, null);
+    assert.equal(driverOwnCleanup.data?.length, 1, "Assigned driver can delete their own unreferenced upload");
+    process.stdout.write("Live immutable-proof Storage passed: signed reads for owner/driver, referenced-object delete denial for both roles, cross-user orphan delete denial, and same-user orphan cleanup.\\n");
+  } finally {
+    const { error: cleanupError } = await admin.storage.from(bucket).remove(exactCleanupPaths);
+    if (cleanupError) {
+      throw new Error("Unable to remove the exact temporary Storage cleanup-policy fixtures from Test.");
+    }
+  }
+}
+
 async function assertMembershipAccess({ client, token, userId, fleetId, role }) {
   const { data: rows, error } = await client
     .from("fleet_members")
@@ -559,6 +650,15 @@ async function main() {
     const secondFleetOwner = fixtures.find(item => item.role === "ambiguous");
     const secondFleetOwnerSession = await signInFixtureUser(url, anonKey, secondFleetOwner.user, secondFleetOwner.password);
     sessionsByUserId.set(secondFleetOwner.user.id, secondFleetOwnerSession);
+
+    // Use the explicitly retained Test-only immutable proof fixture to verify
+    // real Storage RLS against referenced objects. No immutable rows are added.
+    const retainedProofSessions = await signInRetainedLegacyProofUsers(url, anonKey, admin);
+    await assertRetainedLegacyProofStorageAccess({
+      ownerSession: retainedProofSessions.owner,
+      driverSession: retainedProofSessions.driver,
+      admin
+    });
 
     // Give the signed driver identity an active driver record and Fleet A membership
     // before creating the delivery fixture, so the Storage policy's assigned-driver
