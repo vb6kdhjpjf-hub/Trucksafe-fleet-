@@ -322,3 +322,40 @@ The Test history is not a simple “46 files versus 43 rows” lag. It contains:
 - and at least three tracked business-module migrations absent from Test, which account for all 12 missing public tables.
 
 The database catalog currently has the expected final driver/vehicle active-trip trigger set, but metadata alone cannot establish full SQL-content equivalence. A reliable final reconciliation requires either the historical SQL artifacts for the 18 Test-only/renumbered entries, or a carefully scoped catalog-level diff against the disposable local replay. No history repair is justified yet.
+
+
+### Verification of current active-trip guard implementation
+
+The six current private helper functions used by the driver/vehicle consistency triggers were inspected in Test. Their definitions match the logic in the two canonical tracked migration files:
+- `private.assert_driver_trip_status`
+- `private.check_driver_state_after_driver_change`
+- `private.check_driver_state_after_trip_change`
+- `private.assert_vehicle_trip_status`
+- `private.check_vehicle_state_after_trip_change`
+- `private.check_vehicle_state_after_vehicle_change`
+
+All six are `SECURITY DEFINER`, explicitly pin `search_path = ''`, and have no EXECUTE privilege for `anon` or `authenticated`. They are called by database triggers, so keeping them non-callable directly by API roles is the intended least-privilege shape. This current catalog-level result is reassuring: despite duplicate history metadata, the effective Test trigger/function implementation matches the canonical active-trip guard design. It still does not recover the historical SQL text for the duplicate migration rows.
+
+### Enumerated Test-only historical names
+
+The 18 distinct Test-only history names are:
+- `harden_verified_road_restriction_immutability`
+- `restrict_security_definer_function_execution`
+- `block_verified_road_restriction_deletion`
+- `add_truck_route_rate_limit`
+- `make_truck_route_quota_invoker_scoped`
+- `prevent_truck_route_quota_reset`
+- `validate_truck_route_quota_timestamps`
+- `validate_road_restriction_active_date_range`
+- `add_route_quota_primary_key`
+- `grant_authenticated_insert_for_route_quota`
+- `revoke_broad_route_quota_insert_privilege`
+- `reconcile_production_vehicle_and_road_safety_schema` (Test-only compatibility artifact)
+- `secure_special_equipment_review_rpc_wrapper`
+- `revoke_direct_execute_on_equipment_trigger`
+- `enforce_fleet_consistent_dispatch_v2`
+- `index_fleet_dispatch_foreign_keys`
+- `revert_incomplete_dispatch_hardening_attempt`
+- `restore_driver_active_trip_guard`
+
+These entries should remain in the Test history unless a separate, evidence-backed history cleanup is designed. Their presence alone does not mean they are harmful: they may describe legitimate historical steps whose resulting state is now represented by later canonical migrations.
