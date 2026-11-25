@@ -1,5 +1,6 @@
 -- Rollback-only cross-fleet integrity and delete-action tests.
 -- Runs only against the dedicated TruckSafe Fleet Test database.
+-- Fleet-scoped composite foreign keys are installed by the Test-only rollout, not replayed here.
 BEGIN;
 
 
