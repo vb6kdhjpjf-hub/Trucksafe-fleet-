@@ -307,3 +307,11 @@ comment on table public.shipments is 'Tenant-scoped shipment orders; operational
 comment on table public.shipment_lines is 'Cargo lines with explicit units; pallet/carton counts never imply a weight measurement.';
 comment on table public.shipment_stop_lines is 'Per-stop planned and actual quantities, including delivered, damaged, rejected and returned amounts.';
 comment on table public.shipment_stop_events is 'Append-only, idempotent record of stop result submissions.';
+
+-- Index the foreign-key paths used by shipment, stop and cargo rows.
+create index if not exists shipment_stop_events_performed_by_idx on public.shipment_stop_events(performed_by);
+create index if not exists shipment_stop_events_fleet_shipment_stop_idx on public.shipment_stop_events(fleet_id,shipment_id,stop_id);
+create index if not exists shipment_stop_lines_fleet_shipment_line_idx on public.shipment_stop_lines(fleet_id,shipment_id,shipment_line_id);
+create index if not exists shipment_stop_lines_fleet_shipment_stop_idx on public.shipment_stop_lines(fleet_id,shipment_id,stop_id);
+create index if not exists shipments_created_by_idx on public.shipments(created_by);
+create index if not exists shipments_fleet_vehicle_idx on public.shipments(fleet_id,assigned_vehicle_id);
