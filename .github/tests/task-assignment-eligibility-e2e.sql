@@ -120,6 +120,11 @@ BEGIN
         'bc000000-0000-4000-8000-000000000001','assigned')$sql$,
     'assigned task without both references');
 
+  -- Authenticate as the fleet owner so the legacy driver-only guard
+  -- cannot mask the new assignment-eligibility trigger in this assertion.
+  PERFORM set_config('request.jwt.claim.sub', 'ba000000-0000-4000-8000-000000000001', true);
+  PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
+
   PERFORM pg_temp.assert_assignment_rejected(
     format('UPDATE public.tasks SET assigned_driver_id = %L WHERE id = %L',
       'bc000000-0000-4000-8000-000000000002', valid_task),
