@@ -633,3 +633,18 @@ The Test project contains a more advanced safety/compliance slice than Productio
 6. Before real fleet use, complete live Auth E2E, password leaked-protection configuration review, provider/routing integration, and verified road-restriction data sourcing. No nationwide safe-routing claim is supportable until authoritative restriction data is available and maintained.
 
 No hosted database, Auth, Storage, grants, or application data was changed during this review. No merge or deployment was performed.
+
+
+## Latest CI and advisor recheck — 25 November 2026
+
+- Commit `bcbdca6670bb6948613ae1fd1fdc93df13cee806` was validated by isolated workflow run `45658818481`: `validate` passed and `database-integration` passed; `auth-integration` was skipped by the workflow's deliberate branch/secret policy. This is a successful app/build/safety + rollback-only Test DB run, not a live Auth E2E pass.
+- Both Production and Test remain `ACTIVE_HEALTHY`; latest Health Advisor results are empty for both projects.
+- Latest Security Advisor:
+  - Production: two intentional authenticated SECURITY DEFINER trip lifecycle RPC warnings, plus leaked-password protection disabled.
+  - Test: the same two trip lifecycle RPC warnings. The private verification helpers are not exposed as anon-callable RPCs.
+- Latest Performance Advisor:
+  - Production: two unindexed FK findings on `road_restrictions.verified_by` and `vehicles.registration_verified_by`; 35 unused-index notices.
+  - Test: no unindexed-FK finding (the corresponding reviewer indexes exist); 18 unused-index notices.
+- Do not remove the trip lifecycle SECURITY DEFINER grants: the app's atomic start/finish workflow depends on those RPCs and their bodies contain explicit authorization/state checks. Keep leaked-password protection as a dashboard-level security action requiring a dedicated Auth regression window.
+- Unused-index notices are not deletion recommendations for an almost-empty/new environment. Re-evaluate after meaningful workload and query-plan evidence.
+- No database changes, Auth changes, merge, or deployment were performed.
