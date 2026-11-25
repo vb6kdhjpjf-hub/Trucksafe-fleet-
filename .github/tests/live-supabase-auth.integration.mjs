@@ -152,7 +152,10 @@ async function identifyRetainedLegacyProofFixture(admin, users) {
   // The signed-JWT Storage integration below verifies that the exact referenced
   // signature and photo objects still exist and are readable under their real roles.
 
-  return retainedUsers.map(user => user.id);
+  // Only the owner and assigned driver are required to preserve and exercise
+  // the immutable proof. The other five identities from the old fixture are
+  // deleted by the normal marker-scoped cleanup below.
+  return [owner.id, driver.id];
 }
 
 async function removeOwnedFixtureFleets(admin, users, retainedUserIds = new Set()) {
