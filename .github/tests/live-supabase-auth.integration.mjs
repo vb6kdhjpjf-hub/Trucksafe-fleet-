@@ -616,8 +616,7 @@ async function assertBrowserWorkspaceAccess({
       .waitFor({ state: "visible", timeout: 30000 });
     await ownerPage.getByText(shipmentCustomerName, { exact: true })
       .waitFor({ state: "visible", timeout: 30000 });
-    await ownerPage.getByText(new RegExp(shipmentItemName.replace(/[.*+?^${}()|[\]\\]/g, "\\
-async function assertActualHttpAuthorization({ baseUrl, token, role }) {")))
+    await ownerPage.getByText(shipmentItemName, { exact: false })
       .waitFor({ state: "visible", timeout: 30000 });
     await ownerPage.getByText(stopAddress, { exact: true })
       .waitFor({ state: "visible", timeout: 30000 });
