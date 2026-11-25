@@ -232,6 +232,7 @@ declare
  v_existing jsonb;
  v_existing_matches boolean;
  v_photos text[]:=coalesce(p_photo_object_paths,'{}'::text[]);
+ v_photo_bytes bigint:=0;
 begin
  if v_actor is null then raise exception 'Authentication required'; end if;
  if p_event_key is null or p_fleet_id is null or p_shipment_id is null or p_stop_id is null then
@@ -312,6 +313,31 @@ begin
    raise exception 'A delivery photo is missing or outside this shipment stop';
   end if;
  end loop;
+
+ -- Enforce the client-side per-file and aggregate limits at the trusted DB boundary too.
+ if p_signature_object_path is not null and not exists(
+  select 1 from storage.objects o
+  where o.bucket_id='delivery-proof-private' and o.name=p_signature_object_path
+   and o.metadata->>'mimetype'='image/png'
+   and (o.metadata->>'size')::bigint between 1 and 10485760
+ ) then
+  raise exception 'Signature file must be a PNG no larger than 10 MiB';
+ end if;
+ if exists(
+  select 1 from unnest(v_photos) as p(path)
+  left join storage.objects o on o.bucket_id='delivery-proof-private' and o.name=p.path
+  where o.id is null
+   or coalesce(o.metadata->>'mimetype','') not in ('image/png','image/jpeg','image/webp')
+   or (o.metadata->>'size')::bigint not between 1 and 10485760
+ ) then
+  raise exception 'Each delivery photo must be PNG, JPEG or WEBP and no larger than 10 MiB';
+ end if;
+ select coalesce(sum((o.metadata->>'size')::bigint),0) into v_photo_bytes
+ from storage.objects o
+ where o.bucket_id='delivery-proof-private' and o.name=any(v_photos);
+ if v_photo_bytes>41943040 then
+  raise exception 'Combined delivery photos cannot exceed 40 MiB';
+ end if;
 
  insert into public.delivery_note_settings(fleet_id,issuer_name,number_prefix)
  select p_fleet_id,f.name,'DL' from public.fleets f where f.id=p_fleet_id
