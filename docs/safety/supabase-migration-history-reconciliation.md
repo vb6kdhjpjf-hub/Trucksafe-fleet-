@@ -170,3 +170,59 @@ The local database stack was stopped successfully with `supabase stop --no-backu
 The recovered 5 November schema plus the corrected tracked migration chain now replays successfully in a clean local Postgres environment. The two migration defects above are fixed on the reproducibility PR branch.
 
 This does **not** reconcile the separate 43-row hosted Test migration history, prove that Test and Production have identical schema, or authorize any remote schema change. Production was inactive/unavailable to read-only introspection during this check. The Test migration-history divergence remains a separate, read-only reconciliation task. No deployment or merge was performed.
+
+
+## Read-only Test catalog and security audit — 25 November 2026
+
+A further read-only inspection was performed against the dedicated Test project `yxxrgblpqzhnnyojbwcr`. No DDL, migration repair, data write, or deployment was performed.
+
+### Current application objects
+
+The Test project currently has 13 public base tables, all with RLS enabled:
+
+```text
+drivers
+fleet_members
+fleets
+incidents
+inspections
+maintenance_records
+profiles
+road_restrictions
+tasks
+trip_locations
+trips
+vehicle_special_equipment
+vehicles
+```
+
+It also has one private-schema base table, `private.truck_route_requests`. This confirms that the previously observed difference between 13 Test public tables and 25 tables in the successful local replay is real at the catalog level. The Test table inventory is the 12-table core baseline plus `vehicle_special_equipment`; it does not currently contain the additional public tables present after the full 46-migration local chain. Exact mapping of each missing table to its introducing migration remains to be completed before any remote repair is considered.
+
+All 13 public tables have row-level security enabled. Test currently has 36 public policies, compared with 57 in the disposable local replay. There are also six Storage object policies and two private buckets:
+- `incident-photos`: private, 5 MiB limit, JPEG/PNG/WebP.
+- `vehicle-registrations`: private, 8 MiB limit, PDF/JPEG/PNG/WebP.
+
+The Storage policies are scoped to authenticated users; vehicle-registration upload/read/delete checks the two-level fleet/vehicle UUID path and fleet owner/manager role. Both Storage delete policies also check that the object is not referenced through `private.storage_object_is_referenced`. These checks are observations of the current Test configuration, not a claim that the entire Storage configuration is identical to Production.
+
+### Test-only reconciliation migration provenance
+
+The exact repository artifact `.github/tests/test-db-migrations/20261110144502_reconcile_production_vehicle_and_road_safety_schema.sql` was fetched and inspected. Its header explicitly says it is Test-only and must not be placed under `supabase/migrations` or applied to Production.
+
+The SQL assumes that `public.road_restrictions` and `public.vehicles` already exist. It adds road-restriction provenance/geometry/measurement fields and vehicle-registration fields, replaces constraints and triggers, installs private registration-review functions, and configures the two private Storage buckets and six policies. It does not create the core fleet tables. It is therefore not a bootstrap migration and must not be replayed as a baseline or promoted to Production.
+
+### Security observations
+
+The current Test security advisor reports two warnings:
+- `public.finish_trip(uuid, uuid)`
+- `public.start_trip_with_inspection(...)`
+
+Both are `SECURITY DEFINER` functions executable by `authenticated`, and neither is executable by `anon`. Their bodies perform explicit authentication, fleet-membership, role/driver-assignment, and state checks. These appear to be intentional authenticated RPC entry points; the advisor warning should be retained for explicit security review, not “fixed” by blindly revoking execution and breaking trip workflows.
+
+The private schema is not usable by `anon` (`USAGE=false`) and is usable by `authenticated`; its helper functions have explicit per-function grants. Public trigger/helper functions may show execute privileges because they are invoked by triggers or exposed as invoker functions, so privilege changes must be evaluated function-by-function, not by bulk revocation.
+
+### Updated disposition
+
+- Test migration history remains 43 rows versus 46 tracked migration files, with only four exact version+name matches and two duplicate-name groups, as recorded above.
+- Test catalog now confirms 13 public tables / 36 public policies, versus 25 / 57 in the successful local replay.
+- The Test-only reconciliation artifact is provenance evidence for a one-off Test schema alignment, not a reproducible migration baseline.
+- No remote changes were made. Do not repair Test migration history, apply missing migrations, or deploy until the per-migration mapping and intended target schema are reviewed. Production remains outside this audit because it was not available for read-only introspection.
