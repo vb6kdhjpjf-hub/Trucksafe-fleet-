@@ -392,10 +392,16 @@ async function assertRetainedLegacyProofStorageAccess({ ownerSession, driverSess
     }
   }
 
-  for (const [role, session] of [["owner", ownerSession], ["assigned driver", driverSession]]) {
-    const result = await session.client.storage.from(bucket).remove(proofPaths);
+  const immutableDeleteAttempts = [
+    ["assigned driver", driverSession, RETAINED_LEGACY_PROOF_FIXTURE.signaturePath],
+    ["fleet owner", ownerSession, RETAINED_LEGACY_PROOF_FIXTURE.photoPath],
+    ["fleet owner cross-user", ownerSession, RETAINED_LEGACY_PROOF_FIXTURE.signaturePath],
+    ["assigned driver cross-user", driverSession, RETAINED_LEGACY_PROOF_FIXTURE.photoPath]
+  ];
+  for (const [role, session, path] of immutableDeleteAttempts) {
+    const result = await session.client.storage.from(bucket).remove([path]);
     assert.equal(result.error, null, `${role} immutable-proof deletion should be RLS-filtered rather than leak a provider error`);
-    assert.deepEqual(result.data, [], `${role} must not delete any object referenced by the immutable delivery proof`);
+    assert.deepEqual(result.data, [], `${role} must not delete the referenced delivery-proof object`);
   }
 
   const folder = [
