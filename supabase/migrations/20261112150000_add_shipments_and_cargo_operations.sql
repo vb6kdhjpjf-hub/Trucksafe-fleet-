@@ -26,8 +26,8 @@ create table public.shipments (
  created_at timestamptz not null default now(),
  updated_at timestamptz not null default now(),
  constraint shipments_fleet_id_id_key unique(fleet_id,id),
- constraint shipments_driver_same_fleet_fkey foreign key(fleet_id,assigned_driver_id) references public.drivers(fleet_id,id),
- constraint shipments_vehicle_same_fleet_fkey foreign key(fleet_id,assigned_vehicle_id) references public.vehicles(fleet_id,id)
+ constraint shipments_driver_same_fleet_fkey foreign key(fleet_id,assigned_driver_id) references public.drivers(fleet_id,id) on delete set null (assigned_driver_id),
+ constraint shipments_vehicle_same_fleet_fkey foreign key(fleet_id,assigned_vehicle_id) references public.vehicles(fleet_id,id) on delete set null (assigned_vehicle_id)
 );
 create index shipments_fleet_status_scheduled_idx on public.shipments(fleet_id,status,scheduled_at desc);
 create index shipments_fleet_driver_status_idx on public.shipments(fleet_id,assigned_driver_id,status);
