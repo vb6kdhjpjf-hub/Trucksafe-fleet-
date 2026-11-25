@@ -135,7 +135,7 @@ jobs:
        github.ref == 'refs/heads/test/isolated-e2e-ci' &&
        inputs.confirm_test_auth == true)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
       contents: read
     env:
@@ -166,6 +166,11 @@ jobs:
         id: install
         if: steps.auth-secrets.outputs.available == 'true'
         run: npm ci --no-audit --no-fund
+      - name: Install ephemeral Chromium browser test runtime
+        if: steps.auth-secrets.outputs.available == 'true'
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
       - name: Build production app for isolated local HTTP integration
         if: steps.auth-secrets.outputs.available == 'true'
         env:
