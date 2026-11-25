@@ -2,8 +2,29 @@
 -- Apply only after the isolated cross-fleet integration test passes.
 -- PostgreSQL 15+ is required for column-list ON DELETE SET NULL.
 
-ALTER TABLE public.vehicles
-  ADD CONSTRAINT vehicles_fleet_id_id_key UNIQUE (fleet_id, id);
+-- A prior Test-only equipment migration may already have installed an
+-- equivalent composite unique key under a different constraint name. Reuse it
+-- instead of creating a duplicate unique index.
+DO $vehicle_fleet_key$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint c
+    WHERE c.conrelid = 'public.vehicles'::regclass
+      AND c.contype IN ('p', 'u')
+      AND (
+        SELECT array_agg(a.attname ORDER BY k.ord)
+        FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+        JOIN pg_attribute a
+          ON a.attrelid = c.conrelid
+         AND a.attnum = k.attnum
+      ) = ARRAY['fleet_id', 'id']::name[]
+  ) THEN
+    ALTER TABLE public.vehicles
+      ADD CONSTRAINT vehicles_fleet_id_id_key UNIQUE (fleet_id, id);
+  END IF;
+END
+$vehicle_fleet_key$;
 
 ALTER TABLE public.tasks
   ADD CONSTRAINT tasks_fleet_id_id_key UNIQUE (fleet_id, id);
