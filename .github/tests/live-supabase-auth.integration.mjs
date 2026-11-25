@@ -461,7 +461,7 @@ async function main() {
       p_customer_reference: "CI-" + runId.slice(0, 12),
       p_delivery_reference: "CI-DELIVERY-" + runId.slice(0, 12),
       p_scheduled_at: new Date().toISOString(),
-      p_assigned_driver_id: null,
+      p_assigned_driver_id: deliveryDriver.id,
       p_assigned_vehicle_id: null,
       p_notes: "Disposable integration fixture",
       p_lines: [{ description: "Synthetic cargo", unit: "package", planned_quantity: 1 }],
