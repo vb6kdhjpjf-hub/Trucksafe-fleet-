@@ -97,3 +97,18 @@ ALTER TABLE public.trip_locations
     FOREIGN KEY (trip_id, driver_id)
     REFERENCES public.trips (id, driver_id)
     ON DELETE CASCADE;
+
+-- Child-side indexes for the fleet-scoped composite foreign keys.
+create index if not exists incidents_fleet_driver_idx on public.incidents(fleet_id,driver_id);
+create index if not exists incidents_fleet_trip_idx on public.incidents(fleet_id,trip_id);
+create index if not exists incidents_fleet_vehicle_idx on public.incidents(fleet_id,vehicle_id);
+create index if not exists inspections_fleet_driver_idx on public.inspections(fleet_id,driver_id);
+create index if not exists inspections_fleet_trip_idx on public.inspections(fleet_id,trip_id);
+create index if not exists inspections_fleet_vehicle_idx on public.inspections(fleet_id,vehicle_id);
+create index if not exists maintenance_records_fleet_incident_idx on public.maintenance_records(fleet_id,incident_id);
+create index if not exists tasks_fleet_assigned_driver_idx on public.tasks(fleet_id,assigned_driver_id);
+create index if not exists tasks_fleet_assigned_vehicle_idx on public.tasks(fleet_id,assigned_vehicle_id);
+create index if not exists trip_locations_trip_driver_idx on public.trip_locations(trip_id,driver_id);
+create index if not exists trips_fleet_driver_idx on public.trips(fleet_id,driver_id);
+create index if not exists trips_fleet_task_idx on public.trips(fleet_id,task_id);
+create index if not exists trips_fleet_vehicle_idx on public.trips(fleet_id,vehicle_id);
