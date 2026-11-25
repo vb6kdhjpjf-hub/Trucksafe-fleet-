@@ -432,3 +432,40 @@ This is consistent with the 12 missing public tables and the three absent migrat
 - Main functional blocker: Test is missing the daily-work/load, shipment/cargo, and delivery-note/proof modules and their RPCs.
 - Performance notices are informational; no index changes justified.
 - This remains a read-only audit. No hosted database mutation, migration repair, merge, or deployment was performed.
+
+
+## Follow-up review: migration privilege intent and CI — 25 November 2026
+
+### Feature-module migration grants verified
+
+Reviewed the SQL grant/revoke statements in all three missing feature-module migrations:
+- Daily work/load migration revokes table privileges from `anon` and `authenticated`, then grants `SELECT` to `authenticated`; its three write RPCs explicitly revoke `PUBLIC`/`anon` and grant EXECUTE only to `authenticated`.
+- Shipments/cargo migration applies the same table privilege pattern to all five tables and explicitly restricts both write RPCs to `authenticated`.
+- Delivery notes/proof migration applies the same table privilege pattern to all four tables and explicitly restricts its three write RPCs to `authenticated`.
+
+This is consistent with the intended architecture: browser roles cannot write directly to these tables; authenticated users read through RLS and mutations pass through guarded SECURITY DEFINER RPCs. The absent modules are therefore not only missing schema objects; their migrations also contain important privilege boundaries. Do not recreate the tables manually or apply only a subset of the three migrations.
+
+### Default privileges are inherited baseline grants
+
+The broad `anon` default ACLs observed in Test are not explicitly established by any of the 46 tracked application migrations reviewed. They are baseline/default project privileges. The feature-module migrations explicitly revoke `anon` table privileges and explicitly grant the necessary authenticated access, showing that the project has already used object-specific least-privilege controls.
+
+A future hardening migration could set safer defaults for objects created by the migration owner, but this must be evaluated against the complete Production schema and every public RPC/API contract before adoption. No global default-privilege change is included in this PR. Existing anonymous EXECUTE on the four invoker read RPCs also remains unchanged pending confirmation that no external consumer depends on them.
+
+### Validation workflow status
+
+Both isolated validation workflows for the latest documentation commit completed successfully:
+- Run `45646342218`: success.
+- Run `45646357167`: success.
+
+These runs validate the current PR branch workflows; they are not a live Auth end-to-end test and do not validate a deployment against hosted Production. The previously documented live Auth integration remains skipped under the existing PR policy.
+
+### Next safe gate
+
+Before any hosted Test migration:
+1. Obtain a complete, reachable Production schema/catalog snapshot and compare its existing objects and privileges against the disposable local replay.
+2. Resolve the divergent Test migration ledger with evidence for each Test-only and duplicate entry; do not delete or rewrite ledger rows speculatively.
+3. Verify all 46 migrations from a clean disposable replay and run application smoke tests.
+4. Prepare a Test-only, reversible rollout plan for the three missing feature modules, including preflight object/constraint checks and post-migration RLS/RPC/Storage verification.
+5. Only after explicit approval, apply the controlled plan to Test. Production remains out of scope.
+
+No hosted database changes, grants, migrations, merge, or deployment were performed in this follow-up.
