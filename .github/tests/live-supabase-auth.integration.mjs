@@ -16,6 +16,28 @@ import {
 const TEST_PROJECT_REF = "yxxrgblpqzhnnyojbwcr";
 const PAGE_SIZE = 1000;
 
+// A prior failed Test-only CI run created one immutable delivery proof without
+// an accompanying delivery note. Its BEFORE DELETE trigger intentionally
+// blocks fleet cascades, so preserve this exact marked fixture as an audit
+// artifact rather than disabling immutability or deleting referenced files.
+const RETAINED_LEGACY_PROOF_FIXTURE = Object.freeze({
+  runId: "cd14e032-4945-4f3e-8850-2611f3e272cc",
+  fleetId: "e773391e-bf75-47d1-b487-bdf2c89151ee",
+  fleetName: "TRUCKSAFE_CI_FIXTURE_cd14e032-4945-4f3e-8850-2611f3e272cc",
+  ownerUserId: "1f665508-748e-4984-835e-28a22e5d85a6",
+  driverUserId: "6f20f22b-eb91-4343-a627-2245c97b43b2",
+  driverId: "a527a29a-a809-4e8c-8e80-15de79dd52d7",
+  shipmentId: "cf140548-399d-489f-a3bf-7867a66acdf1",
+  stopId: "a4f3ae70-0cd0-44cd-837d-ebd4f763f542",
+  proofId: "e9d50660-d36d-41d3-8ed4-180573227607",
+  eventKey: "d142d489-86c7-492b-86d5-67a210a72179",
+  signaturePath: "e773391e-bf75-47d1-b487-bdf2c89151ee/cf140548-399d-489f-a3bf-7867a66acdf1/a4f3ae70-0cd0-44cd-837d-ebd4f763f542/cd14e032-4945-4f3e-8850-2611f3e272cc-signature.png",
+  photoPath: "e773391e-bf75-47d1-b487-bdf2c89151ee/cf140548-399d-489f-a3bf-7867a66acdf1/a4f3ae70-0cd0-44cd-837d-ebd4f763f542/cd14e032-4945-4f3e-8850-2611f3e272cc-photo.png"
+});
+const RETAINED_LEGACY_FIXTURE_ROLES = [
+  "ambiguous", "dispatcher", "driver", "fleet_manager", "owner", "safety_manager", "unassigned"
+];
+
 function readConfig() {
   const url = process.env.SUPABASE_TEST_URL;
   const anonKey = process.env.SUPABASE_TEST_ANON_KEY;
@@ -51,7 +73,97 @@ async function listMarkedFixtureUsers(admin) {
   return matches;
 }
 
-async function removeOwnedFixtureFleets(admin, users) {
+async function identifyRetainedLegacyProofFixture(admin, users) {
+  const suffix = `-${RETAINED_LEGACY_PROOF_FIXTURE.runId}@example.com`;
+  const retainedUsers = users.filter(user => typeof user.email === "string" && user.email.endsWith(suffix));
+  if (retainedUsers.length === 0) return [];
+  const expectedEmails = new Set(RETAINED_LEGACY_FIXTURE_ROLES.map(
+    role => `trucksafe-ci-${role}${suffix}`
+  ));
+  if (retainedUsers.length !== expectedEmails.size ||
+      retainedUsers.some(user => !expectedEmails.has(user.email) ||
+        user.app_metadata?.trucksafe_ci_fixture !== FIXTURE_MARKER)) {
+    throw new Error("Refusing to preserve a legacy Test fixture: its exact Auth identities do not match the approved immutable-proof marker.");
+  }
+  const owner = retainedUsers.find(user => user.email === `trucksafe-ci-owner${suffix}`);
+  const driver = retainedUsers.find(user => user.email === `trucksafe-ci-driver${suffix}`);
+  if (owner?.id !== RETAINED_LEGACY_PROOF_FIXTURE.ownerUserId ||
+      driver?.id !== RETAINED_LEGACY_PROOF_FIXTURE.driverUserId) {
+    throw new Error("Refusing to preserve a legacy Test fixture: owner or driver identity changed.");
+  }
+
+  const { data: fleet, error: fleetError } = await admin
+    .from("fleets")
+    .select("id,name,owner_user_id")
+    .eq("id", RETAINED_LEGACY_PROOF_FIXTURE.fleetId)
+    .maybeSingle();
+  if (fleetError || !fleet ||
+      fleet.name !== RETAINED_LEGACY_PROOF_FIXTURE.fleetName ||
+      fleet.owner_user_id !== owner.id) {
+    throw new Error("Refusing to preserve a legacy Test fixture: the exact marked fleet does not match.");
+  }
+
+  const { data: proof, error: proofError } = await admin
+    .from("delivery_proofs")
+    .select("id,fleet_id,shipment_id,stop_id,event_key,proof_status,performed_by,signature_object_path,photo_object_paths")
+    .eq("id", RETAINED_LEGACY_PROOF_FIXTURE.proofId)
+    .maybeSingle();
+  if (proofError || !proof ||
+      proof.fleet_id !== fleet.id ||
+      proof.shipment_id !== RETAINED_LEGACY_PROOF_FIXTURE.shipmentId ||
+      proof.stop_id !== RETAINED_LEGACY_PROOF_FIXTURE.stopId ||
+      proof.event_key !== RETAINED_LEGACY_PROOF_FIXTURE.eventKey ||
+      proof.proof_status !== "signed" ||
+      proof.performed_by !== driver.id ||
+      proof.signature_object_path !== RETAINED_LEGACY_PROOF_FIXTURE.signaturePath ||
+      JSON.stringify(proof.photo_object_paths) !== JSON.stringify([RETAINED_LEGACY_PROOF_FIXTURE.photoPath])) {
+    throw new Error("Refusing to preserve a legacy Test fixture: immutable delivery-proof evidence does not match the exact allowlist.");
+  }
+
+  const { data: driverRow, error: driverError } = await admin
+    .from("drivers")
+    .select("id,user_id")
+    .eq("id", RETAINED_LEGACY_PROOF_FIXTURE.driverId)
+    .eq("fleet_id", fleet.id)
+    .maybeSingle();
+  if (driverError || !driverRow || driverRow.user_id !== driver.id) {
+    throw new Error("Refusing to preserve a legacy Test fixture: the marked proof performer no longer matches its driver record.");
+  }
+
+  const { data: shipment, error: shipmentError } = await admin
+    .from("shipments")
+    .select("id,fleet_id,assigned_driver_id")
+    .eq("id", RETAINED_LEGACY_PROOF_FIXTURE.shipmentId)
+    .maybeSingle();
+  if (shipmentError || !shipment ||
+      shipment.fleet_id !== fleet.id ||
+      shipment.assigned_driver_id !== RETAINED_LEGACY_PROOF_FIXTURE.driverId) {
+    throw new Error("Refusing to preserve a legacy Test fixture: its shipment/driver relationship changed.");
+  }
+
+  const { data: notes, error: notesError } = await admin
+    .from("delivery_notes")
+    .select("id")
+    .eq("fleet_id", fleet.id);
+  if (notesError || notes?.length) {
+    throw new Error("Refusing to preserve a legacy Test fixture: unexpected immutable delivery notes were found.");
+  }
+
+  const folder = `${fleet.id}/${RETAINED_LEGACY_PROOF_FIXTURE.shipmentId}/${RETAINED_LEGACY_PROOF_FIXTURE.stopId}`;
+  const { data: objects, error: objectError } = await admin
+    .storage.from("delivery-proof-private")
+    .list(folder, { limit: 20 });
+  const objectNames = new Set((objects ?? []).map(item => item.name));
+  if (objectError ||
+      !objectNames.has(RETAINED_LEGACY_PROOF_FIXTURE.signaturePath.split("/").at(-1)) ||
+      !objectNames.has(RETAINED_LEGACY_PROOF_FIXTURE.photoPath.split("/").at(-1))) {
+    throw new Error("Refusing to preserve a legacy Test fixture: both immutable proof objects were not verified in private Storage.");
+  }
+
+  return retainedUsers.map(user => user.id);
+}
+
+async function removeOwnedFixtureFleets(admin, users, retainedUserIds = new Set()) {
   for (const user of users) {
     const { data: fleets, error: listError } = await admin
       .from("fleets")
@@ -63,6 +175,14 @@ async function removeOwnedFixtureFleets(admin, users) {
     )) {
       if (fleet.owner_user_id !== user.id || !fleet.name.startsWith(FIXTURE_FLEET_PREFIX)) {
         throw new Error("Refusing cleanup: fixture fleet ownership or marker did not match exactly.");
+      }
+      if (fleet.id === RETAINED_LEGACY_PROOF_FIXTURE.fleetId &&
+          retainedUserIds.has(RETAINED_LEGACY_PROOF_FIXTURE.ownerUserId)) {
+        if (user.id !== RETAINED_LEGACY_PROOF_FIXTURE.ownerUserId ||
+            fleet.name !== RETAINED_LEGACY_PROOF_FIXTURE.fleetName) {
+          throw new Error("Refusing cleanup: retained immutable fixture fleet ownership unexpectedly changed.");
+        }
+        continue;
       }
       const { data: deleted, error: deleteError } = await admin
         .from("fleets")
@@ -94,18 +214,32 @@ async function removeOwnedFixtureFleets(admin, users) {
 }
 
 async function cleanupMarkedFixtureUsers(admin) {
+  // One exact, previously verified orphan from a failed Test-only run. Its
+  // fleet was left behind because it contains an immutable delivery proof.
+  const { error: legacyOrphanError } = await admin.storage.from("incident-photos").remove([
+    "3d9dd6dd-c0ad-48cd-a5fe-fb04319dd33c/incidents/53138cdb-4170-4857-97f4-d2cb0785a654.jpg"
+  ]);
+  if (legacyOrphanError) {
+    throw new Error("Unable to remove the exact verified orphaned Test incident-photo object.");
+  }
   const users = await listMarkedFixtureUsers(admin);
-  // Delete only uniquely marked fixture fleets first; cascades remove their memberships and dependent rows.
-  await removeOwnedFixtureFleets(admin, users);
+  const retainedUsers = await identifyRetainedLegacyProofFixture(admin, users);
+  const retainedUserIds = new Set(retainedUsers);
+  await removeOwnedFixtureFleets(admin, users, retainedUserIds);
   for (const user of users) {
+    if (retainedUserIds.has(user.id)) continue;
     const { error } = await admin.auth.admin.deleteUser(user.id);
     if (error) throw new Error("Unable to delete a marked disposable TruckSafe Test Auth user.");
   }
   const remaining = await listMarkedFixtureUsers(admin);
-  if (remaining.length !== 0) {
-    throw new Error("Post-cleanup assertion failed: marked disposable Test Auth users remain.");
+  const unexpected = remaining.filter(user => !retainedUserIds.has(user.id));
+  if (unexpected.length !== 0 || remaining.length !== retainedUserIds.size) {
+    throw new Error("Post-cleanup assertion failed: unexpected marked disposable Test Auth users remain.");
   }
-  return users.length;
+  if (retainedUserIds.size) {
+    process.stdout.write("Retained one exact, verified legacy Test fleet and its seven marked Auth identities because its delivery proof is immutable; all current-run fixtures were cleaned.\\n");
+  }
+  return users.length - retainedUserIds.size;
 }
 
 async function createFixtureUser(admin, email, password) {
