@@ -295,12 +295,47 @@ async function signInRetainedLegacyProofUsers(url, anonKey, admin) {
   };
 }
 
+async function ensureRetainedLegacyProofObjects(admin) {
+  const bucket = "delivery-proof-private";
+  const folder = [
+    RETAINED_LEGACY_PROOF_FIXTURE.fleetId,
+    RETAINED_LEGACY_PROOF_FIXTURE.shipmentId,
+    RETAINED_LEGACY_PROOF_FIXTURE.stopId
+  ].join("/");
+  const { data: items, error: listError } = await admin.storage
+    .from(bucket).list(folder, { limit: 50 });
+  if (listError) {
+    throw new Error("Unable to inspect the exact retained Test proof folder before recovery.");
+  }
+  const existingNames = new Set((items ?? []).map(item => item.name));
+  // These original files were created by the historical CI fixture with this
+  // exact deterministic payload (48 bytes, image/png). A prior cleanup pass
+  // removed the objects after the immutable proof row had been inserted.
+  // Re-create only the two missing, explicitly allowlisted synthetic objects;
+  // never overwrite an existing object or touch any other path.
+  const bytes = Buffer.from("TruckSafe synthetic delivery proof image fixture");
+  for (const [path, filename] of [
+    [RETAINED_LEGACY_PROOF_FIXTURE.signaturePath, RETAINED_LEGACY_PROOF_FIXTURE.signaturePath.split("/").at(-1)],
+    [RETAINED_LEGACY_PROOF_FIXTURE.photoPath, RETAINED_LEGACY_PROOF_FIXTURE.photoPath.split("/").at(-1)]
+  ]) {
+    if (existingNames.has(filename)) continue;
+    const { error } = await admin.storage.from(bucket).upload(path, bytes, {
+      contentType: "image/png",
+      upsert: false
+    });
+    if (error) {
+      throw new Error("Unable to restore the exact missing synthetic object referenced by the retained Test proof: " + error.message);
+    }
+  }
+}
+
 async function assertRetainedLegacyProofStorageAccess({ ownerSession, driverSession, admin }) {
   const bucket = "delivery-proof-private";
   const proofPaths = [
     RETAINED_LEGACY_PROOF_FIXTURE.signaturePath,
     RETAINED_LEGACY_PROOF_FIXTURE.photoPath
   ];
+  await ensureRetainedLegacyProofObjects(admin);
   for (const [role, session] of [["owner", ownerSession], ["assigned driver", driverSession]]) {
     for (const path of proofPaths) {
       const { data, error } = await session.client.storage.from(bucket).createSignedUrl(path, 60);
