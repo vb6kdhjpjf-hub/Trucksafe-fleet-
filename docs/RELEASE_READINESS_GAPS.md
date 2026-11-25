@@ -2,47 +2,51 @@
 
 Updated: 2026-11-25
 
-This is a verification register, not a release approval. The application must remain unmerged and undeployed until the outstanding live checks and rollout gates below are accepted.
+This is a verification register, not a release approval. The application remains unmerged and undeployed. Production must remain unchanged until the separate migration, routing-safety, and release gates below are accepted.
 
-## Verified in CI on the current PR revision
+## Verified on the current candidate code
 
-- The validation job passed: production dependency audit, application/safety/workflow tests, Next.js production build, and isolated smoke tests.
-- The database integration job passed with the dedicated Test-project identity guard, rollback-only SQL suite, and fixture cleanup.
-- Live Auth **and private Storage** integration passed on the current candidate via dedicated Test-only push run `45666461146` on `test/current-candidate-auth-e2e`: signed sessions, fail-closed role/membership checks, local HTTP API checks, assigned-driver and owner proof uploads, signed reads, cross-fleet read/upload/delete denial, owner/driver delete denial, PDF MIME rejection, 10 MiB+1 upload rejection, and exact-path object/Auth fixture cleanup all succeeded. This is Test-only evidence, not a Production pass.
-- The rollback-only SQL suite now covers delivery-note issuance/idempotency/immutable snapshots, authorized signature exceptions, server-side 10 MiB per-photo and 40 MiB aggregate limits, and shipment-to-stop/cargo cascade cleanup. A scoped Storage DELETE policy plus client-side failure cleanup now removes only same-user, unreferenced proof uploads; referenced proof objects remain immutable.
-- Test-only schema provisioning added the missing daily-work/load, shipment/cargo, and delivery-proof modules plus fleet-scoped constraints. Test now has 25 public tables with RLS enabled on all of them; `delivery-proof-private` is private and restricted to PNG/JPEG/WebP, 10 MiB per object. All temporary fleets, shipments, proof objects, and Auth users were cleaned after run `45666461146`.
-- Test migration history now includes 13 explicitly named `test_*` provisioning records. This is intentionally not treated as migration-ledger reconciliation or a Production release sequence. Production was rechecked and remains unchanged: 12 public tables and no `delivery-proof-private` bucket.
-- Test Performance Advisor now reports no unindexed foreign keys and no duplicate indexes after adding child-side indexes and removing the redundant `vehicles_fleet_id_id_key` constraint (the separately named `vehicles_fleet_id_id_unique` remains and continues to back the fleet-scoped foreign keys). There are 37 unused-index INFO notices; no other indexes were removed without query-plan evidence. Security Advisor still reports 10 authenticated-executable `SECURITY DEFINER` RPCs (no anon EXECUTE grant); these are privileged write paths and remain subject to role/auth code review. Leaked-password protection remains disabled and is still an Auth hardening gate.
+The dedicated Test-only CI run [45676984131](https://github.com/vb6kdhjpjf-hub/Trucksafe-fleet-/actions/runs/45676984131) completed successfully on candidate commit `3d11a571188181eee26788c5e6647db1a3ab3b01`. All three jobs passed:
 
-## Outstanding evidence
+- **Validation:** dependency audit, application/safety/workflow tests, Next.js production build, and isolated smoke tests.
+- **Database integration:** the dedicated Test-project identity guard, rollback-only SQL suites, shipment/daily-load/delivery-document scenarios, and disposable Auth fixture cleanup.
+- **Live Auth and Storage:** seven disposable signed Auth identities; RLS and role checks; the actual Next.js HTTP route handlers; invalid-token and unassigned-user denial; immediate membership revocation and role demotion; cross-fleet BOLA checks; private Storage upload/read/delete behavior; MIME and size rejection; and exact-path fixture cleanup.
 
-| Area | Existing evidence | Required before release |
-|---|---|---|
-| Live Auth and RLS | Test-only run `45666461146` passed signed-token verification, role/membership fail-closed checks, local HTTP routes, and Auth fixture cleanup | Add browser-level Auth/session checks and keep Production Auth settings unchanged until separately approved |
-| Storage document access | Live Test-only run `45666461146` passed assigned-driver/owner upload, signed read, cross-fleet denial, immutable delete denial, PDF MIME rejection, >10 MiB rejection, and exact-path cleanup | Browser-level document viewing/download and Production configuration review; retain private bucket and narrow authenticated DELETE policy limited to the uploading user’s own unreferenced object; any object referenced by immutable delivery proof remains undeletable |
-| Browser workflows | Unit, API, smoke, and local HTTP route-handler tests | Browser E2E with owner/manager/dispatcher/driver roles, including task assignment, pre-trip checklist, trip start/finish, and delivery proof |
-| Driver/device experience | Responsive application build and code-level checks | Mobile viewport/browser pass, offline/network interruption behavior, GPS permission denial/recovery, and stale-location handling |
-| Routing safety | Geometry, source-evidence, vehicle-profile, quota, and fail-closed tests | Verified authoritative restriction data with provenance, freshness, geographic coverage, vehicle dimensions/weight constraints, and explicit safety approval; only then provider integration tests |
-| Production migration | Schema archive, catalog comparison, documented drift | Reconcile migration provenance; test a reviewed migration set on disposable local DB and then Test; exact SQL, backup, preflight, rollback, and maintenance plan for Production |
-| Auth hardening | Production advisor reported leaked-password protection disabled | Review and enable in Auth Dashboard only after dedicated regression checks for sign-in and password reset; do not change Production as part of this register |
+The live Storage assertions also cover both sides of the delivery-proof cleanup rule. A driver-owned signature and owner-owned photo are referenced by an immutable synthetic proof; the actual uploader cannot delete their referenced file, while each user can remove only their own unreferenced upload and cross-user deletion is denied. Temporary objects are removed by exact path.
 
-## Required live Auth execution
+## Test-project state
 
-The workflow intentionally permits live Auth only on direct pushes to `test/isolated-e2e-ci`, the dedicated candidate-validation branch `test/current-candidate-auth-e2e`, or the separately guarded routing-fix test branch; manual dispatch is limited to `test/isolated-e2e-ci` with `confirm_test_auth=true`. It requires:
+The hosted Supabase Test project now has 25 public tables, with RLS enabled on all 25. Catalog review reports 48 authenticated public-table policies and no `anon` public-table policies. The private `delivery-proof-private` bucket is Test-only, limited to PNG/JPEG/WebP and 10 MiB per object. Test health advisor is clean; performance advisor reports 37 unused-index INFO notices and no unindexed-FK findings. Unused indexes were not removed without query-plan evidence.
 
-- `SUPABASE_TEST_URL`
-- `SUPABASE_TEST_ANON_KEY`
-- `SUPABASE_TEST_SERVICE_ROLE_KEY`
+One explicitly marked legacy Test fixture remains because an earlier failed CI run created an immutable delivery-proof record. The exact synthetic fleet, shipment, stop, proof, two referenced files, and only the two required Auth identities (owner and assigned driver) are preserved for the signed-JWT immutability test; the other five marked Auth identities are cleaned. The files are restored only at their exact allowlisted paths through their original signed uploader identities. No immutable trigger is disabled and no proof record is deleted.
 
-The workflow's Auth job builds with routing providers disabled and coverage approval false, binds the app server to loopback, and removes the service-role key from the server process. Its fixture uses unique markers and cleanup-only logic. Never substitute Production secrets or expose secret values in logs/chat.
+The Test Security Advisor still warns about 10 authenticated `SECURITY DEFINER` RPCs. Catalog/code review shows pinned empty `search_path`, `auth.uid()` checks, and fleet-role checks; the shipment-result RPC also validates assigned-driver access. The two additional `SECURITY DEFINER` functions are trigger-only and not executable by `anon` or `authenticated`. These are intentional privileged transaction boundaries, not blanket grants. Leaked-password protection remains disabled and was not changed; enable it only after separate sign-in and password-reset regression checks.
+
+## Production remains untouched
+
+Read-only verification confirms the Production project still has 12 public tables, 35 migration-history rows, no shipment/daily-work/delivery-proof module tables, and no `delivery-proof-private` bucket. No Production schema, Auth setting, Storage bucket, object, or user was changed. Production performance review previously identified two unindexed foreign keys (`road_restrictions.verified_by` and `vehicles.registration_verified_by`); they were not changed without workload/query-plan evidence.
+
+The Test feature migrations are not a Production rollout plan. Production migration history and tracked migration files have substantial provenance/version drift. Do not replay the complete tracked migration chain against Production. A separate evidence-based migration plan is required, including provenance reconciliation, exact SQL, preflight counts, backup, rollback, and maintenance approval.
+
+## Outstanding evidence before release
+
+| Area | Required work |
+|---|---|
+| Browser and device E2E | Real browser tests for owner/manager/dispatcher/driver workflows, including task assignment, pre-trip inspection, trip start/finish, shipment and delivery proof. |
+| Mobile and network behavior | Mobile viewport pass; offline and intermittent-network retries; GPS permission denial/recovery; device-level GPS accuracy and stale-location behavior. |
+| Routing safety | Obtain and verify authoritative truck restrictions with provenance, licensing, freshness, and geographic coverage; validate dimensions, gross weight, axle and trailer constraints; complete independent safety review. |
+| Routing provider | PTV/HERE integration remains disabled. No provider or restriction-coverage approval is implied by the existing geometry and fail-closed tests. |
+| Production migration | Reconcile Test/Production migration provenance and prepare a separate reviewed Production plan; no schema rollout is authorized by this register. |
+| Auth hardening | Review leaked-password protection and complete sign-in/password-reset regression tests before enabling it. |
+| Production performance | Assess the two unindexed Production foreign keys using representative query plans before deciding whether to add indexes. |
 
 ## Release gates
 
-1. Live Auth and private Storage are verified for the current candidate by Test-only run `45666461146`; browser/device E2E and broader device/network recovery checks remain outstanding.
-2. No routing provider is enabled until authoritative restriction coverage and safety review are approved.
-3. No hosted schema, Auth, Storage, or data mutation is performed without a separately reviewed change plan and explicit approval.
-4. No merge or deployment is implied by green CI; browser E2E, production configuration review, and rollback readiness remain independent gates.
+1. The successful Test-only run above does not prove browser E2E, Production configuration, or live routing-provider behavior.
+2. No routing provider is enabled until authoritative restriction coverage and explicit safety approval exist.
+3. No Production schema, Auth, Storage, or data mutation is performed without a separately reviewed plan and explicit approval.
+4. Green CI does not imply merge or deployment. Production rollout, browser/device verification, and rollback readiness remain independent gates.
 
 ## Current disposition
 
-**Not release-ready.** Automated application, rollback-only database integration, and live Test Auth/Storage checks are green. Browser/device E2E, authoritative routing coverage, leaked-password protection review, migration provenance reconciliation, and Production rollout approval remain outstanding.
+**Not release-ready.** Application, rollback-only database, live Auth, and live Test Storage checks are green. Browser/device E2E, authoritative truck-restriction coverage, Production migration reconciliation, Auth hardening, and Production rollout approval remain outstanding.

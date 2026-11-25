@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - test/isolated-e2e-ci
+      - test/current-candidate-auth-e2e
       - fix/physical-clearance-routing-gate
       - chore/reproducible-supabase-local-env
   pull_request:
@@ -128,6 +129,7 @@ jobs:
     if: >-
       (github.event_name == 'push' &&
        (github.ref == 'refs/heads/test/isolated-e2e-ci' ||
+        github.ref == 'refs/heads/test/current-candidate-auth-e2e' ||
         github.ref == 'refs/heads/fix/physical-clearance-routing-gate')) ||
       (github.event_name == 'workflow_dispatch' &&
        github.ref == 'refs/heads/test/isolated-e2e-ci' &&

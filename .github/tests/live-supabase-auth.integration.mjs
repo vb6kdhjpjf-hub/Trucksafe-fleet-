@@ -80,7 +80,10 @@ async function identifyRetainedLegacyProofFixture(admin, users) {
   const expectedEmails = new Set(RETAINED_LEGACY_FIXTURE_ROLES.map(
     role => `trucksafe-ci-${role}${suffix}`
   ));
-  if (retainedUsers.length !== expectedEmails.size ||
+  // The first cleanup attempt may see all seven historical fixture users;
+  // after a partial or successful cleanup, only the owner and driver remain.
+  // Any in-between subset is also safe, provided every identity is allowlisted.
+  if (retainedUsers.length < 2 || retainedUsers.length > expectedEmails.size ||
       retainedUsers.some(user => !expectedEmails.has(user.email) ||
         user.app_metadata?.trucksafe_ci_fixture !== FIXTURE_MARKER)) {
     throw new Error("Refusing to preserve a legacy Test fixture: its exact Auth identities do not match the approved immutable-proof marker.");
@@ -149,12 +152,10 @@ async function identifyRetainedLegacyProofFixture(admin, users) {
     throw new Error("Refusing to preserve a legacy Test fixture: unexpected immutable delivery notes were found.");
   }
 
-  // The signed-JWT Storage integration below verifies that the exact referenced
-  // signature and photo objects still exist and are readable under their real roles.
-
-  return retainedUsers.map(user => user.id);
+  // Only the owner and assigned driver are required to preserve and exercise
+  // the immutable proof. Any other allowlisted legacy accounts are removed.
+  return [owner.id, driver.id];
 }
-
 async function removeOwnedFixtureFleets(admin, users, retainedUserIds = new Set()) {
   for (const user of users) {
     const { data: fleets, error: listError } = await admin
@@ -221,19 +222,47 @@ async function cleanupMarkedFixtureUsers(admin) {
   for (const user of users) {
     if (retainedUserIds.has(user.id)) continue;
     const { error } = await admin.auth.admin.deleteUser(user.id);
-    if (error) throw new Error("Unable to delete a marked disposable TruckSafe Test Auth user.");
+    if (error) {
+      const { data: stillPresent, error: lookupError } = await admin.auth.admin.getUserById(user.id);
+      if (!lookupError && stillPresent?.user) {
+        throw new Error("Unable to delete a marked disposable TruckSafe Test Auth user.");
+      }
+    }
   }
-  const remaining = await listMarkedFixtureUsers(admin);
+
+  // Auth Admin listUsers is eventually consistent. Retry deletion of only the
+  // exact, still-marked test identities before declaring cleanup complete.
+  let remaining = [];
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    remaining = await listMarkedFixtureUsers(admin);
+    const unexpected = remaining.filter(user => !retainedUserIds.has(user.id));
+    if (unexpected.length === 0 && remaining.length === retainedUserIds.size) break;
+    for (const user of unexpected) {
+      if (!isTruckSafeFixtureUser(user)) {
+        throw new Error("Refusing cleanup retry: a remaining Auth identity is not an exact TruckSafe Test fixture.");
+      }
+      const { error } = await admin.auth.admin.deleteUser(user.id);
+      if (error) {
+        const { data: stillPresent, error: lookupError } = await admin.auth.admin.getUserById(user.id);
+        if (!lookupError && stillPresent?.user) {
+          throw new Error("Unable to retry deletion of a marked disposable TruckSafe Test Auth user.");
+        }
+      }
+    }
+    if (attempt < 4) {
+      await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+    }
+  }
+  remaining = await listMarkedFixtureUsers(admin);
   const unexpected = remaining.filter(user => !retainedUserIds.has(user.id));
   if (unexpected.length !== 0 || remaining.length !== retainedUserIds.size) {
     throw new Error("Post-cleanup assertion failed: unexpected marked disposable Test Auth users remain.");
   }
   if (retainedUserIds.size) {
-    process.stdout.write("Retained one exact, verified legacy Test fleet and its seven marked Auth identities because its delivery proof is immutable; all current-run fixtures were cleaned.\\n");
+    process.stdout.write("Retained the exact legacy Test fleet and its two required Auth identities (owner and assigned driver); all other marked fixtures were cleaned.\\n");
   }
   return users.length - retainedUserIds.size;
 }
-
 async function createFixtureUser(admin, email, password) {
   const { data, error } = await admin.auth.admin.createUser({
     email,
@@ -295,7 +324,7 @@ async function signInRetainedLegacyProofUsers(url, anonKey, admin) {
   };
 }
 
-async function ensureRetainedLegacyProofObjects(admin) {
+async function ensureRetainedLegacyProofObjects({ admin, ownerSession, driverSession }) {
   const bucket = "delivery-proof-private";
   const folder = [
     RETAINED_LEGACY_PROOF_FIXTURE.fleetId,
@@ -308,34 +337,52 @@ async function ensureRetainedLegacyProofObjects(admin) {
     throw new Error("Unable to inspect the exact retained Test proof folder before recovery.");
   }
   const existingNames = new Set((items ?? []).map(item => item.name));
-  // These original files were created by the historical CI fixture with this
-  // exact deterministic payload (48 bytes, image/png). A prior cleanup pass
-  // removed the objects after the immutable proof row had been inserted.
-  // Re-create only the two missing, explicitly allowlisted synthetic objects;
-  // never overwrite an existing object or touch any other path.
+  const proofEntries = [
+    {
+      path: RETAINED_LEGACY_PROOF_FIXTURE.signaturePath,
+      filename: RETAINED_LEGACY_PROOF_FIXTURE.signaturePath.split("/").at(-1),
+      uploader: driverSession
+    },
+    {
+      path: RETAINED_LEGACY_PROOF_FIXTURE.photoPath,
+      filename: RETAINED_LEGACY_PROOF_FIXTURE.photoPath.split("/").at(-1),
+      uploader: ownerSession
+    }
+  ];
+  const existingPaths = proofEntries
+    .filter(entry => existingNames.has(entry.filename))
+    .map(entry => entry.path);
+
+  // These are exclusively synthetic CI files. A prior service-role recovery
+  // left owner_id NULL, which made delete-denial assertions inconclusive.
+  // Re-create only these two allowlisted objects through the original signed
+  // uploader identities: driver owns the signature, fleet owner owns the photo.
+  if (existingPaths.length) {
+    const { data: removed, error: removeError } = await admin.storage
+      .from(bucket).remove(existingPaths);
+    if (removeError || removed?.length !== existingPaths.length) {
+      throw new Error("Unable to replace the exact retained synthetic proof files with correctly owned Test uploads.");
+    }
+  }
+
   const bytes = Buffer.from("TruckSafe synthetic delivery proof image fixture");
-  for (const [path, filename] of [
-    [RETAINED_LEGACY_PROOF_FIXTURE.signaturePath, RETAINED_LEGACY_PROOF_FIXTURE.signaturePath.split("/").at(-1)],
-    [RETAINED_LEGACY_PROOF_FIXTURE.photoPath, RETAINED_LEGACY_PROOF_FIXTURE.photoPath.split("/").at(-1)]
-  ]) {
-    if (existingNames.has(filename)) continue;
-    const { error } = await admin.storage.from(bucket).upload(path, bytes, {
+  for (const entry of proofEntries) {
+    const { error } = await entry.uploader.client.storage.from(bucket).upload(entry.path, bytes, {
       contentType: "image/png",
       upsert: false
     });
     if (error) {
-      throw new Error("Unable to restore the exact missing synthetic object referenced by the retained Test proof: " + error.message);
+      throw new Error("Unable to re-upload the exact synthetic proof file through its original Test identity: " + error.message);
     }
   }
 }
-
 async function assertRetainedLegacyProofStorageAccess({ ownerSession, driverSession, admin }) {
   const bucket = "delivery-proof-private";
   const proofPaths = [
     RETAINED_LEGACY_PROOF_FIXTURE.signaturePath,
     RETAINED_LEGACY_PROOF_FIXTURE.photoPath
   ];
-  await ensureRetainedLegacyProofObjects(admin);
+  await ensureRetainedLegacyProofObjects({ admin, ownerSession, driverSession });
   for (const [role, session] of [["owner", ownerSession], ["assigned driver", driverSession]]) {
     for (const path of proofPaths) {
       const { data, error } = await session.client.storage.from(bucket).createSignedUrl(path, 60);
@@ -345,10 +392,16 @@ async function assertRetainedLegacyProofStorageAccess({ ownerSession, driverSess
     }
   }
 
-  for (const [role, session] of [["owner", ownerSession], ["assigned driver", driverSession]]) {
-    const result = await session.client.storage.from(bucket).remove(proofPaths);
+  const immutableDeleteAttempts = [
+    ["assigned driver", driverSession, RETAINED_LEGACY_PROOF_FIXTURE.signaturePath],
+    ["fleet owner", ownerSession, RETAINED_LEGACY_PROOF_FIXTURE.photoPath],
+    ["fleet owner cross-user", ownerSession, RETAINED_LEGACY_PROOF_FIXTURE.signaturePath],
+    ["assigned driver cross-user", driverSession, RETAINED_LEGACY_PROOF_FIXTURE.photoPath]
+  ];
+  for (const [role, session, path] of immutableDeleteAttempts) {
+    const result = await session.client.storage.from(bucket).remove([path]);
     assert.equal(result.error, null, `${role} immutable-proof deletion should be RLS-filtered rather than leak a provider error`);
-    assert.deepEqual(result.data, [], `${role} must not delete any object referenced by the immutable delivery proof`);
+    assert.deepEqual(result.data, [], `${role} must not delete the referenced delivery-proof object`);
   }
 
   const folder = [
