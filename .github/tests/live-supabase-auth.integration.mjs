@@ -501,15 +501,18 @@ async function main() {
       }
     }
 
+    const deliveryInvalidMimePath = deliveryPrefix + runId + "-invalid.pdf";
+    const deliveryOversizePath = deliveryPrefix + runId + "-oversized.png";
+    deliveryProofFixturePaths.push(deliveryInvalidMimePath, deliveryOversizePath);
     const rejectedMimeUpload = await ownerSession.client.storage
-      .from("delivery-proof-private").upload(deliveryPrefix + runId + "-invalid.pdf", Buffer.from("not an image"), {
+      .from("delivery-proof-private").upload(deliveryInvalidMimePath, Buffer.from("not an image"), {
         contentType: "application/pdf", upsert: false
       });
     assert.ok(rejectedMimeUpload.error, "Delivery-proof bucket must reject non-image MIME types");
 
     const oversizedBytes = Buffer.alloc(10 * 1024 * 1024 + 1, 0x61);
     const rejectedOversizeUpload = await ownerSession.client.storage
-      .from("delivery-proof-private").upload(deliveryPrefix + runId + "-oversized.png", oversizedBytes, {
+      .from("delivery-proof-private").upload(deliveryOversizePath, oversizedBytes, {
         contentType: "image/png", upsert: false
       });
     assert.ok(rejectedOversizeUpload.error, "Delivery-proof bucket must enforce its 10 MiB per-object limit");
@@ -542,6 +545,7 @@ async function main() {
     // An assigned driver may remove only their own unreferenced failed-upload
     // object. The fleet owner cannot delete an object uploaded by that driver.
     const deliveryOrphanPath = deliveryPrefix + runId + "-orphan.png";
+    deliveryProofFixturePaths.push(deliveryOrphanPath);
     const { error: orphanUploadError } = await deliveryDriverSession.client.storage
       .from("delivery-proof-private").upload(deliveryOrphanPath, proofBytes, {
         contentType: "image/png", upsert: false
