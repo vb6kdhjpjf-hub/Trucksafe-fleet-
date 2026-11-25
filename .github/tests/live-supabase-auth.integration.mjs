@@ -539,6 +539,30 @@ async function main() {
       });
     assert.ok(fleetBDeliveryUpload.error, "Fleet B owner must not upload into Fleet A's delivery-proof path");
 
+    // An assigned driver may remove only their own unreferenced failed-upload
+    // object. The fleet owner cannot delete an object uploaded by that driver.
+    const deliveryOrphanPath = deliveryPrefix + runId + "-orphan.png";
+    const { error: orphanUploadError } = await deliveryDriverSession.client.storage
+      .from("delivery-proof-private").upload(deliveryOrphanPath, proofBytes, {
+        contentType: "image/png", upsert: false
+      });
+    if (orphanUploadError) {
+      throw new Error("Assigned driver could not upload a disposable unreferenced proof object: " + orphanUploadError.message);
+    }
+    const ownerOrphanDelete = await ownerSession.client.storage
+      .from("delivery-proof-private").remove([deliveryOrphanPath]);
+    assert.equal(ownerOrphanDelete.error, null);
+    assert.deepEqual(ownerOrphanDelete.data, [], "Fleet A owner must not delete a proof object uploaded by a different user");
+    const driverOrphanDelete = await deliveryDriverSession.client.storage
+      .from("delivery-proof-private").remove([deliveryOrphanPath]);
+    assert.equal(driverOrphanDelete.error, null);
+    assert.equal(driverOrphanDelete.data?.length, 1, "Assigned driver must be able to clean up their own unreferenced upload");
+    const { data: orphanRemainder, error: orphanListError } = await admin.storage
+      .from("delivery-proof-private").list(deliveryPrefix, { search: runId + "-orphan.png", limit: 5 });
+    if (orphanListError || orphanRemainder?.some(item => item.name === runId + "-orphan.png")) {
+      throw new Error("The authorized orphan cleanup did not remove the exact disposable proof object.");
+    }
+
     const driverDeliveryDelete = await deliveryDriverSession.client.storage
       .from("delivery-proof-private").remove([deliverySignaturePath]);
     assert.equal(driverDeliveryDelete.error, null);
@@ -554,7 +578,7 @@ async function main() {
     if (ownerDeliveryStillReadable.error || !ownerDeliveryStillReadable.data?.signedUrl) {
       throw new Error("The delivery signature became inaccessible after denied delete attempts.");
     }
-    process.stdout.write("Live delivery-proof Storage passed: signed private uploads, owner read, cross-fleet read/upload/delete denial, owner delete denial, and exact fixture cleanup.\\n");
+    process.stdout.write("Live delivery-proof Storage passed: assigned-driver/owner uploads and reads, cross-fleet denial, immutable proof delete denial, own-unreferenced cleanup, MIME/size rejection, and exact fixture cleanup.\\n");
 
 
     const crossFleetPhotoUrl = await secondFleetOwnerSession.client.storage
