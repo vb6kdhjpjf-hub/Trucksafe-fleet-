@@ -564,3 +564,16 @@ The Production catalog currently has 12 public base tables, 32 public RLS polici
 - `vehicle-registrations`: private, 8 MiB limit, PDF/JPEG/PNG/WebP.
 
 This reinforces the safe disposition: do not use the repository's 46-file chain as an automatic catch-up migration against Production, and do not rewrite the Production ledger to match filenames. The next reconciliation must map the 24 Production-only names to their original SQL/provenance and compare effective catalog objects against the local replay. All queries were read-only; no hosted changes were made.
+
+
+### Production RLS, Storage and privileged RPC review — read-only, 25 November 2026
+
+Further Production catalog inspection confirmed:
+- All 32 public RLS policies target roles other than `anon`; no public `anon` policies were found.
+- No Storage object policies target `anon`.
+- Both Production buckets are private and retain the existing limits/allowlists recorded above.
+- The two Security Advisor SECURITY DEFINER RPCs, `finish_trip` and `start_trip_with_inspection`, both pin `search_path = ''`, deny EXECUTE to `anon`, and grant EXECUTE to `authenticated`.
+- Read-only inspection of both Production function bodies confirms explicit `auth.uid()` checks, active fleet membership, fleet/driver or manager authorization, task/vehicle association, and trip-state validation. The start-trip function additionally validates the complete seven-item checklist and compliance dates before creating a trip. These are intended privileged transaction boundaries; retain them and do not bulk-revoke authenticated EXECUTE.
+- The two other public functions with apparent `anon` EXECUTE are trigger-returning functions (`guard_road_restriction_verification`, `set_updated_at`), not application RPC entry points. No anonymous public RLS or Storage policy path was identified in this check.
+
+The Auth advisor's leaked-password-protection warning remains the only clear user-facing Auth hardening item. No Auth settings were changed; enablement should be coordinated with an Auth regression check. All checks above were read-only.
