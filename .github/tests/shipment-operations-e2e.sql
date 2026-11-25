@@ -396,6 +396,19 @@ begin
  ) then
   raise exception 'Scoped authenticated delivery proof read policy is missing';
  end if;
+ if not exists(
+  select 1 from pg_policies
+  where schemaname='storage' and tablename='objects'
+   and policyname='delivery_proof_objects_delete_own_unreferenced'
+   and cmd='DELETE' and roles = array['authenticated']::name[]
+   and qual like '%delivery-proof-private%'
+   and qual like '%owner_id%'
+   and qual like '%delivery_proofs%'
+   and qual like '%is_active_assigned_fleet_driver%'
+   and qual like '%has_fleet_role%'
+ ) then
+  raise exception 'Narrow own-unreferenced delivery proof cleanup policy is missing';
+ end if;
  insert into pg_temp.shipment_test_results
  values('delivery proof storage is private, type-limited and protected by scoped fleet policies','PASS');
 end
