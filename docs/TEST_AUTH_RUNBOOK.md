@@ -35,7 +35,7 @@ The SQL RLS integration suite remains rollback-only and uses synthetic JWT claim
 
 ## Important workflow trigger distinction
 
-The `auth-integration` job is intentionally restricted to a direct `push` on `test/isolated-e2e-ci`, or a manual dispatch on that branch with explicit confirmation. Pull-request events do not receive the live Test Auth secrets.
+The `auth-integration` job is intentionally restricted to direct pushes on `test/isolated-e2e-ci` and the dedicated current-candidate validation branch `test/current-candidate-auth-e2e` (plus the separately guarded routing-fix test branch), or a manual dispatch on `test/isolated-e2e-ci` with explicit confirmation. Pull-request events do not receive the live Test Auth secrets.
 
 
 The HTTP checks run against a local production-mode Next.js server on 127.0.0.1, not a deployed server. They stop at deliberately disabled configuration/safety gates; they do not test paid provider integrations, vehicle-specific route calculation, post-gate quota behavior, browser sessions, or production deployment.
