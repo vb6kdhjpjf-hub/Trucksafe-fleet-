@@ -545,3 +545,22 @@ It also reports 35 unused-index notices. These are informational on a database w
 Production is reachable again, but its 35-row migration history is not yet reconciled with the 46-file tracked chain. The 5 November schema-only snapshot remains the recovered core baseline candidate; its content matches the current 12-table core inventory, but it does not encode a cryptographic project ref. The missing feature modules are not present in Production and must not be applied as an unreviewed batch.
 
 Next safe work is a read-only object-level comparison of Production against the disposable local 46-migration replay, including table/column/constraint/index/policy/function/trigger/Storage differences and exact migration-name/version mapping. Keep both hosted projects unchanged until the diff and a reversible Test-only rollout plan are reviewed. No hosted schema/data mutation, Auth setting change, grant change, migration, merge, or deployment was performed in this audit.
+
+
+### Production migration-ledger comparison — read-only, 25 November 2026
+
+A direct metadata comparison was completed between the 35 Production migration-history rows and the 46 SQL files in `chore/reproducible-supabase-local-env`:
+
+| Item | Production | Tracked branch |
+|---|---:|---:|
+| Rows/files | 35 | 46 |
+| Exact version + name matches | 6 | 6 |
+| Shared logical names | 10 | 10 |
+
+The comparison found 24 distinct Production history names not represented by a tracked migration filename, and 36 tracked migration names absent from Production history. Thus Production is not simply eleven migrations behind the branch. Its ledger represents a materially different historical chain, including earlier bootstrap/core fleet steps and several differently named/renumbered road-safety and trip-workflow steps.
+
+The Production catalog currently has 12 public base tables, 32 public RLS policies, 22 public/private application functions, 17 public triggers, 98 public constraints, and two private Storage buckets. The two buckets are:
+- `incident-photos`: private, 5 MiB limit, JPEG/PNG/WebP.
+- `vehicle-registrations`: private, 8 MiB limit, PDF/JPEG/PNG/WebP.
+
+This reinforces the safe disposition: do not use the repository's 46-file chain as an automatic catch-up migration against Production, and do not rewrite the Production ledger to match filenames. The next reconciliation must map the 24 Production-only names to their original SQL/provenance and compare effective catalog objects against the local replay. All queries were read-only; no hosted changes were made.
