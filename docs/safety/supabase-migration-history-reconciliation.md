@@ -469,3 +469,41 @@ Before any hosted Test migration:
 5. Only after explicit approval, apply the controlled plan to Test. Production remains out of scope.
 
 No hosted database changes, grants, migrations, merge, or deployment were performed in this follow-up.
+
+
+## Feature-module SQL dependency and rollout preflight — 25 November 2026
+
+The three missing module migrations were reviewed beyond their grants, including function authorization, foreign-key dependencies, storage behavior, and partial-rollout hazards.
+
+### Daily work and load ledger
+
+- Depends on existing `public.fleets`, `public.drivers`, `public.vehicles`, `auth.users`, `private.has_fleet_role`, and verified vehicle-registration fields including `registration_verification_status`, `empty_weight_kg`, `gross_weight_kg`, and `weight_per_axle_kg`.
+- Adds unique fleet-scoped vehicle/driver keys or indexes needed by its composite foreign keys. Confirm existing equivalent constraints/indexes and duplicates before rollout; do not assume an `IF NOT EXISTS` index is equivalent to a named unique constraint required by later migrations.
+- The create/activate/record RPCs authenticate the caller and check fleet roles or assigned-driver identity. The plan creation additionally requires an active driver, available vehicle, verified registration, matching vehicle weight limits, and recent referenced initial gross/axle measurements.
+- Table writes are deliberately routed through RPCs; direct table privileges are revoked. The load ledger is append-only by design.
+
+### Shipments and cargo operations
+
+- Depends on `public.fleets`, `public.drivers`, `public.vehicles`, `auth.users`, and `private.has_fleet_role`; it also ensures fleet-scoped driver/vehicle unique keys exist for composite foreign keys.
+- Shipment creation is restricted to owner/fleet-manager/dispatcher roles and validates active driver/available vehicle, line quantities, stop allocations, and allocation totals.
+- Stop-result recording checks either the authorized fleet role or the identity of the assigned driver, locks the shipment/stop rows, and records idempotent events.
+- The five tables expose authenticated SELECT through RLS; direct writes are revoked and mutations use the two authenticated-only RPCs.
+
+### Delivery notes and proof of delivery
+
+- Depends on the shipment tables and their fleet-scoped foreign keys, `public.fleets`, `public.drivers`, `auth.users`, `private.has_fleet_role`, and Supabase Storage (`storage.buckets` and `storage.objects`).
+- Creates a private bucket named `delivery-proof-private` with a 10 MiB limit and PNG/JPEG/WebP allowlist. It uses `ON CONFLICT(id) DO UPDATE` to force those settings if that bucket ID already exists. This is a real configuration write, not a harmless no-op. Before applying, verify the bucket does not already contain objects or an intentionally different configuration; preserve/backup any existing object data and confirm the target settings are approved.
+- Adds two Storage policies for fleet/assigned-driver scoped upload and read. The object path must have four segments, with fleet, shipment, and stop IDs in the first three positions. Verify no existing policy names collide and that the intended path format matches the client uploader.
+- Delivery proof requires uploaded objects in that bucket, a completed stop, and either a recipient signature or an owner/manager-authorized documented exception. Issued proofs, notes, and adjustments are protected by immutable-record triggers; corrections/cancellations are append-only.
+- The migration's bucket upsert and policy creation need explicit preflight. Do not re-run the migration partially or manually create objects/policies to bypass migration history.
+
+### Rollout implications
+
+1. Confirm the complete prerequisite schema and helper-function signatures on the target DB before executing any of the three migrations.
+2. Check all named constraints/indexes and all policy/bucket names for collisions. For `delivery-proof-private`, inspect bucket configuration and object inventory before allowing the migration's upsert to run.
+3. Verify Storage API/client path construction uses `<fleet UUID>/<shipment UUID>/<stop UUID>/<filename>`; test upload, read, and unauthorized cross-fleet denial in a disposable environment.
+4. Apply the three migrations only in a transaction-capable, backed-up Test rollout after resolving the ledger divergence. Verify all 12 tables, 16 public RLS policies, two Storage policies, bucket privacy/limits, eight authenticated-only RPC grants, and trigger immutability after application.
+5. Test the daily-work, shipment, and delivery-note flows using at least two fleets and separate manager/dispatcher/driver accounts. Include cross-fleet IDs, unassigned drivers, replayed idempotency keys, invalid measurements, and storage path substitution.
+6. Do not infer that successful SQL application alone proves the UI flows work. The app integration and Storage upload/read paths must be exercised end-to-end.
+
+This review is static SQL analysis of the tracked branch files, not execution against a hosted DB. It does not resolve Test's migration ledger or certify Production compatibility. No hosted DB, Storage bucket, policy, grant, or migration was changed.
