@@ -577,3 +577,17 @@ Further Production catalog inspection confirmed:
 - The two other public functions with apparent `anon` EXECUTE are trigger-returning functions (`guard_road_restriction_verification`, `set_updated_at`), not application RPC entry points. No anonymous public RLS or Storage policy path was identified in this check.
 
 The Auth advisor's leaked-password-protection warning remains the only clear user-facing Auth hardening item. No Auth settings were changed; enablement should be coordinated with an Auth regression check. All checks above were read-only.
+
+
+### Test environment and latest CI confirmation — 25 November 2026
+
+The dedicated Test project `yxxrgblpqzhnnyojbwcr` is also `ACTIVE_HEALTHY`. Its current public catalog contains 13 tables (all with RLS enabled), including `vehicle_special_equipment`; Production currently has 12 and does not contain that table. This confirms that the Test environment has a newer feature slice, but does not make its full schema or migration ledger a safe source for direct Production catch-up.
+
+Test Security Advisor continues to flag only the two expected authenticated SECURITY DEFINER trip RPCs, and Test Health Advisor is clean. These warnings are intentional review prompts for privileged RPCs, not instructions to remove the authenticated entry points. The function-body and privilege review documented above remains the basis for retaining them pending explicit product/API review.
+
+Latest CI for commit `343dcd745e5ae0acd5f4fecc60508c0c44366d0a` completed successfully (run `45658092082`):
+- `validate`: passed dependency install, production dependency audit, app/safety/workflow tests, Next.js build, and isolated concurrent smoke tests.
+- `database-integration`: passed target validation against the dedicated Test project, rollback-only database integration tests, and fixture cleanup.
+- `auth-integration`: skipped by workflow policy; no live Auth end-to-end pass is claimed.
+
+This is useful evidence for the application and rollback-only database tests on Test, but it does not validate the Production migration path, external routing provider integration, or live Auth flows. Production and Test remain unchanged by this validation.
