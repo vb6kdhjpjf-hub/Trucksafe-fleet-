@@ -255,3 +255,70 @@ The 12-table difference is now mapped to three tracked migrations. Each migratio
 Content inspection confirms these three files create exactly 12 public tables, enable RLS on them, and define 16 public policies plus two Storage object policies. This accounts exactly for the 12-table difference between Test (13 public tables) and the clean local replay (25 public tables). It also accounts for a substantial part of the policy-count gap; the remaining policy differences must be reconciled against the other missing or version-divergent migrations.
 
 This is now a concrete, content-backed explanation for the missing business modules in Test: daily work/load ledger, shipments/cargo operations, and delivery notes/proof of delivery. It does **not** authorize applying the three migrations to hosted Test; the remaining version/name/content divergence and dependency ordering still need to be resolved first.
+
+
+## Version/name reconciliation and duplicate-history analysis — 25 November 2026
+
+The complete Test history was compared programmatically against all 46 tracked migration filenames on this branch. Results:
+
+| Comparison | Count |
+|---|---:|
+| Test history rows | 43 |
+| Tracked migration files | 46 |
+| Exact version + name matches | 4 |
+| Shared names with different versions | 21 |
+| Distinct Test-only names not present in the tracked chain | 18 |
+| Duplicate Test history rows beyond one row per name | 2 |
+
+The four exact matches are:
+- `20261110145233_add_truck_route_api_rate_limit`
+- `20261115050950_add_lane_level_bridge_clearance_evidence`
+- `20261115051108_harden_verified_bridge_clearance_not_null_guards`
+- `20261115051529_require_complete_verified_bridge_measurements`
+
+The 21 shared names whose versions differ are:
+- `add_geospatial_road_restrictions`: Test `20261108193434`, repo `20261108120000`
+- `add_verified_by_fk_indexes`: Test `20261112140904`, repo `20261111160000`
+- `add_vehicle_fleet_composite_key`: Test `20261113102129`, repo `20261113100000`
+- `add_vehicle_special_equipment_profiles`: Test `20261113102143`, repo `20261113101000`
+- `harden_special_equipment_review_and_read_access`: Test `20261113102345`, repo `20261113102000`
+- `invalidate_special_equipment_after_body_change`: Test `20261113102510`, repo `20261113103000`
+- `guard_special_equipment_evidence_fields`: Test `20261113102636`, repo `20261113104000`
+- `align_special_equipment_rpc_with_private_schema_pattern`: Test `20261113102744`, repo `20261113105000`
+- `secure_body_change_evidence_invalidation_trigger`: Test `20261113103003`, repo `20261113106000`
+- `revoke_public_execution_on_body_change_trigger`: Test `20261113103222`, repo `20261113107000`
+- `require_low_loader_special_equipment_review`: Test `20261113103506`, repo `20261113108000`
+- `enforce_complete_vehicle_working_dimensions`: Test `20261113104235`, repo `20261113109000`
+- `enforce_single_active_trip_assignments`: Test `20261114192340`, repo `20261114130000`
+- `prevent_driver_deactivation_during_active_trip`: Test `20261114194136` and `20261114194500`, repo `20261114141000`
+- `enforce_vehicle_active_trip_status`: Test `20261114194351` and `20261114194429`, repo `20261114143000`
+- `protect_referenced_private_evidence`: Test `20261115045157`, repo `20261115100000`
+- `guard_vehicle_registration_insert_verification`: Test `20261115045203`, repo `20261115113000`
+- `use_israel_local_date_for_trip_compliance`: Test `20261115045210`, repo `20261115120000`
+- `index_vehicle_special_equipment_evidence_verifier`: Test `20261115050255`, repo `20261114150000`
+
+### Duplicate groups: current catalog state
+
+Test contains two rows each for:
+- `prevent_driver_deactivation_during_active_trip`: `20261114194136`, `20261114194500`.
+- `enforce_vehicle_active_trip_status`: `20261114194351`, `20261114194429`.
+
+The tracked branch has one canonical file for each logical migration:
+- `20261114141000_prevent_driver_deactivation_during_active_trip.sql`
+- `20261114143000_enforce_vehicle_active_trip_status.sql`
+
+A read-only inspection of current Test triggers confirms one active driver consistency trigger on `drivers`, one on `trips`, and one vehicle consistency trigger on `vehicles`, with the expected private trigger functions. This suggests the duplicate history rows do not currently manifest as duplicate triggers. It does **not** prove which historical SQL text was executed for each version: Supabase migration history stores version/name metadata, not the original SQL body. Do not delete or rewrite either history row based only on current trigger names.
+
+### Test-only history entries
+
+The 18 distinct Test history names not present in the tracked 46-file chain include earlier/alternate route quota and road-restriction hardening steps, a Test-only schema reconciliation artifact, and intermediate special-equipment/dispatch hardening attempts. Some are plausibly superseded by later tracked migrations; this must be established from SQL provenance and current object definitions before any history cleanup. The Test-only reconciliation entry `20261110144502` remains explicitly excluded from the production migration chain.
+
+### Safe conclusion
+
+The Test history is not a simple “46 files versus 43 rows” lag. It contains:
+- timestamp/version drift for 21 shared migration names;
+- two duplicated logical migration names;
+- 18 Test-only historical names;
+- and at least three tracked business-module migrations absent from Test, which account for all 12 missing public tables.
+
+The database catalog currently has the expected final driver/vehicle active-trip trigger set, but metadata alone cannot establish full SQL-content equivalence. A reliable final reconciliation requires either the historical SQL artifacts for the 18 Test-only/renumbered entries, or a carefully scoped catalog-level diff against the disposable local replay. No history repair is justified yet.
