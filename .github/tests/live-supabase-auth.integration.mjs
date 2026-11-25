@@ -425,6 +425,29 @@ async function main() {
     const secondFleetOwner = fixtures.find(item => item.role === "ambiguous");
     const secondFleetOwnerSession = await signInFixtureUser(url, anonKey, secondFleetOwner.user, secondFleetOwner.password);
     sessionsByUserId.set(secondFleetOwner.user.id, secondFleetOwnerSession);
+
+    // Give the signed driver identity an active driver record and Fleet A membership
+    // before creating the delivery fixture, so the Storage policy's assigned-driver
+    // branch is exercised with a real signed JWT (not only the owner role).
+    const deliveryDriverFixture = fixtures.find(item => item.role === "driver");
+    const { error: deliveryDriverMembershipError } = await admin.from("fleet_members").insert({
+      fleet_id: createdFleet.id, user_id: deliveryDriverFixture.user.id, role: "driver"
+    });
+    if (deliveryDriverMembershipError) {
+      throw new Error("Unable to create the marked assigned-driver membership for delivery proof.");
+    }
+    const { data: deliveryDriver, error: deliveryDriverError } = await admin.from("drivers").insert({
+      fleet_id: createdFleet.id,
+      user_id: deliveryDriverFixture.user.id,
+      full_name: "TruckSafe CI Delivery Driver",
+      license_expires_at: "2099-12-31",
+      status: "active"
+    }).select("id").single();
+    if (deliveryDriverError || !deliveryDriver?.id) {
+      throw new Error("Unable to create the marked active driver record for delivery proof.");
+    }
+    const deliveryDriverSession = await signInFixtureUser(url, anonKey, deliveryDriverFixture.user, deliveryDriverFixture.password);
+    sessionsByUserId.set(deliveryDriverFixture.user.id, deliveryDriverSession);
  
     // Real delivery-proof Storage integration: create a marked shipment and
     // stop in Fleet A, upload private signature/photo objects, and prove Fleet B
@@ -458,12 +481,14 @@ async function main() {
     const deliveryPhotoPath = deliveryPrefix + runId + "-photo.png";
     deliveryProofFixturePaths.push(deliverySignaturePath, deliveryPhotoPath);
     const proofBytes = Buffer.from("TruckSafe synthetic delivery proof image fixture");
-    for (const objectPath of deliveryProofFixturePaths) {
-      const { error: uploadError } = await ownerSession.client.storage
+    const deliveryUploadSessions = [deliveryDriverSession, ownerSession];
+    for (let index = 0; index < deliveryProofFixturePaths.length; index += 1) {
+      const { error: uploadError } = await deliveryUploadSessions[index].client.storage
         .from("delivery-proof-private")
-        .upload(objectPath, proofBytes, { contentType: "image/png", upsert: false });
+        .upload(deliveryProofFixturePaths[index], proofBytes, { contentType: "image/png", upsert: false });
       if (uploadError) {
-        throw new Error("Fleet A owner could not upload a private delivery-proof fixture: " + uploadError.message);
+        throw new Error((index === 0 ? "Assigned Fleet A driver" : "Fleet A owner") +
+          " could not upload a private delivery-proof fixture: " + uploadError.message);
       }
     }
 
@@ -480,6 +505,11 @@ async function main() {
       });
     assert.ok(rejectedOversizeUpload.error, "Delivery-proof bucket must enforce its 10 MiB per-object limit");
 
+    const driverDeliveryUrl = await deliveryDriverSession.client.storage
+      .from("delivery-proof-private").createSignedUrl(deliverySignaturePath, 60);
+    if (driverDeliveryUrl.error || !driverDeliveryUrl.data?.signedUrl) {
+      throw new Error("The active assigned driver could not read its own delivery signature.");
+    }
     const ownerDeliveryUrl = await ownerSession.client.storage
       .from("delivery-proof-private").createSignedUrl(deliverySignaturePath, 60);
     if (ownerDeliveryUrl.error || !ownerDeliveryUrl.data?.signedUrl) {
@@ -499,6 +529,11 @@ async function main() {
         contentType: "image/png", upsert: false
       });
     assert.ok(fleetBDeliveryUpload.error, "Fleet B owner must not upload into Fleet A's delivery-proof path");
+
+    const driverDeliveryDelete = await deliveryDriverSession.client.storage
+      .from("delivery-proof-private").remove([deliverySignaturePath]);
+    assert.equal(driverDeliveryDelete.error, null);
+    assert.deepEqual(driverDeliveryDelete.data, [], "Assigned driver must not delete an immutable delivery signature");
 
     const fleetADeliveryDelete = await ownerSession.client.storage
       .from("delivery-proof-private").remove([deliverySignaturePath]);
@@ -736,7 +771,7 @@ async function main() {
     process.stdout.write("Live cross-fleet BOLA checks passed: Fleet A owner could not read, insert, update or delete Fleet B vehicle, incident and maintenance records by identifier.\\n");
 
     const additionalMembers = fixtures
-      .filter(item => item.role === "fleet_manager" || item.role === "dispatcher" || item.role === "safety_manager" || item.role === "driver" || item.role === "ambiguous")
+      .filter(item => item.role === "fleet_manager" || item.role === "dispatcher" || item.role === "safety_manager" || item.role === "ambiguous")
       .map(item => ({ fleet_id: createdFleet.id, user_id: item.user.id, role: item.role === "ambiguous" ? "driver" : item.role }));
     const { error: memberInsertError } = await admin.from("fleet_members").insert(additionalMembers);
     if (memberInsertError) {
