@@ -8,13 +8,13 @@ This is a verification register, not a release approval. The application must re
 
 - The validation job passed: production dependency audit, application/safety/workflow tests, Next.js production build, and isolated smoke tests.
 - The database integration job passed with the dedicated Test-project identity guard, rollback-only SQL suite, and fixture cleanup.
-- The live Auth integration job was skipped on PR-triggered runs by design. A skipped job is not a pass.
+- Live Auth integration passed on the current candidate commit via dedicated Test-only push run `45660285458` on `test/current-candidate-auth-e2e`: signed session verification, role/membership fail-closed checks, real local HTTP API checks, and disposable Auth fixture cleanup all succeeded. This is evidence for the candidate commit, not for Production.
 
 ## Outstanding evidence
 
 | Area | Existing evidence | Required before release |
 |---|---|---|
-| Live Auth and RLS | Local contract tests plus a dedicated live signed-token test harness | Run the harness on `test/isolated-e2e-ci` with the three dedicated Test Auth secrets; retain successful run and cleanup evidence |
+| Live Auth and RLS | Dedicated Test-only run `45660285458` passed signed-token verification, role/membership fail-closed checks, local HTTP route checks, and Auth fixture cleanup | Add browser-level Auth/session checks and keep Production Auth settings unchanged until separately approved |
 | Storage document access | Private buckets, object policies, file-validation unit tests | Live Test-project upload, authorized read, cross-fleet denial, unauthorized delete denial, MIME/size rejection, and cleanup |
 | Browser workflows | Unit, API, smoke, and local HTTP route-handler tests | Browser E2E with owner/manager/dispatcher/driver roles, including task assignment, pre-trip checklist, trip start/finish, and delivery proof |
 | Driver/device experience | Responsive application build and code-level checks | Mobile viewport/browser pass, offline/network interruption behavior, GPS permission denial/recovery, and stale-location handling |
@@ -34,11 +34,11 @@ The workflow's Auth job builds with routing providers disabled and coverage appr
 
 ## Release gates
 
-1. No live Auth or Storage check is considered passed until a successful Test-only run is linked here.
+1. Live Auth is verified for the current candidate by Test-only run `45660285458`; live Storage remains unverified until upload/read/cross-fleet denial/delete-denial and cleanup pass on Test.
 2. No routing provider is enabled until authoritative restriction coverage and safety review are approved.
 3. No hosted schema, Auth, Storage, or data mutation is performed without a separately reviewed change plan and explicit approval.
 4. No merge or deployment is implied by green CI; browser E2E, production configuration review, and rollback readiness remain independent gates.
 
 ## Current disposition
 
-**Not release-ready.** Automated application and rollback-only database CI are green, but live Auth, live Storage, browser/device E2E, authoritative routing coverage, and Production rollout approval remain outstanding.
+**Not release-ready.** Automated application and rollback-only database CI are green, and live Auth now has Test-only evidence. Live Storage, browser/device E2E, authoritative routing coverage, Auth hardening review, and Production rollout approval remain outstanding.
