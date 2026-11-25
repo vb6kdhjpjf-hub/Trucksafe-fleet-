@@ -567,6 +567,24 @@ async function main() {
       throw new Error("The authorized orphan cleanup did not remove the exact disposable proof object.");
     }
 
+    // Mark the uploaded signature and photo as referenced by an immutable
+    // proof record. Use the Test service-role fixture client so this live
+    // Storage test does not issue a permanent delivery note or block fleet cleanup.
+    const { error: deliveryProofReferenceError } = await admin.from("delivery_proofs").insert({
+      fleet_id: createdFleet.id,
+      shipment_id: deliveryShipmentId,
+      stop_id: deliveryStop.id,
+      event_key: randomUUID(),
+      proof_status: "signed",
+      recipient_name: "Synthetic recipient",
+      signature_object_path: deliverySignaturePath,
+      photo_object_paths: [deliveryPhotoPath],
+      performed_by: deliveryDriverFixture.user.id
+    });
+    if (deliveryProofReferenceError) {
+      throw new Error("Unable to create the marked immutable proof reference for live Storage delete-denial checks.");
+    }
+
     const driverDeliveryDelete = await deliveryDriverSession.client.storage
       .from("delivery-proof-private").remove([deliverySignaturePath]);
     assert.equal(driverDeliveryDelete.error, null);
