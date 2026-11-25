@@ -225,26 +225,59 @@ export default function Home() {
       }
     });
 
-    // Validate the persisted token with the Auth server before trusting its user ID.
-    // This prevents a deleted/expired account's cached browser session from opening
-    // the "create organization" flow or being mistaken for a new user.
-    supabase.auth.getUser().then(async ({data,error})=>{
+    // Read local Auth storage first. An unauthenticated browser should reach
+    // the sign-in form immediately; only an existing persisted token needs a
+    // round-trip to Auth for server-side identity validation.
+    supabase.auth.getSession().then(async ({data:sessionData,error:sessionError})=>{
       if(!alive||initialAuthGeneration!==authGenerationRef.current)return;
-      if(error){
-        setMessage("פג תוקף ההתחברות או שהחשבון אינו זמין. יש להתחבר מחדש עם החשבון הפעיל.");
+      if(sessionError){
+        setMessage("לא הצלחנו לקרוא את מצב ההתחברות. יש להתחבר מחדש עם החשבון הפעיל.");
         await supabase.auth.signOut();
-        if(alive&&initialAuthGeneration===authGenerationRef.current){setSession(null);setFleet(null);setLoading(false);}
+        if(alive&&initialAuthGeneration===authGenerationRef.current){
+          authUserIdRef.current=null;setSession(null);setFleet(null);setLoading(false);
+        }
         return;
       }
-      const {data:{session:currentSession}}=await supabase.auth.getSession();
+
+      const persistedSession=sessionData?.session;
+      if(!persistedSession?.access_token){
+        // No cached credentials: do not call getUser() with no JWT.
+        authUserIdRef.current=null;
+        setSession(null);
+        setFleet(null);
+        setLoading(false);
+        return;
+      }
+
+      const {data,error}=await supabase.auth.getUser(persistedSession.access_token);
       if(!alive||initialAuthGeneration!==authGenerationRef.current)return;
-      if(currentSession?.user?.id!==data.user?.id)return;
-      authUserIdRef.current=data.user?.id||null;
+      if(error||!data?.user?.id){
+        setMessage("פג תוקף ההתחברות או שהחשבון אינו זמין. יש להתחבר מחדש עם החשבון הפעיל.");
+        await supabase.auth.signOut();
+        if(alive&&initialAuthGeneration===authGenerationRef.current){
+          authUserIdRef.current=null;setSession(null);setFleet(null);setLoading(false);
+        }
+        return;
+      }
+
+      const {data:{session:currentSession},error:currentSessionError}=await supabase.auth.getSession();
+      if(!alive||initialAuthGeneration!==authGenerationRef.current)return;
+      if(currentSessionError||currentSession?.user?.id!==data.user.id){
+        setMessage("מצב ההתחברות השתנה במהלך האימות. יש להתחבר מחדש.");
+        if(alive&&initialAuthGeneration===authGenerationRef.current){
+          authUserIdRef.current=null;setSession(null);setFleet(null);setLoading(false);
+        }
+        return;
+      }
+      authUserIdRef.current=data.user.id;
       setSession(currentSession);
-      if(data.user&&!recoveryLink)await loadFleet(data.user);
+      if(!recoveryLink)await loadFleet(data.user);
       if(alive&&initialAuthGeneration===authGenerationRef.current)setLoading(false);
     }).catch(error=>{
-      if(alive&&initialAuthGeneration===authGenerationRef.current){setMessage("לא ניתן לאמת את ההתחברות: "+(error?.message||"שגיאה לא ידועה"));setLoading(false);}
+      if(alive&&initialAuthGeneration===authGenerationRef.current){
+        setMessage("לא ניתן לאמת את ההתחברות: "+(error?.message||"שגיאה לא ידועה"));
+        setLoading(false);
+      }
     });
     return ()=>{alive=false;authGenerationRef.current+=1;fleetLoadRef.current+=1;subscription.unsubscribe();};
   },[]);
