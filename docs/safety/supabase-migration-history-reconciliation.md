@@ -359,3 +359,76 @@ The 18 distinct Test-only history names are:
 - `restore_driver_active_trip_guard`
 
 These entries should remain in the Test history unless a separate, evidence-backed history cleanup is designed. Their presence alone does not mean they are harmful: they may describe legitimate historical steps whose resulting state is now represented by later canonical migrations.
+
+
+## Read-only catalog, RLS, RPC, Storage and advisor audit — 25 November 2026
+
+Scope: hosted Test project only (`yxxrgblpqzhnnyojbwcr`). This was a catalog/metadata audit. No rows were read from application tables, no SQL writes were executed, and no remote configuration or grants were changed.
+
+### Public tables and RLS
+
+- Test currently has 13 public base tables; all 13 have RLS enabled.
+- Test currently has 36 public RLS policies. Every policy targets `authenticated`; there are no `anon` policies.
+- All 13 tables have explicit fleet-membership/role or self/assigned-driver predicates. INSERT policies use `WITH CHECK`; UPDATE policies have both `USING` and `WITH CHECK`.
+- There are no public views or materialized views in the current Test catalog.
+- The `private` schema is not usable by `anon`; `authenticated` has schema USAGE but no CREATE. Public and Storage schema CREATE is false for both API roles.
+- `FORCE ROW LEVEL SECURITY` is not enabled on the public tables. This is not automatically a defect: the application uses explicit authenticated RLS policies and privileged server/database roles. Revisit only if direct table-owner access is part of the threat model.
+
+### Important default-privilege hardening opportunity
+
+The Test catalog currently grants `anon` default privileges on future objects created by `postgres` in `public`: table CRUD/other table privileges and function EXECUTE. Existing public tables also have table-level privileges for `anon`, but all 13 tables have RLS enabled and no `anon` policies, so the current catalog does not show an anonymous row-access path.
+
+This is a least-privilege hardening opportunity, not evidence of a current data leak. Before changing it, confirm that the app does not intentionally use anonymous Data API access (current UI source review found no anonymous data workflow). A future migration should:
+1. Revoke broad `anon` table privileges from existing application tables, while preserving any intentionally public endpoints.
+2. Revoke default `anon` table privileges for future public tables.
+3. Revoke default `anon` EXECUTE on future public functions, then explicitly grant only the RPCs that must be public.
+4. Re-run local migration replay, application smoke tests, and the advisor suite.
+
+Do not apply these revocations directly to hosted Test or Production as part of this read-only audit.
+
+### RPC and SECURITY DEFINER review
+
+- The only two SECURITY Advisor findings remain `public.finish_trip(uuid, uuid)` and `public.start_trip_with_inspection(...)`. Both are SECURITY DEFINER, callable by `authenticated` only (not `anon`), pin `search_path = ''`, and implement explicit identity/fleet/role/state validation. These are intentional privileged operations, not candidates for blind revocation.
+- Trigger-only functions (`add_fleet_owner_membership`, `handle_new_auth_user`, guard functions, `set_updated_at`) were distinguished from callable RPCs by return type and trigger attachment.
+- Four SECURITY INVOKER read RPCs currently have EXECUTE for `anon`: `get_active_trip_map_data`, `get_latest_trip_locations`, `get_trip_distance_summaries`, and `get_trip_history_data`. Their underlying trip/location tables have authenticated-only RLS policies, so the invoker functions do not bypass RLS. A repository source scan across the app's JS/TS files found no frontend call sites for these four functions. They are candidates for an explicit `REVOKE EXECUTE FROM anon` in a future tested migration, after checking any external integrations; no grants were changed now.
+- The two Security Advisor warnings are therefore intentional authenticated RPCs; no unexplained SECURITY DEFINER public function was found in this audit.
+
+### Storage policy review
+
+Both application buckets remain private:
+- `incident-photos`: 5 MiB; JPEG/PNG/WebP; one object currently present.
+- `vehicle-registrations`: 8 MiB; PDF/JPEG/PNG/WebP; no objects currently present.
+
+Six `storage.objects` policies all target `authenticated`:
+- Incident photo upload checks fleet membership from the first path segment. Reads require a matching incident row, which is itself protected by incident RLS. Deletes require the uploader to own the object, fleet membership, and that the object is not referenced.
+- Vehicle-registration upload/read/delete enforce a two-segment UUID path and owner/fleet-manager membership for the fleet. Deletes additionally reject referenced objects.
+No anonymous Storage policies were found. No Storage grants or policies were changed.
+
+### Advisor results and performance notes
+
+- Security Advisor: exactly 2 warnings, the intentional authenticated SECURITY DEFINER trip RPCs above; no additional security lints.
+- Health Advisor: no findings.
+- Performance Advisor: 18 unused-index notices. Test application tables are empty or lightly populated, so these are not sufficient evidence to drop indexes. Some indexes support FK checks, fleet scoping, or expected future workloads. Keep them until representative traffic/query plans and production usage data justify a measured change.
+- There are overlapping road-restriction fleet/active indexes, but no index was dropped or rewritten; verify query plans and write overhead under representative load before consolidating.
+
+### Application/Test feature compatibility
+
+The branch's UI contains calls to the following RPCs, but all are absent from the current Test database:
+- `create_daily_work_plan`
+- `activate_daily_work_plan`
+- `record_daily_load_operation`
+- `complete_delivery_document`
+- `create_shipment`
+- `record_shipment_stop_result`
+- `update_delivery_note_settings`
+- `add_delivery_note_adjustment`
+
+This is consistent with the 12 missing public tables and the three absent migrations documented above. The daily-work and shipment/delivery-note screens therefore cannot work end-to-end against the current Test database until the migration-history divergence is resolved and the three module migrations are safely applied in a controlled, verified environment. No attempt was made to apply them.
+
+### Current disposition
+
+- No current evidence of anonymous row access through public RLS or Storage policies.
+- Main hardening candidates: revoke unnecessary `anon` defaults/privileges and the four unused invoker RPC grants, only after integration review and local test coverage.
+- Main functional blocker: Test is missing the daily-work/load, shipment/cargo, and delivery-note/proof modules and their RPCs.
+- Performance notices are informational; no index changes justified.
+- This remains a read-only audit. No hosted database mutation, migration repair, merge, or deployment was performed.
