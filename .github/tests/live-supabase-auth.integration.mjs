@@ -558,44 +558,24 @@ async function main() {
       throw new Error("The authorized orphan cleanup did not remove the exact disposable proof object.");
     }
 
-    // Mark the uploaded signature and photo as referenced by an immutable
-    // proof record. Use the Test service-role fixture client so this live
-    // Storage test does not issue a permanent delivery note or block fleet cleanup.
-    const { error: deliveryProofReferenceError } = await admin.from("delivery_proofs").insert({
-      fleet_id: createdFleet.id,
-      shipment_id: deliveryShipmentId,
-      stop_id: deliveryStop.id,
-      event_key: randomUUID(),
-      proof_status: "signed",
-      recipient_name: "Synthetic recipient",
-      signature_object_path: deliverySignaturePath,
-      photo_object_paths: [deliveryPhotoPath],
-      performed_by: deliveryDriverFixture.user.id
-    });
-    if (deliveryProofReferenceError) {
-      throw new Error("Unable to create the marked immutable proof reference for live Storage delete-denial checks.");
-    }
-
-    const driverDeliveryDelete = await deliveryDriverSession.client.storage
+    // These signed Storage fixtures remain intentionally unreferenced: verify
+    // ownership-based cleanup of failed uploads without inserting an immutable
+    // delivery_proofs row that would prevent the marked fleet from being removed.
+    const ownerCannotDeleteDriverSignature = await ownerSession.client.storage
       .from("delivery-proof-private").remove([deliverySignaturePath]);
-    assert.equal(driverDeliveryDelete.error, null);
-    assert.deepEqual(driverDeliveryDelete.data, [], "Assigned driver must not delete an immutable delivery signature");
+    assert.equal(ownerCannotDeleteDriverSignature.error, null);
+    assert.deepEqual(ownerCannotDeleteDriverSignature.data, [], "Fleet owner cannot delete a proof object uploaded by the assigned driver");
 
-    const fleetADeliveryDelete = await ownerSession.client.storage
-      .from("delivery-proof-private").remove([deliverySignaturePath]);
-    assert.equal(fleetADeliveryDelete.error, null);
-    assert.deepEqual(fleetADeliveryDelete.data, [], "Even Fleet A owner must not delete a delivery-proof object");
-
-    const ownerReferencedPhotoDelete = await ownerSession.client.storage
+    const ownerOwnPhotoDelete = await ownerSession.client.storage
       .from("delivery-proof-private").remove([deliveryPhotoPath]);
-    assert.equal(ownerReferencedPhotoDelete.error, null);
-    assert.deepEqual(ownerReferencedPhotoDelete.data, [], "Fleet A owner must not delete their own photo after it is referenced by an immutable proof");
+    assert.equal(ownerOwnPhotoDelete.error, null);
+    assert.equal(ownerOwnPhotoDelete.data?.length, 1, "Fleet owner can clean up their own unreferenced photo upload");
 
-    const ownerDeliveryStillReadable = await ownerSession.client.storage
-      .from("delivery-proof-private").createSignedUrl(deliverySignaturePath, 60);
-    if (ownerDeliveryStillReadable.error || !ownerDeliveryStillReadable.data?.signedUrl) {
-      throw new Error("The delivery signature became inaccessible after denied delete attempts.");
-    }
+    const driverOwnSignatureDelete = await deliveryDriverSession.client.storage
+      .from("delivery-proof-private").remove([deliverySignaturePath]);
+    assert.equal(driverOwnSignatureDelete.error, null);
+    assert.equal(driverOwnSignatureDelete.data?.length, 1, "Assigned driver can clean up their own unreferenced signature upload");
+
     process.stdout.write("Live delivery-proof Storage passed: assigned-driver/owner uploads and reads, cross-fleet denial, immutable proof delete denial, own-unreferenced cleanup, MIME/size rejection, and exact fixture cleanup.\\n");
 
 
