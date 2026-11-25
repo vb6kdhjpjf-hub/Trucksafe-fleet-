@@ -1,10 +1,27 @@
--- Test schemas may not yet have the composite unique keys required by tenant-scoped foreign keys.
+-- Ensure tenant-scoped parent keys exist without duplicating an equivalent
+-- composite unique constraint created by another feature migration.
 do $constraints$
 begin
- if not exists(select 1 from pg_constraint where conrelid='public.vehicles'::regclass and conname='vehicles_fleet_id_id_key') then
+ if not exists(
+  select 1 from pg_constraint c
+  where c.conrelid='public.vehicles'::regclass and c.contype in ('p','u')
+   and (
+    select array_agg(a.attname order by k.ord)
+    from unnest(c.conkey) with ordinality as k(attnum,ord)
+    join pg_attribute a on a.attrelid=c.conrelid and a.attnum=k.attnum
+   )=array['fleet_id','id']::name[]
+ ) then
   alter table public.vehicles add constraint vehicles_fleet_id_id_key unique(fleet_id,id);
  end if;
- if not exists(select 1 from pg_constraint where conrelid='public.drivers'::regclass and conname='drivers_fleet_id_id_key') then
+ if not exists(
+  select 1 from pg_constraint c
+  where c.conrelid='public.drivers'::regclass and c.contype in ('p','u')
+   and (
+    select array_agg(a.attname order by k.ord)
+    from unnest(c.conkey) with ordinality as k(attnum,ord)
+    join pg_attribute a on a.attrelid=c.conrelid and a.attnum=k.attnum
+   )=array['fleet_id','id']::name[]
+ ) then
   alter table public.drivers add constraint drivers_fleet_id_id_key unique(fleet_id,id);
  end if;
 end
