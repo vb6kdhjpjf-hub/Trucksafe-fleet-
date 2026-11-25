@@ -324,7 +324,7 @@ async function signInRetainedLegacyProofUsers(url, anonKey, admin) {
   };
 }
 
-async function ensureRetainedLegacyProofObjects(admin) {
+async function ensureRetainedLegacyProofObjects({ admin, ownerSession, driverSession }) {
   const bucket = "delivery-proof-private";
   const folder = [
     RETAINED_LEGACY_PROOF_FIXTURE.fleetId,
@@ -337,34 +337,52 @@ async function ensureRetainedLegacyProofObjects(admin) {
     throw new Error("Unable to inspect the exact retained Test proof folder before recovery.");
   }
   const existingNames = new Set((items ?? []).map(item => item.name));
-  // These original files were created by the historical CI fixture with this
-  // exact deterministic payload (48 bytes, image/png). A prior cleanup pass
-  // removed the objects after the immutable proof row had been inserted.
-  // Re-create only the two missing, explicitly allowlisted synthetic objects;
-  // never overwrite an existing object or touch any other path.
+  const proofEntries = [
+    {
+      path: RETAINED_LEGACY_PROOF_FIXTURE.signaturePath,
+      filename: RETAINED_LEGACY_PROOF_FIXTURE.signaturePath.split("/").at(-1),
+      uploader: driverSession
+    },
+    {
+      path: RETAINED_LEGACY_PROOF_FIXTURE.photoPath,
+      filename: RETAINED_LEGACY_PROOF_FIXTURE.photoPath.split("/").at(-1),
+      uploader: ownerSession
+    }
+  ];
+  const existingPaths = proofEntries
+    .filter(entry => existingNames.has(entry.filename))
+    .map(entry => entry.path);
+
+  // These are exclusively synthetic CI files. A prior service-role recovery
+  // left owner_id NULL, which made delete-denial assertions inconclusive.
+  // Re-create only these two allowlisted objects through the original signed
+  // uploader identities: driver owns the signature, fleet owner owns the photo.
+  if (existingPaths.length) {
+    const { data: removed, error: removeError } = await admin.storage
+      .from(bucket).remove(existingPaths);
+    if (removeError || removed?.length !== existingPaths.length) {
+      throw new Error("Unable to replace the exact retained synthetic proof files with correctly owned Test uploads.");
+    }
+  }
+
   const bytes = Buffer.from("TruckSafe synthetic delivery proof image fixture");
-  for (const [path, filename] of [
-    [RETAINED_LEGACY_PROOF_FIXTURE.signaturePath, RETAINED_LEGACY_PROOF_FIXTURE.signaturePath.split("/").at(-1)],
-    [RETAINED_LEGACY_PROOF_FIXTURE.photoPath, RETAINED_LEGACY_PROOF_FIXTURE.photoPath.split("/").at(-1)]
-  ]) {
-    if (existingNames.has(filename)) continue;
-    const { error } = await admin.storage.from(bucket).upload(path, bytes, {
+  for (const entry of proofEntries) {
+    const { error } = await entry.uploader.client.storage.from(bucket).upload(entry.path, bytes, {
       contentType: "image/png",
       upsert: false
     });
     if (error) {
-      throw new Error("Unable to restore the exact missing synthetic object referenced by the retained Test proof: " + error.message);
+      throw new Error("Unable to re-upload the exact synthetic proof file through its original Test identity: " + error.message);
     }
   }
 }
-
 async function assertRetainedLegacyProofStorageAccess({ ownerSession, driverSession, admin }) {
   const bucket = "delivery-proof-private";
   const proofPaths = [
     RETAINED_LEGACY_PROOF_FIXTURE.signaturePath,
     RETAINED_LEGACY_PROOF_FIXTURE.photoPath
   ];
-  await ensureRetainedLegacyProofObjects(admin);
+  await ensureRetainedLegacyProofObjects({ admin, ownerSession, driverSession });
   for (const [role, session] of [["owner", ownerSession], ["assigned driver", driverSession]]) {
     for (const path of proofPaths) {
       const { data, error } = await session.client.storage.from(bucket).createSignedUrl(path, 60);
