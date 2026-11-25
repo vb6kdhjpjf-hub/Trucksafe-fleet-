@@ -1,9 +1,8 @@
 -- Rollback-only cross-fleet integrity and delete-action tests.
 -- Runs only against the dedicated TruckSafe Fleet Test database.
+-- Fleet-scoped composite foreign keys and maintenance/incident vehicle matching are installed by the Test-only rollout, not replayed here.
 BEGIN;
 
-\ir ../../supabase/migrations/20261111162000_enforce_fleet_scoped_foreign_keys.sql
-\ir ../../supabase/migrations/20261111180000_maintenance_incident_vehicle_match.sql
 
 CREATE TEMP TABLE trucksafe_fk_results (
   scenario text PRIMARY KEY,
