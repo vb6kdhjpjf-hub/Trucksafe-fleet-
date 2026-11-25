@@ -586,6 +586,11 @@ async function main() {
     assert.equal(fleetADeliveryDelete.error, null);
     assert.deepEqual(fleetADeliveryDelete.data, [], "Even Fleet A owner must not delete a delivery-proof object");
 
+    const ownerReferencedPhotoDelete = await ownerSession.client.storage
+      .from("delivery-proof-private").remove([deliveryPhotoPath]);
+    assert.equal(ownerReferencedPhotoDelete.error, null);
+    assert.deepEqual(ownerReferencedPhotoDelete.data, [], "Fleet A owner must not delete their own photo after it is referenced by an immutable proof");
+
     const ownerDeliveryStillReadable = await ownerSession.client.storage
       .from("delivery-proof-private").createSignedUrl(deliverySignaturePath, 60);
     if (ownerDeliveryStillReadable.error || !ownerDeliveryStillReadable.data?.signedUrl) {
