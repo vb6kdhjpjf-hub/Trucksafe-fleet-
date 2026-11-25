@@ -56,7 +56,7 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
   // Keep one idempotency key and stable private object paths for this mounted
   // proof attempt. If the server commits but the response is lost, retrying
   // must return the original note rather than issue a second document.
-  const proofAttempt=useRef({eventKey:eventKey(),signaturePath:null,signatureBlob:null,signatureUploaded:false,photoEntries:[]});
+  const proofAttempt=useRef({eventKey:eventKey(),uploadedByUserId:null,signaturePath:null,signatureBlob:null,signatureUploaded:false,photoEntries:[]});
   async function uploadOrConfirmExisting(objectPath,body,contentType){
     const storage=supabase.storage.from("delivery-proof-private");
     const {error}=await storage.upload(objectPath,body,{contentType,upsert:false});
@@ -109,6 +109,15 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
       const messages={too_many:"אפשר לצרף עד 8 תמונות לאישור מסירה.",invalid_file:"אפשר לצרף רק PNG, JPG או WEBP, עד 10MB לכל תמונה.",total_too_large:"הנפח הכולל של התמונות לאישור אחד מוגבל ל־40MB. אפשר לבחור פחות תמונות או להקטין אותן.",invalid_selection:"בחירת התמונות אינה תקינה."};
       notify(messages[photoIssue]||messages.invalid_selection,"error");return;
     }
+    // Bind every object path to the user who starts this proof attempt.
+    // Cleanup is attempted only while that same signed-in identity is still active.
+    const {data:{user:submittedBy},error:sessionError}=await supabase.auth.getUser();
+    if(sessionError||!submittedBy?.id){notify("פג תוקף ההתחברות. יש להתחבר מחדש לפני שמירת אישור המסירה.","error");return;}
+    const attemptOwner=proofAttempt.current;
+    if(attemptOwner.uploadedByUserId&&attemptOwner.uploadedByUserId!==submittedBy.id){
+      notify("זהות המשתמש השתנתה במהלך ניסיון המסירה. יש לרענן את הטופס לפני המשך.","error");return;
+    }
+    attemptOwner.uploadedByUserId=submittedBy.id;
     // Freeze the payload once an upload or RPC may have started. A timeout is
     // ambiguous: the server may already have committed the note. Retrying with
     // edited data and the same idempotency key must never be possible.
@@ -158,7 +167,37 @@ function DeliveryProofPanel({ fleetId, shipment, stop, canOverride, busy, setBus
       if(error)throw error;
       notify("אישור המסירה נשמר. תעודת משלוח "+data.note_number+" הופקה בהצלחה.","success");
       await onSaved();
-    }catch(error){notify("לא ניתן להשלים את אישור המסירה: "+(error.message||"שגיאה לא ידועה"),"error");}
+    }catch(error){
+      // A failed RPC can leave newly uploaded private objects behind. Remove
+      // only objects uploaded by this attempt and only under the same user.
+      // The Storage DELETE policy rejects objects already referenced by an
+      // immutable delivery proof, covering ambiguous/lost RPC responses.
+      const attempt=proofAttempt.current;
+      const cleanupPaths=[
+        ...(attempt.signatureUploaded&&attempt.signaturePath?[attempt.signaturePath]:[]),
+        ...attempt.photoEntries.filter(entry=>entry.uploaded).map(entry=>entry.path)
+      ];
+      let cleanupFailed=false;
+      if(cleanupPaths.length&&attempt.uploadedByUserId){
+        try{
+          const {data:{user:cleanupUser},error:cleanupAuthError}=await supabase.auth.getUser();
+          if(!cleanupAuthError&&cleanupUser?.id===attempt.uploadedByUserId){
+            const {error:cleanupError}=await supabase.storage.from("delivery-proof-private").remove(cleanupPaths);
+            if(cleanupError){
+              cleanupFailed=true;
+            }else{
+              if(attempt.signaturePath&&cleanupPaths.includes(attempt.signaturePath))attempt.signatureUploaded=false;
+              for(const entry of attempt.photoEntries)if(cleanupPaths.includes(entry.path))entry.uploaded=false;
+            }
+          }else{
+            cleanupFailed=true;
+          }
+        }catch(cleanupError){
+          cleanupFailed=true;
+        }
+      }
+      notify("לא ניתן להשלים את אישור המסירה: "+(error.message||"שגיאה לא ידועה")+(cleanupFailed?" חלק מהקבצים הזמניים לא נוקו אוטומטית; ניתן לנסות שוב.":""),"error");
+    }
     finally{setBusy(false);}
   }
   return <form className="proof-panel" onSubmit={submit}>
