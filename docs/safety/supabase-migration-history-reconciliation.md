@@ -231,3 +231,27 @@ The private schema is not usable by `anon` (`USAGE=false`) and is usable by `aut
 ### Additional RPC exposure check
 
 Four public invoker read functions currently have `EXECUTE` for `anon`: `get_active_trip_map_data`, `get_latest_trip_locations`, `get_trip_distance_summaries`, and `get_trip_history_data`. Their definitions query fleet trip/location tables directly and do not perform an explicit `auth.uid()` check inside the function body. However, they are `SECURITY INVOKER`, and the underlying table RLS policies are restricted to `authenticated`; this is not evidence of an RLS bypass or anonymous access to trip data. It is still a least-privilege hardening candidate: after checking frontend usage and automated tests, consider revoking `EXECUTE` from `anon` on these read RPCs. No grant was changed during this audit.
+
+
+## Exact mapping of the 12 missing Test tables — 25 November 2026
+
+The 12-table difference is now mapped to three tracked migrations. Each migration is absent by name from the 43-row Test history, and a direct read-only `to_regclass` check confirmed that every table below is absent from Test:
+
+| Missing Test table | Introducing migration |
+|---|---|
+| `daily_work_plans` | `20261112140000_add_daily_work_and_load_ledger` |
+| `daily_work_stops` | `20261112140000_add_daily_work_and_load_ledger` |
+| `daily_load_events` | `20261112140000_add_daily_work_and_load_ledger` |
+| `shipments` | `20261112150000_add_shipments_and_cargo_operations` |
+| `shipment_lines` | `20261112150000_add_shipments_and_cargo_operations` |
+| `shipment_stops` | `20261112150000_add_shipments_and_cargo_operations` |
+| `shipment_stop_lines` | `20261112150000_add_shipments_and_cargo_operations` |
+| `shipment_stop_events` | `20261112150000_add_shipments_and_cargo_operations` |
+| `delivery_note_settings` | `20261112160000_add_delivery_notes_and_proof_of_delivery` |
+| `delivery_proofs` | `20261112160000_add_delivery_notes_and_proof_of_delivery` |
+| `delivery_notes` | `20261112160000_add_delivery_notes_and_proof_of_delivery` |
+| `delivery_note_adjustments` | `20261112160000_add_delivery_notes_and_proof_of_delivery` |
+
+Content inspection confirms these three files create exactly 12 public tables, enable RLS on them, and define 16 public policies plus two Storage object policies. This accounts exactly for the 12-table difference between Test (13 public tables) and the clean local replay (25 public tables). It also accounts for a substantial part of the policy-count gap; the remaining policy differences must be reconciled against the other missing or version-divergent migrations.
+
+This is now a concrete, content-backed explanation for the missing business modules in Test: daily work/load ledger, shipments/cargo operations, and delivery notes/proof of delivery. It does **not** authorize applying the three migrations to hosted Test; the remaining version/name/content divergence and dependency ordering still need to be resolved first.
