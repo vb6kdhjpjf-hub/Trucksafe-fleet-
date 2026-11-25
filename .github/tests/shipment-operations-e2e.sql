@@ -323,6 +323,16 @@ begin
   raise exception 'Rejected aggregate size validation left a delivery proof row';
  end if;
  insert into pg_temp.shipment_test_results values('delivery proof RPC enforces the 40 MiB aggregate photo limit','PASS');
+
+ -- A shipment owns its cargo lines, stops and stop allocations. Removing it
+ -- must cascade through both stop and line relationships without FK-order failures.
+ delete from public.shipments where fleet_id=f.fleet_id and id=test_shipment_id;
+ if exists(select 1 from public.shipment_lines where fleet_id=f.fleet_id and shipment_id=test_shipment_id)
+  or exists(select 1 from public.shipment_stops where fleet_id=f.fleet_id and shipment_id=test_shipment_id)
+  or exists(select 1 from public.shipment_stop_lines where fleet_id=f.fleet_id and shipment_id=test_shipment_id) then
+  raise exception 'Shipment deletion left dependent cargo or stop rows behind';
+ end if;
+ insert into pg_temp.shipment_test_results values('shipment deletion cascades through cargo lines, stops and stop allocations','PASS');
 end
 $delivery_photo_limits_test$;
 
