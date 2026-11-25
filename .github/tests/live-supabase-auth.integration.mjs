@@ -80,7 +80,10 @@ async function identifyRetainedLegacyProofFixture(admin, users) {
   const expectedEmails = new Set(RETAINED_LEGACY_FIXTURE_ROLES.map(
     role => `trucksafe-ci-${role}${suffix}`
   ));
-  if (retainedUsers.length !== expectedEmails.size ||
+  // The first cleanup attempt may see all seven historical fixture users;
+  // after a partial or successful cleanup, only the owner and driver remain.
+  // Any in-between subset is also safe, provided every identity is allowlisted.
+  if (retainedUsers.length < 2 || retainedUsers.length > expectedEmails.size ||
       retainedUsers.some(user => !expectedEmails.has(user.email) ||
         user.app_metadata?.trucksafe_ci_fixture !== FIXTURE_MARKER)) {
     throw new Error("Refusing to preserve a legacy Test fixture: its exact Auth identities do not match the approved immutable-proof marker.");
@@ -149,15 +152,10 @@ async function identifyRetainedLegacyProofFixture(admin, users) {
     throw new Error("Refusing to preserve a legacy Test fixture: unexpected immutable delivery notes were found.");
   }
 
-  // The signed-JWT Storage integration below verifies that the exact referenced
-  // signature and photo objects still exist and are readable under their real roles.
-
   // Only the owner and assigned driver are required to preserve and exercise
-  // the immutable proof. The other five identities from the old fixture are
-  // deleted by the normal marker-scoped cleanup below.
+  // the immutable proof. Any other allowlisted legacy accounts are removed.
   return [owner.id, driver.id];
 }
-
 async function removeOwnedFixtureFleets(admin, users, retainedUserIds = new Set()) {
   for (const user of users) {
     const { data: fleets, error: listError } = await admin
@@ -224,19 +222,47 @@ async function cleanupMarkedFixtureUsers(admin) {
   for (const user of users) {
     if (retainedUserIds.has(user.id)) continue;
     const { error } = await admin.auth.admin.deleteUser(user.id);
-    if (error) throw new Error("Unable to delete a marked disposable TruckSafe Test Auth user.");
+    if (error) {
+      const { data: stillPresent, error: lookupError } = await admin.auth.admin.getUserById(user.id);
+      if (!lookupError && stillPresent?.user) {
+        throw new Error("Unable to delete a marked disposable TruckSafe Test Auth user.");
+      }
+    }
   }
-  const remaining = await listMarkedFixtureUsers(admin);
+
+  // Auth Admin listUsers is eventually consistent. Retry deletion of only the
+  // exact, still-marked test identities before declaring cleanup complete.
+  let remaining = [];
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    remaining = await listMarkedFixtureUsers(admin);
+    const unexpected = remaining.filter(user => !retainedUserIds.has(user.id));
+    if (unexpected.length === 0 && remaining.length === retainedUserIds.size) break;
+    for (const user of unexpected) {
+      if (!isTruckSafeFixtureUser(user)) {
+        throw new Error("Refusing cleanup retry: a remaining Auth identity is not an exact TruckSafe Test fixture.");
+      }
+      const { error } = await admin.auth.admin.deleteUser(user.id);
+      if (error) {
+        const { data: stillPresent, error: lookupError } = await admin.auth.admin.getUserById(user.id);
+        if (!lookupError && stillPresent?.user) {
+          throw new Error("Unable to retry deletion of a marked disposable TruckSafe Test Auth user.");
+        }
+      }
+    }
+    if (attempt < 4) {
+      await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+    }
+  }
+  remaining = await listMarkedFixtureUsers(admin);
   const unexpected = remaining.filter(user => !retainedUserIds.has(user.id));
   if (unexpected.length !== 0 || remaining.length !== retainedUserIds.size) {
     throw new Error("Post-cleanup assertion failed: unexpected marked disposable Test Auth users remain.");
   }
   if (retainedUserIds.size) {
-    process.stdout.write("Retained one exact, verified legacy Test fleet and its seven marked Auth identities because its delivery proof is immutable; all current-run fixtures were cleaned.\\n");
+    process.stdout.write("Retained the exact legacy Test fleet and its two required Auth identities (owner and assigned driver); all other marked fixtures were cleaned.\\n");
   }
   return users.length - retainedUserIds.size;
 }
-
 async function createFixtureUser(admin, email, password) {
   const { data, error } = await admin.auth.admin.createUser({
     email,
