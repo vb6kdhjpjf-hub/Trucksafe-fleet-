@@ -337,6 +337,7 @@ async function main() {
   let httpServer;
   let incidentPhotoFixturePath = null;
   let registrationDocumentFixturePath = null;
+  const deliveryProofFixturePaths = [];
 
   try {
     httpServer = await startLocalHttpServer(url, anonKey);
@@ -424,6 +425,121 @@ async function main() {
     const secondFleetOwner = fixtures.find(item => item.role === "ambiguous");
     const secondFleetOwnerSession = await signInFixtureUser(url, anonKey, secondFleetOwner.user, secondFleetOwner.password);
     sessionsByUserId.set(secondFleetOwner.user.id, secondFleetOwnerSession);
+ 
+    // Real delivery-proof Storage + database integration: create a marked
+    // shipment and stop in Fleet A, upload private signature/photo objects,
+    // issue the immutable delivery note, and prove Fleet B cannot read,
+    // upload or delete Fleet A proof objects. Service-role cleanup is exact-path only.
+    const { data: deliveryShipmentId, error: deliveryShipmentError } = await ownerSession.client.rpc("create_shipment", {
+      p_fleet_id: createdFleet.id,
+      p_customer_name: "Synthetic delivery-proof customer",
+      p_customer_reference: "CI-" + runId.slice(0, 12),
+      p_delivery_reference: "CI-DELIVERY-" + runId.slice(0, 12),
+      p_scheduled_at: new Date().toISOString(),
+      p_assigned_driver_id: null,
+      p_assigned_vehicle_id: null,
+      p_notes: "Disposable integration fixture",
+      p_lines: [{ description: "Synthetic cargo", unit: "package", planned_quantity: 1 }],
+      p_stops: [{ stop_type: "delivery", address: "Synthetic Test address", items: [{ line_index: 0, planned_quantity: 1 }] }]
+    });
+    if (deliveryShipmentError || !deliveryShipmentId) {
+      throw new Error("Unable to create a marked Test-only shipment for delivery-proof integration: " + (deliveryShipmentError?.message ?? "missing shipment id"));
+    }
+    const { data: deliveryStop, error: deliveryStopError } = await ownerSession.client
+      .from("shipment_stops").select("id,status").eq("shipment_id", deliveryShipmentId).single();
+    if (deliveryStopError || !deliveryStop?.id) {
+      throw new Error("Unable to read the marked Test delivery stop.");
+    }
+    const { data: deliveryStopLine, error: deliveryStopLineError } = await ownerSession.client
+      .from("shipment_stop_lines").select("id,planned_quantity").eq("shipment_id", deliveryShipmentId).eq("stop_id", deliveryStop.id).single();
+    if (deliveryStopLineError || !deliveryStopLine?.id) {
+      throw new Error("Unable to read the marked Test delivery stop cargo line.");
+    }
+    const { error: stopCompletionError } = await ownerSession.client.rpc("record_shipment_stop_result", {
+      p_fleet_id: createdFleet.id,
+      p_shipment_id: deliveryShipmentId,
+      p_stop_id: deliveryStop.id,
+      p_event_key: randomUUID(),
+      p_results: [{ stop_line_id: deliveryStopLine.id, delivered_quantity: 1, damaged_quantity: 0, rejected_quantity: 0, returned_quantity: 0 }],
+      p_exception_reason: null
+    });
+    if (stopCompletionError) {
+      throw new Error("Unable to complete the marked Test shipment stop before proof issuance: " + stopCompletionError.message);
+    }
+
+    const deliveryPrefix = createdFleet.id + "/" + deliveryShipmentId + "/" + deliveryStop.id + "/";
+    const deliverySignaturePath = deliveryPrefix + runId + "-signature.png";
+    const deliveryPhotoPath = deliveryPrefix + runId + "-photo.png";
+    deliveryProofFixturePaths.push(deliverySignaturePath, deliveryPhotoPath);
+    const proofBytes = Buffer.from("TruckSafe synthetic delivery proof image fixture");
+    for (const objectPath of deliveryProofFixturePaths) {
+      const { error: uploadError } = await ownerSession.client.storage
+        .from("delivery-proof-private")
+        .upload(objectPath, proofBytes, { contentType: "image/png", upsert: false });
+      if (uploadError) {
+        throw new Error("Fleet A owner could not upload a private delivery-proof fixture: " + uploadError.message);
+      }
+    }
+
+    const { data: issuedProof, error: issueProofError } = await ownerSession.client.rpc("complete_delivery_document", {
+      p_fleet_id: createdFleet.id,
+      p_shipment_id: deliveryShipmentId,
+      p_stop_id: deliveryStop.id,
+      p_event_key: randomUUID(),
+      p_recipient_name: "Synthetic recipient",
+      p_signature_object_path: deliverySignaturePath,
+      p_photo_object_paths: [deliveryPhotoPath],
+      p_gps_latitude: 32.0853,
+      p_gps_longitude: 34.7818,
+      p_recipient_note: "Synthetic integration proof",
+      p_exception_reason: null,
+      p_pallets_delivered: 1,
+      p_pallets_received: 0,
+      p_pallets_damaged: 0
+    });
+    if (issueProofError || !issuedProof?.note_number) {
+      throw new Error("The delivery-proof RPC did not issue an immutable Test delivery note: " + (issueProofError?.message ?? "missing note number"));
+    }
+    const { data: persistedNote, error: persistedNoteError } = await ownerSession.client
+      .from("delivery_notes").select("id,note_number,document_snapshot")
+      .eq("shipment_id", deliveryShipmentId).single();
+    if (persistedNoteError || persistedNote?.note_number !== issuedProof.note_number ||
+        persistedNote?.document_snapshot?.proof?.signature_object_path !== deliverySignaturePath) {
+      throw new Error("The issued delivery note snapshot did not persist the exact private signature reference.");
+    }
+
+    const ownerDeliveryUrl = await ownerSession.client.storage
+      .from("delivery-proof-private").createSignedUrl(deliverySignaturePath, 60);
+    if (ownerDeliveryUrl.error || !ownerDeliveryUrl.data?.signedUrl) {
+      throw new Error("Fleet A owner could not create a short-lived URL for its own delivery signature.");
+    }
+    const fleetBDeliveryUrl = await secondFleetOwnerSession.client.storage
+      .from("delivery-proof-private").createSignedUrl(deliverySignaturePath, 60);
+    assert.ok(fleetBDeliveryUrl.error, "Fleet B owner must not read Fleet A delivery proof by guessed object path");
+
+    const fleetBDeliveryDelete = await secondFleetOwnerSession.client.storage
+      .from("delivery-proof-private").remove([deliverySignaturePath]);
+    assert.equal(fleetBDeliveryDelete.error, null);
+    assert.deepEqual(fleetBDeliveryDelete.data, [], "Fleet B owner must not delete Fleet A's delivery signature");
+
+    const fleetBDeliveryUpload = await secondFleetOwnerSession.client.storage
+      .from("delivery-proof-private").upload(deliveryPrefix + runId + "-tamper.png", proofBytes, {
+        contentType: "image/png", upsert: false
+      });
+    assert.ok(fleetBDeliveryUpload.error, "Fleet B owner must not upload into Fleet A's delivery-proof path");
+
+    const fleetADeliveryDelete = await ownerSession.client.storage
+      .from("delivery-proof-private").remove([deliverySignaturePath]);
+    assert.equal(fleetADeliveryDelete.error, null);
+    assert.deepEqual(fleetADeliveryDelete.data, [], "Even Fleet A owner must not delete an issued delivery signature");
+
+    const ownerDeliveryStillReadable = await ownerSession.client.storage
+      .from("delivery-proof-private").createSignedUrl(deliverySignaturePath, 60);
+    if (ownerDeliveryStillReadable.error || !ownerDeliveryStillReadable.data?.signedUrl) {
+      throw new Error("The delivery signature became inaccessible after denied delete attempts.");
+    }
+    process.stdout.write("Live delivery proof passed: signed private uploads, immutable note issuance, owner read, cross-fleet read/upload/delete denial, and owner delete denial.\\n");
+
 
     const crossFleetPhotoUrl = await secondFleetOwnerSession.client.storage
       .from("incident-photos")
@@ -825,6 +941,14 @@ async function main() {
           .remove([registrationDocumentFixturePath]);
         if (registrationCleanupError) {
           throw new Error("Unable to remove the marked private vehicle registration fixture from Test Storage.");
+        }
+      }
+      if (deliveryProofFixturePaths.length) {
+        const { error: deliveryProofCleanupError } = await admin.storage
+          .from("delivery-proof-private")
+          .remove(deliveryProofFixturePaths);
+        if (deliveryProofCleanupError) {
+          throw new Error("Unable to remove the exact marked delivery-proof fixture objects from Test Storage.");
         }
       }
       const removed = await cleanupMarkedFixtureUsers(admin);
