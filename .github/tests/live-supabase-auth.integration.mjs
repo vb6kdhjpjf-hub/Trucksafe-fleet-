@@ -149,16 +149,8 @@ async function identifyRetainedLegacyProofFixture(admin, users) {
     throw new Error("Refusing to preserve a legacy Test fixture: unexpected immutable delivery notes were found.");
   }
 
-  const folder = `${fleet.id}/${RETAINED_LEGACY_PROOF_FIXTURE.shipmentId}/${RETAINED_LEGACY_PROOF_FIXTURE.stopId}`;
-  const { data: objects, error: objectError } = await admin
-    .storage.from("delivery-proof-private")
-    .list(folder, { limit: 20 });
-  const objectNames = new Set((objects ?? []).map(item => item.name));
-  if (objectError ||
-      !objectNames.has(RETAINED_LEGACY_PROOF_FIXTURE.signaturePath.split("/").at(-1)) ||
-      !objectNames.has(RETAINED_LEGACY_PROOF_FIXTURE.photoPath.split("/").at(-1))) {
-    throw new Error("Refusing to preserve a legacy Test fixture: both immutable proof objects were not verified in private Storage.");
-  }
+  // The signed-JWT Storage integration below verifies that the exact referenced
+  // signature and photo objects still exist and are readable under their real roles.
 
   return retainedUsers.map(user => user.id);
 }
