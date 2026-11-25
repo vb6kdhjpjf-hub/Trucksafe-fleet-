@@ -328,7 +328,7 @@ begin
   left join storage.objects o on o.bucket_id='delivery-proof-private' and o.name=p.path
   where o.id is null
    or coalesce(o.metadata->>'mimetype','') not in ('image/png','image/jpeg','image/webp')
-   or (o.metadata->>'size')::bigint not between 1 and 10485760
+   or coalesce((o.metadata->>'size')::bigint,0) not between 1 and 10485760
  ) then
   raise exception 'Each delivery photo must be PNG, JPEG or WEBP and no larger than 10 MiB';
  end if;
