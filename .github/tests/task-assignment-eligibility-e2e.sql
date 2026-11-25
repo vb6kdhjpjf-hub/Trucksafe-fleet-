@@ -138,6 +138,18 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Rejected assignment update changed the previously valid task';
   END IF;
+
+  UPDATE public.tasks SET status = 'in_progress' WHERE id = valid_task;
+  PERFORM pg_temp.assert_assignment_rejected(
+    format('UPDATE public.tasks SET assigned_vehicle_id = %L WHERE id = %L',
+      'bd000000-0000-4000-8000-000000000002', valid_task),
+    'vehicle reassignment after task start');
+
+  UPDATE public.tasks SET status = 'completed' WHERE id = valid_task;
+  PERFORM pg_temp.assert_assignment_rejected(
+    format('UPDATE public.tasks SET assigned_driver_id = %L WHERE id = %L',
+      'bc000000-0000-4000-8000-000000000002', valid_task),
+    'driver reassignment after task completion');
 END
 $test$;
 
