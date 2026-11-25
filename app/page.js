@@ -219,9 +219,17 @@ export default function Home() {
       if(nextUserId)authUserIdRef.current=nextUserId;
       setSession(next);
       if(!next){
+        const hadAuthenticatedUser=Boolean(authUserIdRef.current);
         authUserIdRef.current=null;
-        clearPrivateState();
-        if(event==="SIGNED_OUT")setLoading(false);
+        // Supabase emits INITIAL_SESSION with null for a genuinely signed-out
+        // browser. Do not advance the auth generation in that case: the
+        // bootstrap getSession() check below must be allowed to finish and
+        // reveal the sign-in form. Clear private state for an actual sign-out
+        // or when a previously authenticated identity disappears.
+        if(event==="SIGNED_OUT"||hadAuthenticatedUser){
+          clearPrivateState();
+          setLoading(false);
+        }
       }
     });
 
