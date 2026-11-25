@@ -451,3 +451,11 @@ grant execute on function public.add_delivery_note_adjustment(uuid,uuid,uuid,tex
 comment on table public.delivery_notes is 'Immutable, numbered delivery note snapshots; a delivery note is not a tax invoice.';
 comment on table public.delivery_proofs is 'Immutable proof of delivery with private signature/photo object references and optional GPS.';
 comment on table public.delivery_note_adjustments is 'Append-only correction and cancellation history for issued delivery notes.';
+
+-- Index the foreign-key paths used by immutable delivery proof and note records.
+create index if not exists delivery_note_adjustments_created_by_idx on public.delivery_note_adjustments(created_by);
+create index if not exists delivery_notes_issued_by_idx on public.delivery_notes(issued_by);
+create index if not exists delivery_notes_fleet_proof_idx on public.delivery_notes(fleet_id,proof_id);
+create index if not exists delivery_notes_fleet_shipment_stop_idx on public.delivery_notes(fleet_id,shipment_id,stop_id);
+create index if not exists delivery_proofs_performed_by_idx on public.delivery_proofs(performed_by);
+create index if not exists delivery_proofs_fleet_shipment_stop_idx on public.delivery_proofs(fleet_id,shipment_id,stop_id);
