@@ -583,6 +583,97 @@ async function startLocalHttpServer(url, anonKey) {
   }
 }
 
+
+async function assertBrowserWorkspaceAccess({
+  baseUrl, owner, driver, unassigned, shipmentCustomerName, shipmentItemName, stopAddress, admin
+}) {
+  const { chromium } = await import("playwright");
+  const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
+  const pageErrors = [];
+  try {
+    async function loginFixture(fixture, role) {
+      const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+      const page = await context.newPage();
+      page.on("pageerror", error => pageErrors.push(role + ": " + error.message));
+      const response = await page.goto(baseUrl + "/", { waitUntil: "domcontentloaded" });
+      if (!response || response.status() !== 200) {
+        throw new Error(role + " browser could not load the local TruckSafe homepage.");
+      }
+      await page.getByLabel("כתובת אימייל").fill(fixture.user.email);
+      await page.getByLabel("סיסמה", { exact: true }).fill(fixture.password);
+      await page.getByRole("button", { name: "התחברות", exact: true }).click();
+      return { context, page };
+    }
+
+    // Owner: login, open the real shipment screen and validate the rendered
+    // customer, cargo and delivery stop in Chromium, not only via PostgREST.
+    const ownerBrowser = await loginFixture(owner, "owner");
+    const ownerPage = ownerBrowser.page;
+    const shipmentLink = ownerPage.getByRole("link", { name: /משלוחים ותעודות/ });
+    await shipmentLink.waitFor({ state: "visible", timeout: 30000 });
+    await shipmentLink.click();
+    await ownerPage.getByRole("heading", { name: "משלוחים ותעודות משלוח", level: 2 })
+      .waitFor({ state: "visible", timeout: 30000 });
+    await ownerPage.getByText(shipmentCustomerName, { exact: true })
+      .waitFor({ state: "visible", timeout: 30000 });
+    await ownerPage.getByText(new RegExp(shipmentItemName.replace(/[.*+?^${}()|[\]\\]/g, "\\
+async function assertActualHttpAuthorization({ baseUrl, token, role }) {")))
+      .waitFor({ state: "visible", timeout: 30000 });
+    await ownerPage.getByText(stopAddress, { exact: true })
+      .waitFor({ state: "visible", timeout: 30000 });
+    if (await ownerPage.getByRole("button", { name: /משלוח חדש/ }).count() !== 1) {
+      throw new Error("Fleet owner did not receive the shipment-management action in the browser UI.");
+    }
+
+    // Reload must preserve a valid signed session and re-authorize the same
+    // fleet workspace; the app must not fall back to a duplicate-fleet screen.
+    await ownerPage.reload({ waitUntil: "domcontentloaded" });
+    await ownerPage.getByRole("link", { name: /משלוחים ותעודות/ })
+      .waitFor({ state: "visible", timeout: 30000 });
+
+    // Assigned driver: the same shipment is visible, but the create action is
+    // not exposed to a driver role.
+    const driverBrowser = await loginFixture(driver, "driver");
+    const driverPage = driverBrowser.page;
+    const driverShipmentLink = driverPage.getByRole("link", { name: /משלוחים ותעודות/ });
+    await driverShipmentLink.waitFor({ state: "visible", timeout: 30000 });
+    await driverShipmentLink.click();
+    await driverPage.getByRole("heading", { name: "משלוחים ותעודות משלוח", level: 2 })
+      .waitFor({ state: "visible", timeout: 30000 });
+    await driverPage.getByText(shipmentCustomerName, { exact: true })
+      .waitFor({ state: "visible", timeout: 30000 });
+    if (await driverPage.getByRole("button", { name: /משלוח חדש/ }).count() !== 0) {
+      throw new Error("A driver was incorrectly shown the manager-only create-shipment action.");
+    }
+
+    // Unassigned account: login must end at the explicit empty-workspace state.
+    // It must not silently provision a new fleet as a side effect of sign-in.
+    const unassignedBrowser = await loginFixture(unassigned, "unassigned");
+    const unassignedPage = unassignedBrowser.page;
+    await unassignedPage.getByRole("heading", { name: "לא נמצא ארגון בחשבון", level: 2 })
+      .waitFor({ state: "visible", timeout: 30000 });
+    const { data: accidentalFleets, error: fleetQueryError } = await admin
+      .from("fleets")
+      .select("id")
+      .eq("owner_user_id", unassigned.user.id);
+    if (fleetQueryError || accidentalFleets?.length !== 0) {
+      throw new Error("An unassigned browser login unexpectedly created or acquired a fleet.");
+    }
+
+    if (pageErrors.length) {
+      throw new Error("Browser UI raised uncaught client errors: " + pageErrors.join(" | "));
+    }
+    await Promise.all([
+      ownerBrowser.context.close(),
+      driverBrowser.context.close(),
+      unassignedBrowser.context.close()
+    ]);
+    process.stdout.write("Browser E2E passed: owner login and reload, shipment/cargo/stop rendering, driver read-only role view, and unassigned-account no-auto-provision behavior.\\n");
+  } finally {
+    await browser.close();
+  }
+}
+
 async function assertActualHttpAuthorization({ baseUrl, token, role }) {
   const request = async (path) => {
     const response = await fetch(baseUrl + path, {
@@ -789,6 +880,17 @@ async function main() {
     if (deliveryStopError || !deliveryStop?.id) {
       throw new Error("Unable to read the marked Test delivery stop.");
     }
+
+    await assertBrowserWorkspaceAccess({
+      baseUrl: httpServer.baseUrl,
+      owner,
+      driver: deliveryDriverFixture,
+      unassigned: fixtures.find(item => item.role === "unassigned"),
+      shipmentCustomerName: "Synthetic delivery-proof customer",
+      shipmentItemName: "Synthetic cargo",
+      stopAddress: "Synthetic Test address",
+      admin
+    });
 
     const deliveryPrefix = createdFleet.id + "/" + deliveryShipmentId + "/" + deliveryStop.id + "/";
     const deliverySignaturePath = deliveryPrefix + runId + "-signature.png";
