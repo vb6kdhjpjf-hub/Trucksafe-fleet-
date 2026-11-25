@@ -3,6 +3,10 @@ begin;
 -- Schema is provisioned by the dedicated Test-only migration rollout; this file is rollback-only behavior coverage.
 create temporary table shipment_test_results(scenario text primary key,outcome text not null) on commit drop;
 create temporary table shipment_test_fixture(fleet_id uuid,shipment_id uuid,stop_id uuid,owner_id uuid,driver_user_id uuid,driver_id uuid,vehicle_id uuid) on commit drop;
+create temporary table shipment_storage_fixture(
+ fleet_id uuid,shipment_id uuid,stop_id uuid,owner_id uuid,driver_user_id uuid,
+ referenced_signature text,referenced_photo text,driver_orphan text,owner_orphan text
+) on commit drop;
 do $test$
 <<shipment_test_block>>
 declare
@@ -417,6 +421,107 @@ begin
  values('delivery proof DELETE RLS preserves referenced proof files and permits only same-user unreferenced cleanup','PASS');
 end
 $delivery_proof_storage_delete_rls$;
+
+-- Real Storage DELETE RLS: immutable references are never deleted, but
+-- same-user unreferenced failed uploads can be cleaned up. All rows roll back.
+do $prepare_delivery_storage_delete_test$
+declare
+ f record;
+ test_shipment_id uuid;
+ test_stop_id uuid;
+ prefix text;
+ sig_path text;
+ photo_path text;
+ driver_orphan_path text;
+ owner_orphan_path text;
+begin
+ select * into f from pg_temp.shipment_test_fixture;
+ perform set_config('request.jwt.claim.sub',f.owner_id::text,true);
+ perform set_config('request.jwt.claim.role','authenticated',true);
+
+ test_shipment_id:=public.create_shipment(
+  f.fleet_id,'Storage cleanup RLS fixture','CI-STORAGE-RLS','CI-STORAGE-RLS',now()+interval '1 day',
+  f.driver_id,null,'Rollback-only Storage DELETE policy fixture',
+  '[{"description":"Synthetic storage cargo","unit":"package","planned_quantity":1}]'::jsonb,
+  '[{"address":"Synthetic Storage test stop","stop_type":"delivery","items":[{"line_index":0,"planned_quantity":1}]}]'::jsonb
+ );
+ select st.id into test_stop_id from public.shipment_stops st
+ where st.fleet_id=f.fleet_id and st.shipment_id=test_shipment_id;
+ if test_stop_id is null then raise exception 'Unable to create Storage DELETE policy test stop'; end if;
+ prefix:=f.fleet_id::text||'/'||test_shipment_id::text||'/'||test_stop_id::text||'/';
+ sig_path:=prefix||'referenced-signature.png';
+ photo_path:=prefix||'referenced-photo.jpg';
+ driver_orphan_path:=prefix||'driver-unreferenced.png';
+ owner_orphan_path:=prefix||'owner-unreferenced.webp';
+
+ insert into storage.objects(bucket_id,name,owner,owner_id,metadata)
+ values
+  ('delivery-proof-private',sig_path,f.driver_user_id,f.driver_user_id::text,jsonb_build_object('mimetype','image/png','size',100)),
+  ('delivery-proof-private',photo_path,f.owner_id,f.owner_id::text,jsonb_build_object('mimetype','image/jpeg','size',100)),
+  ('delivery-proof-private',driver_orphan_path,f.driver_user_id,f.driver_user_id::text,jsonb_build_object('mimetype','image/png','size',100)),
+  ('delivery-proof-private',owner_orphan_path,f.owner_id,f.owner_id::text,jsonb_build_object('mimetype','image/webp','size',100));
+
+ insert into public.delivery_proofs(
+  fleet_id,shipment_id,stop_id,event_key,proof_status,recipient_name,
+  signature_object_path,photo_object_paths,performed_by
+ ) values (
+  f.fleet_id,test_shipment_id,test_stop_id,gen_random_uuid(),'signed',
+  'Synthetic Storage recipient',sig_path,array[photo_path],f.driver_user_id
+ );
+
+ insert into pg_temp.shipment_storage_fixture values(
+  f.fleet_id,test_shipment_id,test_stop_id,f.owner_id,f.driver_user_id,
+  sig_path,photo_path,driver_orphan_path,owner_orphan_path
+ );
+end
+$prepare_delivery_storage_delete_test$;
+
+set local role authenticated;
+do $delivery_storage_delete_rls_test$
+declare
+ f record;
+ deleted_count integer;
+begin
+ select * into f from pg_temp.shipment_storage_fixture;
+ perform set_config('request.jwt.claim.role','authenticated',true);
+
+ -- Fleet owner cannot delete another user's signature or a referenced photo.
+ perform set_config('request.jwt.claim.sub',f.owner_id::text,true);
+ delete from storage.objects where bucket_id='delivery-proof-private' and name=f.referenced_signature;
+ get diagnostics deleted_count=row_count;
+ if deleted_count<>0 then raise exception 'Fleet owner deleted an assigned-driver signature referenced by immutable delivery proof'; end if;
+ delete from storage.objects where bucket_id='delivery-proof-private' and name=f.referenced_photo;
+ get diagnostics deleted_count=row_count;
+ if deleted_count<>0 then raise exception 'Fleet owner deleted their own photo referenced by immutable delivery proof'; end if;
+ delete from storage.objects where bucket_id='delivery-proof-private' and name=f.driver_orphan;
+ get diagnostics deleted_count=row_count;
+ if deleted_count<>0 then raise exception 'Fleet owner deleted an unreferenced object uploaded by another user'; end if;
+
+ -- Assigned driver cannot delete a referenced signature, but can clean up
+ -- their own unreferenced failed upload from the same authorized stop.
+ perform set_config('request.jwt.claim.sub',f.driver_user_id::text,true);
+ delete from storage.objects where bucket_id='delivery-proof-private' and name=f.referenced_signature;
+ get diagnostics deleted_count=row_count;
+ if deleted_count<>0 then raise exception 'Assigned driver deleted a signature referenced by immutable delivery proof'; end if;
+ delete from storage.objects where bucket_id='delivery-proof-private' and name=f.driver_orphan;
+ get diagnostics deleted_count=row_count;
+ if deleted_count<>1 then raise exception 'Assigned driver could not delete their own unreferenced proof upload'; end if;
+
+ -- Fleet owner can clean up their own unreferenced upload.
+ perform set_config('request.jwt.claim.sub',f.owner_id::text,true);
+ delete from storage.objects where bucket_id='delivery-proof-private' and name=f.owner_orphan;
+ get diagnostics deleted_count=row_count;
+ if deleted_count<>1 then raise exception 'Fleet owner could not delete their own unreferenced proof upload'; end if;
+end
+$delivery_storage_delete_rls_test$;
+reset role;
+
+do $delivery_storage_delete_result$
+begin
+ insert into pg_temp.shipment_test_results
+ values('delivery proof DELETE RLS preserves referenced proof files and permits only same-user unreferenced cleanup','PASS');
+end
+$delivery_storage_delete_result$;
 
 do $driver_membership_revocation_test$
 declare f record;
