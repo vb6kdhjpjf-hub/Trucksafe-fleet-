@@ -33,7 +33,7 @@ If the session changed or network access is unavailable, automatic cleanup may b
 
 ## Test evidence
 
-The dedicated Test Auth integration exercises signed driver and owner uploads, owner/driver signed reads, cross-fleet read/upload/delete denial, same-user deletion of an unreferenced upload, denial of deletion after a synthetic proof row references the signature/photo paths, PDF MIME rejection, over-10-MiB upload rejection, and exact cleanup of disposable fixtures.
+The dedicated Test Auth integration exercises signed driver and owner uploads, owner/driver signed reads, cross-fleet read/upload/delete denial, same-user deletion of an unreferenced upload, PDF MIME rejection, over-10-MiB upload rejection, and exact cleanup of disposable fixtures. It also re-authenticates the two retained identities for one historical synthetic proof and restores its two exact object paths through their original uploaders (driver-owned signature and owner-owned photo). It then proves the actual uploader cannot delete the object referenced by the immutable proof, while cross-user deletion is separately denied.
 
 The rollback-only SQL suite exercises actual delivery-document RPC validation, idempotency, immutable snapshots, authorized signature exceptions, aggregate limits, and shipment/cargo cascade behavior.
 
