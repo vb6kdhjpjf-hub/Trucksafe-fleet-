@@ -595,6 +595,12 @@ async function assertBrowserWorkspaceAccess({
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
       const page = await context.newPage();
       const browserDiagnostics = [];
+      const requestUrls = [];
+      page.on("request", request => {
+        if (request.url().includes("supabase") || request.url().includes("/_next/")) {
+          requestUrls.push(request.method() + " " + request.url().slice(0, 220));
+        }
+      });
       page.on("pageerror", error => {
         pageErrors.push(role + ": " + error.message);
         browserDiagnostics.push("pageerror: " + error.message);
@@ -616,7 +622,17 @@ async function assertBrowserWorkspaceAccess({
       const passwordInput = page.locator('form.auth-form input[type="password"]');
       await emailInput.waitFor({ state: "visible", timeout: 30000 }).catch(async () => {
         const visiblePage = (await page.locator("body").innerText()).slice(0, 700);
+        const runtime = await page.evaluate(() => ({
+          readyState: document.readyState,
+          scriptCount: document.scripts.length,
+          scripts: Array.from(document.scripts).map(script => script.src).filter(Boolean).slice(-12),
+          nextFlight: Array.isArray(window.__next_f) ? window.__next_f.length : null,
+          forms: Array.from(document.forms).map(form => form.className),
+          emailInputs: document.querySelectorAll('input[type="email"]').length
+        }));
         throw new Error(role + " browser did not render the sign-in form. Body: " + visiblePage +
+          " | Runtime: " + JSON.stringify(runtime) +
+          " | Requests: " + requestUrls.slice(-30).join(" || ") +
           " | Browser diagnostics: " + browserDiagnostics.slice(-20).join(" || "));
       });
       await emailInput.fill(fixture.user.email);
