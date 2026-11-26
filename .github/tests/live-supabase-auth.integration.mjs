@@ -646,7 +646,20 @@ async function assertBrowserWorkspaceAccess({
     const ownerBrowser = await loginFixture(owner, "owner");
     const ownerPage = ownerBrowser.page;
     const shipmentLink = ownerPage.getByRole("link", { name: /משלוחים ותעודות/ });
-    await shipmentLink.waitFor({ state: "visible", timeout: 30000 });
+    await shipmentLink.waitFor({ state: "visible", timeout: 30000 }).catch(async error => {
+      const diagnostics = await ownerPage.evaluate(() => ({
+        url: location.href,
+        title: document.title,
+        readyState: document.readyState,
+        body: (document.body?.innerText || "").slice(0, 2200),
+        forms: Array.from(document.forms).map(form => form.className),
+        authStorageKeys: Object.keys(localStorage).filter(key => key.includes("auth-token"))
+      }));
+      throw new Error("Owner fleet workspace did not appear after sign-in. Browser state: " +
+        JSON.stringify(diagnostics) + " | Page errors: " + pageErrors.slice(-12).join(" || ") +
+        " | Requests: " + requestUrls.slice(-24).join(" || ") +
+        " | Original error: " + error.message);
+    });
     await shipmentLink.click();
     await ownerPage.getByRole("heading", { name: "משלוחים ותעודות משלוח", level: 2 })
       .waitFor({ state: "visible", timeout: 30000 });
