@@ -590,29 +590,29 @@ async function assertBrowserWorkspaceAccess({
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
   const pageErrors = [];
+  const browserDiagnostics = [];
+  const requestUrls = [];
   try {
     async function loginFixture(fixture, role) {
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
       const page = await context.newPage();
-      const browserDiagnostics = [];
-      const requestUrls = [];
       page.on("request", request => {
         if (request.url().includes("supabase") || request.url().includes("/_next/")) {
-          requestUrls.push(request.method() + " " + request.url().slice(0, 220));
+          requestUrls.push(role + ": " + request.method() + " " + request.url().slice(0, 220));
         }
       });
       page.on("pageerror", error => {
         pageErrors.push(role + ": " + error.message);
-        browserDiagnostics.push("pageerror: " + error.message);
+        browserDiagnostics.push(role + " pageerror: " + error.message);
       });
       page.on("console", message => {
-        if (message.type() === "error") browserDiagnostics.push("console: " + message.text());
+        if (message.type() === "error") browserDiagnostics.push(role + " console: " + message.text());
       });
       page.on("requestfailed", request => {
-        browserDiagnostics.push("requestfailed: " + request.url() + " :: " + (request.failure()?.errorText || "unknown"));
+        browserDiagnostics.push(role + " requestfailed: " + request.url() + " :: " + (request.failure()?.errorText || "unknown"));
       });
       page.on("response", response => {
-        if (response.status() >= 400) browserDiagnostics.push("http " + response.status() + ": " + response.url());
+        if (response.status() >= 400) browserDiagnostics.push(role + " http " + response.status() + ": " + response.url());
       });
       const response = await page.goto(baseUrl + "/", { waitUntil: "domcontentloaded" });
       if (!response || response.status() !== 200) {
@@ -657,7 +657,8 @@ async function assertBrowserWorkspaceAccess({
       }));
       throw new Error("Owner fleet workspace did not appear after sign-in. Browser state: " +
         JSON.stringify(diagnostics) + " | Page errors: " + pageErrors.slice(-12).join(" || ") +
-        " | Requests: " + requestUrls.slice(-24).join(" || ") +
+        " | Browser diagnostics: " + browserDiagnostics.slice(-30).join(" || ") +
+        " | Requests: " + requestUrls.slice(-30).join(" || ") +
         " | Original error: " + error.message);
     });
     await shipmentLink.click();
