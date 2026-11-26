@@ -654,7 +654,8 @@ async function assertBrowserWorkspaceAccess({
       .waitFor({ state: "visible", timeout: 30000 });
     await ownerPage.getByText(shipmentItemName, { exact: true })
       .waitFor({ state: "visible", timeout: 30000 });
-    await ownerPage.getByText(stopAddress, { exact: true })
+    await ownerPage.locator(".shipment-stop-title b")
+      .filter({ hasText: stopAddress })
       .waitFor({ state: "visible", timeout: 30000 });
     if (await ownerPage.getByRole("button", { name: /משלוח חדש/ }).count() !== 1) {
       throw new Error("Fleet owner did not receive the shipment-management action in the browser UI.");
