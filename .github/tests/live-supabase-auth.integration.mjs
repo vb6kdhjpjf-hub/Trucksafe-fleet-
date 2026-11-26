@@ -665,7 +665,16 @@ async function assertBrowserWorkspaceAccess({
     // fleet workspace; the app must not fall back to a duplicate-fleet screen.
     await ownerPage.reload({ waitUntil: "domcontentloaded" });
     await ownerPage.getByRole("link", { name: /משלוחים ותעודות/ })
-      .waitFor({ state: "visible", timeout: 30000 });
+      .waitFor({ state: "visible", timeout: 30000 }).catch(async error => {
+        const diagnostics = await ownerPage.evaluate(() => ({
+          url: location.href,
+          title: document.title,
+          body: (document.body?.innerText || "").slice(0, 1800),
+          authStorageKeys: Object.keys(localStorage).filter(key => key.includes("auth-token"))
+        }));
+        throw new Error("Owner fleet workspace did not recover after page reload. Browser state: " +
+          JSON.stringify(diagnostics) + " | Original error: " + error.message);
+      });
 
     // Assigned driver: the same shipment is visible, but the create action is
     // not exposed to a driver role.
