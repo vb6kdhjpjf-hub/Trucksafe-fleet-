@@ -655,7 +655,7 @@ export default function Home() {
       {mode==="signup"&&<label>שם מלא<input required value={name} onChange={e=>setName(e.target.value)} placeholder="השם שלך"/></label>}
       <label>כתובת אימייל<input type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="name@example.com"/></label>
       <label>סיסמה<input type="password" minLength={6} required value={password} onChange={e=>setPassword(e.target.value)} placeholder="לפחות 6 תווים"/></label>
-      <button className="primary-btn" disabled={busy}>{busy?"נא להמתין...":mode==="login"?"התחברות":"יצירת חשבון"}</button>
+      <button type="submit" className="primary-btn" disabled={busy}>{busy?"נא להמתין...":mode==="login"?"התחברות":"יצירת חשבון"}</button>
     </form>
     <button className="auth-switch" onClick={()=>{setMode(mode==="login"?"signup":"login");setMessage("");}}>{mode==="login"?"אין לך חשבון? יצירת חשבון":"כבר יש לך חשבון? התחברות"}</button>
     {mode==="login"&&<button type="button" className="auth-switch" disabled={busy} onClick={sendPasswordReset}>שכחתי סיסמה – שליחת קישור לאיפוס</button>}
