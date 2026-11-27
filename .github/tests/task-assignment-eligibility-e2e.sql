@@ -120,6 +120,11 @@ BEGIN
         'bc000000-0000-4000-8000-000000000001','assigned')$sql$,
     'assigned task without both references');
 
+  -- Authenticate as the fleet owner so the legacy driver-only guard
+  -- cannot mask the new assignment-eligibility trigger in this assertion.
+  PERFORM set_config('request.jwt.claim.sub', 'ba000000-0000-4000-8000-000000000001', true);
+  PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
+
   PERFORM pg_temp.assert_assignment_rejected(
     format('UPDATE public.tasks SET assigned_driver_id = %L WHERE id = %L',
       'bc000000-0000-4000-8000-000000000002', valid_task),
@@ -133,6 +138,18 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Rejected assignment update changed the previously valid task';
   END IF;
+
+  UPDATE public.tasks SET status = 'in_progress' WHERE id = valid_task;
+  PERFORM pg_temp.assert_assignment_rejected(
+    format('UPDATE public.tasks SET assigned_vehicle_id = %L WHERE id = %L',
+      'bd000000-0000-4000-8000-000000000002', valid_task),
+    'vehicle reassignment after task start');
+
+  UPDATE public.tasks SET status = 'completed' WHERE id = valid_task;
+  PERFORM pg_temp.assert_assignment_rejected(
+    format('UPDATE public.tasks SET assigned_driver_id = %L WHERE id = %L',
+      'bc000000-0000-4000-8000-000000000002', valid_task),
+    'driver reassignment after task completion');
 END
 $test$;
 
