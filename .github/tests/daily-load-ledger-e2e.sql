@@ -144,12 +144,14 @@ begin
   ) then
     raise exception 'Active daily work plan fixture was not created';
   end if;
-  set constraints drivers_active_trip_state_consistency immediate;
+
   rejected := false;
   begin
     update public.drivers d set status='off_duty'
     where d.id=test_block.driver_id and d.fleet_id=test_block.fleet_id;
     get diagnostics affected = row_count;
+    -- Exercise the same guard invoked by the deferred driver constraint trigger.
+    perform private.assert_driver_trip_status(test_block.fleet_id,test_block.driver_id);
   exception when check_violation then
     rejected := true;
   end;
@@ -309,9 +311,10 @@ begin
   -- Once every assigned plan is completed, deactivation is allowed.
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
   update public.daily_work_plans set status='completed' where id=created_plan_id;
-  update public.drivers d set status='off_duty' where d.id=driver_id and d.fleet_id=test_block.fleet_id;
-  set constraints drivers_active_trip_state_consistency immediate;
-  if (select status from public.drivers where d.id=driver_id and d.fleet_id=test_block.fleet_id) <> 'off_duty' then
+  update public.drivers d set status='off_duty' where d.id=test_block.driver_id and d.fleet_id=test_block.fleet_id;
+  perform private.assert_driver_trip_status(test_block.fleet_id,test_block.driver_id);
+
+  if (select d.status from public.drivers d where d.id=test_block.driver_id and d.fleet_id=test_block.fleet_id) <> 'off_duty' then
     raise exception 'Driver could not be deactivated after all assigned daily work plans were completed';
   end if;
   insert into pg_temp.daily_load_test_results values('driver can be deactivated after all assigned daily work plans are completed','PASS');
