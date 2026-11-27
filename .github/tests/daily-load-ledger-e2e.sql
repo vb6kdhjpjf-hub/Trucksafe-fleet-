@@ -29,6 +29,8 @@ declare
   rejected boolean;
   event_count integer;
   affected integer;
+  observed_status text;
+  active_plan_count integer;
 begin
   -- @auth-fixture owner_id daily-owner@example.invalid
 -- @auth-fixture driver_user_id daily-driver@example.invalid
@@ -150,6 +152,13 @@ begin
     update public.drivers d set status='off_duty'
     where d.id=test_block.driver_id and d.fleet_id=test_block.fleet_id;
     get diagnostics affected = row_count;
+    select d.status into observed_status from public.drivers d
+      where d.id=test_block.driver_id and d.fleet_id=test_block.fleet_id;
+    select count(*) into active_plan_count from public.daily_work_plans p
+      where p.driver_id=test_block.driver_id and p.fleet_id=test_block.fleet_id and p.status='active';
+    if observed_status <> 'off_duty' or active_plan_count < 1 then
+      raise exception 'Guard fixture state mismatch: status=%, active_plans=%', observed_status, active_plan_count;
+    end if;
     -- Exercise the same guard invoked by the deferred driver constraint trigger.
     perform private.assert_driver_trip_status(test_block.fleet_id,test_block.driver_id);
   exception when check_violation then
