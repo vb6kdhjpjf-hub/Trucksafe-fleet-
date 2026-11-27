@@ -28,6 +28,7 @@ declare
   msg text;
   rejected boolean;
   event_count integer;
+  affected integer;
 begin
   -- @auth-fixture owner_id daily-owner@example.invalid
 -- @auth-fixture driver_user_id daily-driver@example.invalid
@@ -148,9 +149,13 @@ begin
   begin
     update public.drivers d set status='off_duty'
     where d.id=test_block.driver_id and d.fleet_id=test_block.fleet_id;
+    get diagnostics affected = row_count;
   exception when check_violation then
     rejected := true;
   end;
+  if not rejected and affected <> 1 then
+    raise exception 'Driver deactivation test fixture update affected % rows instead of one', affected;
+  end if;
   if not rejected then
     raise exception 'Driver deactivation was allowed while an active daily work plan existed';
   end if;
