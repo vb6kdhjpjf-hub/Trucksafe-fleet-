@@ -330,7 +330,7 @@ begin
 
   if not exists (
     select 1 from supabase_migrations.schema_migrations
-    where name='test_move_daily_plan_guard_into_driver_constraint_trigger_v4'
+    where name='test_reapply_driver_constraint_trigger_daily_plan_guard_v5'
   ) then
     raise exception 'CI Test database is missing the driver constraint-trigger guard migration v4';
   end if;
