@@ -138,7 +138,7 @@ begin
   if not exists (
     select 1 from public.daily_work_plans p
     where p.fleet_id=test_block.fleet_id
-      and p.driver_id=driver_id
+      and p.driver_id=test_block.driver_id
       and p.status='active'
   ) then
     raise exception 'Active daily work plan fixture was not created';
@@ -147,14 +147,14 @@ begin
   rejected := false;
   begin
     update public.drivers d set status='off_duty'
-    where d.id=driver_id and d.fleet_id=test_block.fleet_id;
+    where d.id=test_block.driver_id and d.fleet_id=test_block.fleet_id;
   exception when check_violation then
     rejected := true;
   end;
   if not rejected then
     raise exception 'Driver deactivation was allowed while an active daily work plan existed';
   end if;
-  if (select d.status from public.drivers d where d.id=driver_id and d.fleet_id=test_block.fleet_id) <> 'active' then
+  if (select d.status from public.drivers d where d.id=test_block.driver_id and d.fleet_id=test_block.fleet_id) <> 'active' then
     raise exception 'Driver status changed despite an active daily work plan';
   end if;
   insert into pg_temp.daily_load_test_results values('driver cannot be deactivated while an assigned daily work plan is active','PASS');
