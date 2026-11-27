@@ -328,6 +328,14 @@ begin
     into v_fleet_id,v_driver_id,v_owner_id,v_plan_id
   from pg_temp.daily_driver_guard_fixture;
 
+  if not exists (
+    select 1 from supabase_migrations.schema_migrations
+    where version='20261127102907'
+      and name='test_reapply_daily_plan_driver_status_guard'
+  ) then
+    raise exception 'CI database does not contain the latest Test-only driver guard migration; verify SUPABASE_TEST_DB_URL points to the same Test database';
+  end if;
+
   if position('v_has_active_plan' in pg_get_functiondef(
     'private.assert_driver_trip_status(uuid,uuid)'::regprocedure
   )) = 0 then
