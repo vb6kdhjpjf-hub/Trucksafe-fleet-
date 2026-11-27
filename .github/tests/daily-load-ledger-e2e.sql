@@ -134,6 +134,23 @@ begin
     now(),'weighbridge_ticket','WB-DAILY-001',owner_id
   );
 
+  -- A driver must not be deactivated while an assigned daily work plan is active.
+  rejected := false;
+  begin
+    update public.drivers set status='off_duty'
+    where id=driver_id and fleet_id=fleet_id;
+    set constraints drivers_active_trip_state_consistency immediate;
+  exception when check_violation then
+    rejected := true;
+  end;
+  if not rejected then
+    raise exception 'Driver deactivation was allowed while an active daily work plan existed';
+  end if;
+  if (select status from public.drivers where id=driver_id and fleet_id=fleet_id) <> 'active' then
+    raise exception 'Driver status changed despite an active daily work plan';
+  end if;
+  insert into pg_temp.daily_load_test_results values('driver cannot be deactivated while an assigned daily work plan is active','PASS');
+
   insert into public.daily_work_stops(id,fleet_id,plan_id,sequence_no,operation_kind,address,planned_quantity_kg)
   values
     (stop_unload,fleet_id,plan_id,1,'unload','לקוח א׳',3000),
@@ -276,6 +293,15 @@ begin
   end if;
   insert into pg_temp.daily_load_test_results values('driver completes first stop on a newly activated daily plan','PASS');
 
+  -- Once every assigned plan is completed, deactivation is allowed.
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
+  update public.daily_work_plans set status='completed' where id=created_plan_id;
+  update public.drivers set status='off_duty' where id=driver_id and fleet_id=fleet_id;
+  set constraints drivers_active_trip_state_consistency immediate;
+  if (select status from public.drivers where id=driver_id and fleet_id=fleet_id) <> 'off_duty' then
+    raise exception 'Driver could not be deactivated after all assigned daily work plans were completed';
+  end if;
+  insert into pg_temp.daily_load_test_results values('driver can be deactivated after all assigned daily work plans are completed','PASS');
 
   if has_table_privilege('authenticated','public.daily_work_plans','INSERT')
      or has_table_privilege('authenticated','public.daily_work_plans','UPDATE')
