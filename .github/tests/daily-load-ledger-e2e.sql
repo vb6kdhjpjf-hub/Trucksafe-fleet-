@@ -328,6 +328,12 @@ begin
     into v_fleet_id,v_driver_id,v_owner_id,v_plan_id
   from pg_temp.daily_driver_guard_fixture;
 
+  if position('v_has_active_plan' in pg_get_functiondef(
+    'private.assert_driver_trip_status(uuid,uuid)'::regprocedure
+  )) = 0 then
+    raise exception 'Test database is missing the active daily-plan driver guard function definition';
+  end if;
+
   perform set_config('request.jwt.claim.sub',v_owner_id::text,true);
   perform set_config('request.jwt.claim.role','authenticated',true);
 
