@@ -344,6 +344,14 @@ begin
     raise exception 'CI Test database is missing the persisted driver guard repair migration 20261127121418';
   end if;
 
+  if not exists (
+    select 1 from supabase_migrations.schema_migrations
+    where version='20261127121850'
+      and name='test_restore_active_daily_plan_driver_guard_v3'
+  ) then
+    raise exception 'CI Test database is missing the restored driver guard repair migration 20261127121850';
+  end if;
+
   if position('v_has_active_plan' in pg_get_functiondef(
     'private.assert_driver_trip_status(uuid,uuid)'::regprocedure
   )) = 0 then
