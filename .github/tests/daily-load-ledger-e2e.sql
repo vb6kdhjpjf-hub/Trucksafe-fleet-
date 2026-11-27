@@ -320,6 +320,8 @@ declare
   v_driver_id uuid;
   v_owner_id uuid;
   v_plan_id uuid;
+  v_active_plans integer;
+  v_affected integer;
   rejected boolean := false;
 begin
   select fleet_id,driver_id,owner_id,plan_id
@@ -329,9 +331,23 @@ begin
   perform set_config('request.jwt.claim.sub',v_owner_id::text,true);
   perform set_config('request.jwt.claim.role','authenticated',true);
 
+  select count(*) into v_active_plans
+  from public.daily_work_plans p
+  where p.driver_id=v_driver_id and p.fleet_id=v_fleet_id and p.status='active';
+  if v_active_plans < 1 then
+    raise exception 'Driver guard test fixture has no active daily work plan (driver %, fleet %)', v_driver_id, v_fleet_id;
+  end if;
+
   begin
     update public.drivers d set status='off_duty'
     where d.id=v_driver_id and d.fleet_id=v_fleet_id;
+    get diagnostics v_affected = row_count;
+    if v_affected <> 1 then
+      raise exception 'Driver guard test update affected % rows instead of one', v_affected;
+    end if;
+    -- Directly exercise the same guard as a diagnostic backstop if the deferred
+    -- trigger is not scheduled by the current test database transaction.
+    perform private.assert_driver_trip_status(v_fleet_id,v_driver_id);
   exception when check_violation then
     rejected := true;
   end;
@@ -345,6 +361,7 @@ begin
 
   update public.daily_work_plans set status='completed' where id=v_plan_id and fleet_id=v_fleet_id;
   update public.drivers d set status='off_duty' where d.id=v_driver_id and d.fleet_id=v_fleet_id;
+  perform private.assert_driver_trip_status(v_fleet_id,v_driver_id);
   if (select d.status from public.drivers d where d.id=v_driver_id and d.fleet_id=v_fleet_id) <> 'off_duty' then
     raise exception 'Driver could not be deactivated after the assigned daily work plan was completed';
   end if;
