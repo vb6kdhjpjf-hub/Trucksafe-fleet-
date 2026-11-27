@@ -19,7 +19,7 @@ const FIXTURE_FILES = new Set([
   "task-assignment-eligibility-e2e.sql",
 ]);
 
-async function expandIncludes(file, stack = []) {
+async function expandIncludes(file, stack = [], isIncludedMigration = false) {
   const absolute = path.resolve(root, file);
   if (stack.includes(absolute)) {
     throw new Error(`Circular SQL include: ${[...stack, absolute].join(" -> ")}`);
@@ -31,7 +31,19 @@ async function expandIncludes(file, stack = []) {
     const match = line.match(/^\s*\\ir\s+(.+?)\s*$/);
     if (match) {
       const includePath = path.resolve(path.dirname(absolute), match[1]);
-      expanded.push(await expandIncludes(path.relative(root, includePath), [...stack, absolute]));
+      expanded.push(await expandIncludes(
+        path.relative(root, includePath),
+        [...stack, absolute],
+        true
+      ));
+    } else if (
+      isIncludedMigration &&
+      /^\s*(?:BEGIN|START\s+TRANSACTION|COMMIT|END\s+TRANSACTION|ROLLBACK)\s*;\s*(?:--.*)?$/i.test(line)
+    ) {
+      // Included migrations must remain inside the root fixture's rollback-only
+      // transaction. A migration-level COMMIT would otherwise persist every
+      // synthetic fixture and DDL statement executed earlier in the test file.
+      expanded.push("-- transaction boundary omitted by rollback-only SQL test runner");
     } else {
       expanded.push(line);
     }
