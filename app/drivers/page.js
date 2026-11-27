@@ -149,6 +149,18 @@ export default function DriversPage() {
           setMessage("לא ניתן להשבית נהג במהלך נסיעה פעילה. יש לסיים את הנסיעה תחילה.");
           return;
         }
+
+        const { data: activePlans, error: planError } = await supabase.from("daily_work_plans")
+          .select("id").eq("fleet_id", fleet.id).eq("driver_id", driver.id).eq("status", "active").limit(1);
+        if (!isCurrentSession()) return;
+        if (planError) {
+          setMessage("לא ניתן לבדוק תוכניות עבודה פעילות: " + planError.message);
+          return;
+        }
+        if (activePlans?.length) {
+          setMessage("לא ניתן להשבית נהג בזמן תוכנית עבודה פעילה. יש להשלים או לבטל את התוכנית תחילה.");
+          return;
+        }
       }
       if (!isCurrentSession()) return;
       const { error } = await supabase.from("drivers").update({ status: nextStatus })
