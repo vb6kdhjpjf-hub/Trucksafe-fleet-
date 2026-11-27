@@ -221,14 +221,18 @@ export default function ShipmentsPage(){
   const [selectedNote,setSelectedNote]=useState(null);
   const [settingsForm,setSettingsForm]=useState({issuer_name:"",business_id:"",address:"",phone:"",email:"",number_prefix:"DL"});
   const [showSettings,setShowSettings]=useState(false);
+  const authGenerationRef=useRef(0);
+  const authUserIdRef=useRef(null);
   const role=fleet?.role||"";
   const canManage=["owner","fleet_manager","dispatcher"].includes(role);
   const canOverride=["owner","fleet_manager"].includes(role);
   const notify=(text,kind="info")=>{setMessage(text);setMessageKind(kind);};
-  const loadData=useCallback(async(currentUser)=>{
+  const loadData=useCallback(async(currentUser,authGeneration=authGenerationRef.current)=>{
+    const isCurrent=()=>authGeneration===authGenerationRef.current;
     const {data,error}=await resolveFleetWorkspace(supabase,currentUser.id);
+    if(!isCurrent())return;
     if(error){if(["AUTH_REQUIRED","NO_FLEET"].includes(error.code))router.replace("/");else notify("לא ניתן לאמת את סביבת הצי: "+error.message,"error");return;}
-    const currentFleet=data.fleet;setFleet(currentFleet);
+    const currentFleet=data.fleet;if(!isCurrent())return;setFleet(currentFleet);
     const [ship,drv,veh,lines,stops,stopLines,doc,config,adjustments]=await Promise.all([
       supabase.from("shipments").select("id,fleet_id,customer_name,customer_reference,delivery_reference,status,scheduled_at,assigned_driver_id,assigned_vehicle_id,notes,created_at").eq("fleet_id",currentFleet.id).order("created_at",{ascending:false}).limit(100),
       supabase.from("drivers").select("id,full_name,status").eq("fleet_id",currentFleet.id).order("full_name"),
@@ -240,6 +244,7 @@ export default function ShipmentsPage(){
       supabase.from("delivery_note_settings").select("issuer_name,issuer_business_id,issuer_address,issuer_phone,issuer_email,number_prefix,next_number").eq("fleet_id",currentFleet.id).maybeSingle(),
       supabase.from("delivery_note_adjustments").select("id,delivery_note_id,adjustment_type,reason,payload,created_at").eq("fleet_id",currentFleet.id).order("created_at",{ascending:false})
     ]);
+    if(!isCurrent())return;
     for(const r of [ship,drv,veh,lines,stops,stopLines,doc,config,adjustments])if(r.error){notify("שגיאה בטעינת נתוני משלוחים: "+r.error.message,"error");return;}
     const lineMap=new Map((lines.data||[]).map(x=>[x.id,x]));
     const adjustmentMap=new Map();
@@ -253,6 +258,7 @@ export default function ShipmentsPage(){
         deliveryNote:noteMap.get(st.id)||null
       }))
     }));
+    if(!isCurrent())return;
     setShipments(built);setDrivers(drv.data||[]);setVehicles(veh.data||[]);setNotes(enrichedNotes);
     setSettings(config.data||null);
     if(config.data)setSettingsForm({issuer_name:config.data.issuer_name||"",business_id:config.data.issuer_business_id||"",address:config.data.issuer_address||"",phone:config.data.issuer_phone||"",email:config.data.issuer_email||"",number_prefix:config.data.number_prefix||"DL"});
@@ -261,11 +267,31 @@ export default function ShipmentsPage(){
   useEffect(()=>{
     if(!isSupabaseConfigured){notify("החיבור למסד הנתונים אינו מוגדר.","error");setLoading(false);return;}
     let alive=true;
-    supabase.auth.getSession().then(async({data,error})=>{
-      if(!alive)return;if(error||!data.session){router.replace("/");return;}
-      setUser(data.session.user);await loadData(data.session.user);if(alive)setLoading(false);
+    const clearPrivateState=()=>{
+      authGenerationRef.current+=1;
+      setUser(null);setFleet(null);setShipments([]);setDrivers([]);setVehicles([]);setNotes([]);setSettings(null);
+      setResults({});setSelectedNote(null);setShowForm(false);setShowSettings(false);setForm(emptyForm());
+      setBusy(false);setMessage("");setLoading(false);
+    };
+    const initialAuthGeneration=authGenerationRef.current;
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,nextSession)=>{
+      const nextUserId=nextSession?.user?.id||null;
+      if(nextUserId&&authUserIdRef.current&&nextUserId!==authUserIdRef.current){
+        clearPrivateState();
+        authUserIdRef.current=nextUserId;
+        if(typeof window!=="undefined")window.location.reload();
+        return;
+      }
+      if(nextUserId)authUserIdRef.current=nextUserId;
+      if(!nextSession){authUserIdRef.current=null;clearPrivateState();router.replace("/");}
     });
-    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,next)=>{if(!next)router.replace("/");});
+    supabase.auth.getSession().then(async({data,error})=>{
+      if(!alive||initialAuthGeneration!==authGenerationRef.current)return;
+      if(error||!data.session){clearPrivateState();router.replace("/");return;}
+      authUserIdRef.current=data.session.user.id;
+      const generation=initialAuthGeneration;
+      setUser(data.session.user);await loadData(data.session.user,generation);if(alive&&generation===authGenerationRef.current)setLoading(false);
+    }).catch(()=>{if(alive){clearPrivateState();router.replace("/");}});
     return()=>{alive=false;subscription.unsubscribe();};
   },[router,loadData]);
 
@@ -337,6 +363,11 @@ export default function ShipmentsPage(){
     finally{setBusy(false);}
   }
   async function openNote(note){
+    // Signed-URL requests can outlive the session that initiated them.
+    // Never attach a previous user's private proof URLs to a later session.
+    const generation=authGenerationRef.current;
+    const requestingUserId=authUserIdRef.current;
+    if(!requestingUserId||requestingUserId!==user?.id)return;
     const storage=supabase.storage.from("delivery-proof-private");
     const proof=note.document_snapshot?.proof||{};
     const paths=Array.isArray(proof.photo_object_paths)?proof.photo_object_paths:[];
@@ -345,6 +376,7 @@ export default function ShipmentsPage(){
       :Promise.resolve({data:null,error:null});
     const photoPromises=paths.map(path=>storage.createSignedUrl(path,300));
     const [signature,...photos]=await Promise.all([signaturePromise,...photoPromises]);
+    if(generation!==authGenerationRef.current||requestingUserId!==authUserIdRef.current||requestingUserId!==user?.id)return;
     if(signature.error||photos.some(result=>result.error)){
       notify("לא ניתן לטעון את כל קובצי אישור המסירה. בדוק הרשאות אחסון ונסה שוב.","error");
       return;
@@ -352,16 +384,20 @@ export default function ShipmentsPage(){
     setSelectedNote({...note,signatureUrl:signature.data?.signedUrl||null,photoUrls:photos.map(result=>result.data.signedUrl)});
   }
   async function adjustNote(note,type){
+    const generation=authGenerationRef.current;
+    const requestingUserId=authUserIdRef.current;
+    if(!requestingUserId||requestingUserId!==user?.id||!canOverride)return;
     const reason=window.prompt(type==="cancellation"?"סיבת ביטול תעודת המשלוח:":"סיבת תיקון לתעודת המשלוח:");
-    if(!reason||reason.trim().length<3)return;
+    if(!reason||reason.trim().length<3||generation!==authGenerationRef.current||requestingUserId!==authUserIdRef.current)return;
     setBusy(true);
     try{
       const {error}=await supabase.rpc("add_delivery_note_adjustment",{p_fleet_id:fleet.id,p_delivery_note_id:note.id,p_event_key:eventKey(),
         p_adjustment_type:type,p_reason:reason.trim(),p_payload:type==="correction"?{correction_note:reason.trim()}:{}});
+      if(generation!==authGenerationRef.current||requestingUserId!==authUserIdRef.current)return;
       if(error)throw error;notify(type==="cancellation"?"הביטול תועד בהיסטוריה; התעודה המקורית נשמרה ללא שינוי.":"התיקון תועד בנפרד; התעודה המקורית נשמרה ללא שינוי.","success");
-      await loadData(user);
-    }catch(error){notify("לא ניתן לתעד את הפעולה: "+error.message,"error");}
-    finally{setBusy(false);}
+      await loadData(user,generation);
+    }catch(error){if(generation===authGenerationRef.current&&requestingUserId===authUserIdRef.current)notify("לא ניתן לתעד את הפעולה: "+error.message,"error");}
+    finally{if(generation===authGenerationRef.current&&requestingUserId===authUserIdRef.current)setBusy(false);}
   }
   if(selectedNote)return <DeliveryNotePrint note={selectedNote} onClose={()=>setSelectedNote(null)}/>;
   if(loading)return <main className="fleet-home"><div className="fleet-content"><p>טוען משלוחים...</p></div></main>;

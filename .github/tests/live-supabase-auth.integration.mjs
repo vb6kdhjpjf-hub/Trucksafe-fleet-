@@ -332,9 +332,11 @@ async function main() {
   const fleetName = `${FIXTURE_FLEET_PREFIX}${runId}`;
   const roles = ["owner", "fleet_manager", "dispatcher", "safety_manager", "driver", "ambiguous", "unassigned"];
   const fixtures = [];
-  const signedIn = [];
+  const sessionsByUserId = new Map();
   let testError;
   let httpServer;
+  let incidentPhotoFixturePath = null;
+  let registrationDocumentFixturePath = null;
 
   try {
     httpServer = await startLocalHttpServer(url, anonKey);
@@ -347,7 +349,7 @@ async function main() {
 
     const owner = fixtures.find(item => item.role === "owner");
     const ownerSession = await signInFixtureUser(url, anonKey, owner.user, owner.password);
-    signedIn.push(ownerSession);
+    sessionsByUserId.set(owner.user.id, ownerSession);
 
     // Create only the uniquely marked fixture fleet with the dedicated Test service-role client.
     // The owner membership trigger runs in the database; all authorization assertions below use real signed user JWTs.
@@ -381,6 +383,270 @@ async function main() {
       throw new Error("Unable to create the second marked Test fleet for the ambiguous-membership fixture.");
     }
 
+    // Real Storage RLS test: Fleet A uploads and references a private incident
+    // photo. The Fleet B owner must not mint a signed URL, delete the object,
+    // or upload into Fleet A's folder by guessing its UUID.
+    incidentPhotoFixturePath = createdFleet.id + "/incidents/" + runId + ".jpg";
+    const photoBytes = Buffer.from("TruckSafe synthetic private incident photo fixture");
+    const { error: photoUploadError } = await ownerSession.client.storage
+      .from("incident-photos")
+      .upload(incidentPhotoFixturePath, photoBytes, {
+        contentType: "image/jpeg",
+        upsert: false
+      });
+    if (photoUploadError) {
+      throw new Error("Fleet A owner could not upload its private incident photo fixture: " + photoUploadError.message);
+    }
+
+    const { data: photoIncident, error: photoIncidentError } = await ownerSession.client
+      .from("incidents")
+      .insert({
+        fleet_id: createdFleet.id,
+        incident_type: "other",
+        description: "Synthetic private photo access fixture",
+        created_by: owner.user.id,
+        photo_path: incidentPhotoFixturePath,
+        status: "open"
+      })
+      .select("id,photo_path")
+      .single();
+    if (photoIncidentError || photoIncident?.photo_path !== incidentPhotoFixturePath) {
+      throw new Error("Fleet A incident could not reference its uploaded private photo.");
+    }
+
+    const ownerPhotoUrl = await ownerSession.client.storage
+      .from("incident-photos")
+      .createSignedUrl(incidentPhotoFixturePath, 60);
+    if (ownerPhotoUrl.error || !ownerPhotoUrl.data?.signedUrl) {
+      throw new Error("Fleet A owner could not create a short-lived signed URL for its own incident photo.");
+    }
+
+    const secondFleetOwner = fixtures.find(item => item.role === "ambiguous");
+    const secondFleetOwnerSession = await signInFixtureUser(url, anonKey, secondFleetOwner.user, secondFleetOwner.password);
+    sessionsByUserId.set(secondFleetOwner.user.id, secondFleetOwnerSession);
+
+    const crossFleetPhotoUrl = await secondFleetOwnerSession.client.storage
+      .from("incident-photos")
+      .createSignedUrl(incidentPhotoFixturePath, 60);
+    assert.ok(crossFleetPhotoUrl.error, "Fleet B owner must not mint a signed URL for Fleet A's private incident photo");
+
+    const crossFleetPhotoDelete = await secondFleetOwnerSession.client.storage
+      .from("incident-photos")
+      .remove([incidentPhotoFixturePath]);
+    // Supabase Storage may return an empty successful DELETE when RLS filters
+    // the object rather than returning a policy error. Verify the object remains
+    // readable by its owning fleet below instead of requiring an error object.
+    assert.equal(crossFleetPhotoDelete.error, null, "RLS-filtered Storage deletion should not expose a provider error");
+    assert.deepEqual(crossFleetPhotoDelete.data, [], "Fleet B owner must not delete Fleet A's private incident photo");
+
+    const crossFleetPhotoUpload = await secondFleetOwnerSession.client.storage
+      .from("incident-photos")
+      .upload(createdFleet.id + "/incidents/" + runId + "-tamper.jpg", photoBytes, {
+        contentType: "image/jpeg",
+        upsert: false
+      });
+    assert.ok(crossFleetPhotoUpload.error, "Fleet B owner must not upload into Fleet A's folder using a guessed fleet UUID");
+
+    const ownerPhotoStillReadable = await ownerSession.client.storage
+      .from("incident-photos")
+      .createSignedUrl(incidentPhotoFixturePath, 60);
+    if (ownerPhotoStillReadable.error || !ownerPhotoStillReadable.data?.signedUrl) {
+      throw new Error("Fleet A incident photo became inaccessible after denied cross-fleet attempts.");
+    }
+
+    // Create a second-fleet vehicle and incident using only the dedicated Test
+    // service-role fixture client. The signed Fleet A owner then attempts BOLA
+    // reads, updates, deletes and inserts against Fleet B identifiers.
+    const { data: fleetBVehicle, error: fleetBVehicleError } = await admin
+      .from("vehicles")
+      .insert({
+        fleet_id: secondFleet.id,
+        registration_number: `CI-B-${runId.slice(0, 12)}`,
+        make: "Synthetic",
+        model: "Isolation Fixture"
+      })
+      .select("id,fleet_id,registration_number")
+      .single();
+    if (fleetBVehicleError || !fleetBVehicle?.id || fleetBVehicle.fleet_id !== secondFleet.id) {
+      throw new Error("Unable to create the uniquely marked Fleet B vehicle fixture.");
+    }
+
+    const { data: fleetAVehicle, error: fleetAVehicleError } = await admin
+      .from("vehicles")
+      .insert({
+        fleet_id: createdFleet.id,
+        registration_number: `CI-A-${runId.slice(0, 12)}`,
+        make: "Synthetic",
+        model: "Registration Storage Fixture"
+      })
+      .select("id,fleet_id,registration_number")
+      .single();
+    if (fleetAVehicleError || !fleetAVehicle?.id || fleetAVehicle.fleet_id !== createdFleet.id) {
+      throw new Error("Unable to create the uniquely marked Fleet A vehicle for registration Storage tests.");
+    }
+
+    // Registration documents are stored under fleet UUID / vehicle UUID / filename.
+    // Only owners and fleet managers of that same fleet may upload or read them.
+    registrationDocumentFixturePath = createdFleet.id + "/" + fleetAVehicle.id + "/" + runId + ".pdf";
+    const registrationBytes = Buffer.from("%PDF-1.4\\n% TruckSafe synthetic private registration fixture\\n");
+    const { error: registrationUploadError } = await ownerSession.client.storage
+      .from("vehicle-registrations")
+      .upload(registrationDocumentFixturePath, registrationBytes, {
+        contentType: "application/pdf",
+        upsert: false
+      });
+    if (registrationUploadError) {
+      throw new Error("Fleet A owner could not upload its private vehicle registration fixture: " + registrationUploadError.message);
+    }
+
+    const ownerRegistrationUrl = await ownerSession.client.storage
+      .from("vehicle-registrations")
+      .createSignedUrl(registrationDocumentFixturePath, 60);
+    if (ownerRegistrationUrl.error || !ownerRegistrationUrl.data?.signedUrl) {
+      throw new Error("Fleet A owner could not create a short-lived signed URL for its private registration document.");
+    }
+
+    const crossFleetRegistrationUrl = await secondFleetOwnerSession.client.storage
+      .from("vehicle-registrations")
+      .createSignedUrl(registrationDocumentFixturePath, 60);
+    assert.ok(crossFleetRegistrationUrl.error, "A non-manager from another fleet must not mint a signed URL for Fleet A's vehicle registration");
+
+    const crossFleetRegistrationDelete = await secondFleetOwnerSession.client.storage
+      .from("vehicle-registrations")
+      .remove([registrationDocumentFixturePath]);
+    assert.equal(crossFleetRegistrationDelete.error, null, "Storage may filter unauthorized registration deletes without an error");
+    assert.deepEqual(crossFleetRegistrationDelete.data, [], "A non-manager from another fleet must not delete Fleet A's registration document");
+
+    const crossFleetRegistrationUpload = await secondFleetOwnerSession.client.storage
+      .from("vehicle-registrations")
+      .upload(createdFleet.id + "/" + fleetAVehicle.id + "/" + runId + "-tamper.pdf", registrationBytes, {
+        contentType: "application/pdf",
+        upsert: false
+      });
+    assert.ok(crossFleetRegistrationUpload.error, "A non-manager from another fleet must not upload into Fleet A's vehicle registration folder");
+
+    const ownerRegistrationStillReadable = await ownerSession.client.storage
+      .from("vehicle-registrations")
+      .createSignedUrl(registrationDocumentFixturePath, 60);
+    if (ownerRegistrationStillReadable.error || !ownerRegistrationStillReadable.data?.signedUrl) {
+      throw new Error("Fleet A registration document became inaccessible after denied cross-fleet attempts.");
+    }
+
+
+    const { data: fleetBIncident, error: fleetBIncidentError } = await admin
+      .from("incidents")
+      .insert({
+        fleet_id: secondFleet.id,
+        incident_type: "other",
+        description: "Synthetic Fleet B isolation fixture",
+        created_by: ambiguous.user.id,
+        status: "open"
+      })
+      .select("id,fleet_id,description")
+      .single();
+    if (fleetBIncidentError || !fleetBIncident?.id || fleetBIncident.fleet_id !== secondFleet.id) {
+      throw new Error("Unable to create the uniquely marked Fleet B incident fixture.");
+    }
+
+    const { data: fleetBMaintenance, error: fleetBMaintenanceError } = await admin
+      .from("maintenance_records")
+      .insert({
+        fleet_id: secondFleet.id,
+        vehicle_id: fleetBVehicle.id,
+        maintenance_type: "routine",
+        description: "Synthetic Fleet B isolation fixture",
+        status: "scheduled"
+      })
+      .select("id,fleet_id,vehicle_id,description")
+      .single();
+    if (fleetBMaintenanceError || !fleetBMaintenance?.id || fleetBMaintenance.fleet_id !== secondFleet.id) {
+      throw new Error("Unable to create the uniquely marked Fleet B maintenance fixture.");
+    }
+
+    const crossFleetVehicleRead = await ownerSession.client
+      .from("vehicles").select("id,fleet_id").eq("id", fleetBVehicle.id);
+    assert.equal(crossFleetVehicleRead.error, null, "cross-fleet vehicle read should be RLS-filtered, not leak an error");
+    assert.deepEqual(crossFleetVehicleRead.data, [], "Fleet A owner must not read a Fleet B vehicle by guessed UUID");
+
+    const crossFleetIncidentRead = await ownerSession.client
+      .from("incidents").select("id,fleet_id").eq("id", fleetBIncident.id);
+    assert.equal(crossFleetIncidentRead.error, null, "cross-fleet incident read should be RLS-filtered");
+    assert.deepEqual(crossFleetIncidentRead.data, [], "Fleet A owner must not read a Fleet B incident by guessed UUID");
+
+    const crossFleetMaintenanceRead = await ownerSession.client
+      .from("maintenance_records").select("id,fleet_id").eq("id", fleetBMaintenance.id);
+    assert.equal(crossFleetMaintenanceRead.error, null, "cross-fleet maintenance read should be RLS-filtered");
+    assert.deepEqual(crossFleetMaintenanceRead.data, [], "Fleet A owner must not read Fleet B maintenance by guessed UUID");
+
+    const crossFleetVehicleUpdate = await ownerSession.client
+      .from("vehicles").update({ notes: "unauthorized Fleet A mutation" })
+      .eq("id", fleetBVehicle.id).select("id");
+    assert.equal(crossFleetVehicleUpdate.error, null);
+    assert.deepEqual(crossFleetVehicleUpdate.data, [], "Fleet A owner must not update a Fleet B vehicle");
+
+    const crossFleetIncidentUpdate = await ownerSession.client
+      .from("incidents").update({ description: "unauthorized Fleet A mutation" })
+      .eq("id", fleetBIncident.id).select("id");
+    assert.equal(crossFleetIncidentUpdate.error, null);
+    assert.deepEqual(crossFleetIncidentUpdate.data, [], "Fleet A owner must not update a Fleet B incident");
+
+    const crossFleetMaintenanceUpdate = await ownerSession.client
+      .from("maintenance_records").update({ description: "unauthorized Fleet A mutation" })
+      .eq("id", fleetBMaintenance.id).select("id");
+    assert.equal(crossFleetMaintenanceUpdate.error, null);
+    assert.deepEqual(crossFleetMaintenanceUpdate.data, [], "Fleet A owner must not update Fleet B maintenance");
+
+    const crossFleetVehicleDelete = await ownerSession.client
+      .from("vehicles").delete().eq("id", fleetBVehicle.id).select("id");
+    assert.equal(crossFleetVehicleDelete.error, null);
+    assert.deepEqual(crossFleetVehicleDelete.data, [], "Fleet A owner must not delete a Fleet B vehicle");
+
+    const crossFleetIncidentDelete = await ownerSession.client
+      .from("incidents").delete().eq("id", fleetBIncident.id).select("id");
+    assert.equal(crossFleetIncidentDelete.error, null);
+    assert.deepEqual(crossFleetIncidentDelete.data, [], "Fleet A owner must not delete a Fleet B incident");
+
+    const crossFleetMaintenanceDelete = await ownerSession.client
+      .from("maintenance_records").delete().eq("id", fleetBMaintenance.id).select("id");
+    assert.equal(crossFleetMaintenanceDelete.error, null);
+    assert.deepEqual(crossFleetMaintenanceDelete.data, [], "Fleet A owner must not delete Fleet B maintenance");
+
+    const crossFleetVehicleInsert = await ownerSession.client
+      .from("vehicles").insert({
+        fleet_id: secondFleet.id,
+        registration_number: `CI-X-${runId.slice(0, 12)}`
+      }).select("id");
+    assert.ok(crossFleetVehicleInsert.error, "Fleet A owner must not insert a vehicle into Fleet B");
+
+    const crossFleetIncidentInsert = await ownerSession.client
+      .from("incidents").insert({
+        fleet_id: secondFleet.id,
+        incident_type: "other",
+        description: "unauthorized cross-fleet insert",
+        created_by: owner.user.id,
+        status: "open"
+      }).select("id");
+    assert.ok(crossFleetIncidentInsert.error, "Fleet A owner must not insert an incident into Fleet B");
+
+    const fleetBAfterAttempts = await admin
+      .from("vehicles").select("id,notes").eq("id", fleetBVehicle.id).single();
+    if (fleetBAfterAttempts.error || fleetBAfterAttempts.data?.notes != null) {
+      throw new Error("Fleet B vehicle changed after cross-fleet update/delete attempts.");
+    }
+    const incidentBAfterAttempts = await admin
+      .from("incidents").select("id,description").eq("id", fleetBIncident.id).single();
+    if (incidentBAfterAttempts.error || incidentBAfterAttempts.data?.description !== "Synthetic Fleet B isolation fixture") {
+      throw new Error("Fleet B incident changed after cross-fleet update/delete attempts.");
+    }
+
+    const maintenanceBAfterAttempts = await admin
+      .from("maintenance_records").select("id,description").eq("id", fleetBMaintenance.id).single();
+    if (maintenanceBAfterAttempts.error || maintenanceBAfterAttempts.data?.description !== "Synthetic Fleet B isolation fixture") {
+      throw new Error("Fleet B maintenance record changed after cross-fleet update/delete attempts.");
+    }
+
+    process.stdout.write("Live cross-fleet BOLA checks passed: Fleet A owner could not read, insert, update or delete Fleet B vehicle, incident and maintenance records by identifier.\\n");
+
     const additionalMembers = fixtures
       .filter(item => item.role === "fleet_manager" || item.role === "dispatcher" || item.role === "safety_manager" || item.role === "driver" || item.role === "ambiguous")
       .map(item => ({ fleet_id: createdFleet.id, user_id: item.user.id, role: item.role === "ambiguous" ? "driver" : item.role }));
@@ -393,7 +659,7 @@ async function main() {
       const session = fixture.role === "owner"
         ? ownerSession
         : await signInFixtureUser(url, anonKey, fixture.user, fixture.password);
-      if (fixture.role !== "owner") signedIn.push(session);
+      sessionsByUserId.set(fixture.user.id, session);
       if (fixture.role !== "unassigned" && fixture.role !== "ambiguous") {
         await assertMembershipAccess({
           ...session,
@@ -434,7 +700,8 @@ async function main() {
     // Membership is re-read from Test Postgres on every API request: removing a row
     // must revoke an otherwise valid, still-signed JWT without requiring re-login.
     const dispatcher = fixtures.find(item => item.role === "dispatcher");
-    const dispatcherSession = signedIn[fixtures.indexOf(dispatcher)];
+    const dispatcherSession = sessionsByUserId.get(dispatcher.user.id);
+    if (!dispatcherSession) throw new Error("Missing signed Auth session for the dispatcher revocation fixture.");
     const { data: removedMembership, error: removeMembershipError } = await admin
       .from("fleet_members")
       .delete()
@@ -444,15 +711,43 @@ async function main() {
     if (removeMembershipError || removedMembership?.length !== 1) {
       throw new Error("Test-only membership revocation fixture did not remove exactly one dispatcher membership.");
     }
-    const revokedAccess = await resolveFleetApiAccess(dispatcherSession.client, dispatcherSession.token);
+
+    const { data: adminMembershipAfterRemoval, error: adminReadAfterRemovalError } = await admin
+      .from("fleet_members")
+      .select("fleet_id,role")
+      .eq("fleet_id", createdFleet.id)
+      .eq("user_id", dispatcher.user.id);
+    if (adminReadAfterRemovalError || adminMembershipAfterRemoval?.length !== 0) {
+      throw new Error("Test-only membership revocation did not persist: the service-role read still sees the dispatcher membership.");
+    }
+
+    const { data: verifiedDispatcher, error: verifyDispatcherError } = await dispatcherSession.authClient.auth.getUser(dispatcherSession.token);
+    if (verifyDispatcherError || verifiedDispatcher?.user?.id !== dispatcher.user.id) {
+      throw new Error("Membership revocation test session no longer resolves to the expected dispatcher identity.");
+    }
+
+    // Use a new PostgREST client after the mutation to ensure this assertion
+    // models a new API request rather than relying on any prior client state.
+    const revokedSession = await signInFixtureUser(url, anonKey, dispatcher.user, dispatcher.password);
+    const { data: dispatcherMembershipAfterRemoval, error: dispatcherReadAfterRemovalError } = await revokedSession.client
+      .from("fleet_members")
+      .select("fleet_id,role")
+      .eq("user_id", dispatcher.user.id)
+      .limit(2);
+    if (dispatcherReadAfterRemovalError || dispatcherMembershipAfterRemoval?.length !== 0) {
+      throw new Error("Dispatcher's still-valid JWT can still read a fleet_members row after service-role membership removal.");
+    }
+
+    const revokedAccess = await resolveFleetApiAccess(revokedSession.client, revokedSession.token);
     assert.equal(revokedAccess.status, 403, "a valid JWT must lose fleet access immediately after membership removal");
     assert.equal(revokedAccess.reason, "fleet_membership_required");
-    await assertActualRouteAuthorization({ url, anonKey, token: dispatcherSession.token, role: "unassigned" });
-    await assertActualHttpAuthorization({ baseUrl: httpServer.baseUrl, token: dispatcherSession.token, role: "unassigned" });
+    await assertActualRouteAuthorization({ url, anonKey, token: revokedSession.token, role: "unassigned" });
+    await assertActualHttpAuthorization({ baseUrl: httpServer.baseUrl, token: revokedSession.token, role: "unassigned" });
 
     // A manager demotion must also take effect for the same signed JWT immediately.
     const manager = fixtures.find(item => item.role === "fleet_manager");
-    const managerSession = signedIn[fixtures.indexOf(manager)];
+    const managerSession = sessionsByUserId.get(manager.user.id);
+    if (!managerSession) throw new Error("Missing signed Auth session for the manager demotion fixture.");
     const { data: demotedRows, error: demotionError } = await admin
       .from("fleet_members")
       .update({ role: "driver" })
@@ -512,10 +807,26 @@ async function main() {
   } catch (error) {
     testError = error;
   } finally {
-    for (const session of signedIn) {
+    for (const session of sessionsByUserId.values()) {
       await session.authClient.auth.signOut({ scope: "global" }).catch(() => {});
     }
     try {
+      if (incidentPhotoFixturePath) {
+        const { error: photoCleanupError } = await admin.storage
+          .from("incident-photos")
+          .remove([incidentPhotoFixturePath]);
+        if (photoCleanupError) {
+          throw new Error("Unable to remove the marked private incident photo fixture from Test Storage.");
+        }
+      }
+      if (registrationDocumentFixturePath) {
+        const { error: registrationCleanupError } = await admin.storage
+          .from("vehicle-registrations")
+          .remove([registrationDocumentFixturePath]);
+        if (registrationCleanupError) {
+          throw new Error("Unable to remove the marked private vehicle registration fixture from Test Storage.");
+        }
+      }
       const removed = await cleanupMarkedFixtureUsers(admin);
       process.stdout.write(`Fixture cleanup completed; removed ${removed} marked Auth user(s) and their fleets.\n`);
     } catch (cleanupError) {

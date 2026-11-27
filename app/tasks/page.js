@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
 import { buildPreTripChecklist } from "../../lib/pre-trip-checklist.mjs";
+import { isDriverEligibleForVehicleAssignment } from "../../lib/driver-eligibility.mjs";
+import { getIsraelCalendarDate } from "../../lib/israel-date.mjs";
+import { isFreshGpsTimestamp, isValidIsraelGpsCoordinates } from "../../lib/map-location-safety.mjs";
 import { Truck, ArrowRight, Plus, ClipboardList, MapPin, CalendarClock, Play, CheckCircle2, LogOut } from "lucide-react";
 
 const emptyForm = { title: "", description: "", pickup_address: "", delivery_address: "", scheduled_at: "", assigned_driver_id: "", assigned_vehicle_id: "" };
@@ -32,27 +35,76 @@ export default function TasksPage() {
   const preTripItems = ["צמיגים ולחץ אוויר תקינים","בלמים ובלם חניה תקינים","אורות, איתותים וצופר תקינים","מראות, שמשות ומגבים תקינים","אין נזילות או נזק גלוי","המטען מאובטח והמשקל מתאים","מסמכי רכב ורישיון נהיגה בתוקף"];
   const watchIdRef = useRef(null);
   const lastLocationWriteRef = useRef(0);
+  const locationWriteInFlightRef = useRef(false);
+  const trackingGenerationRef = useRef(0);
+  const authGenerationRef = useRef(0);
+  const authUserIdRef = useRef(null);
+
+  function isCurrentAuthSession(generation = authGenerationRef.current, userId = authUserIdRef.current) {
+    return generation === authGenerationRef.current
+      && Boolean(userId)
+      && userId === authUserIdRef.current
+      && userId === session?.user?.id;
+  }
 
   useEffect(() => () => {
+    trackingGenerationRef.current += 1;
     if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
   }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setMessage("החיבור למסד הנתונים אינו מוגדר."); setLoading(false); return; }
     let alive = true;
-    supabase.auth.getSession().then(async ({ data, error }) => {
-      if (!alive) return;
-      if (error || !data.session) { router.replace("/"); return; }
-      setSession(data.session);
-      await loadWorkspace(data.session.user);
-      if (alive) setLoading(false);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user?.id || null;
+      if (nextUserId && authUserIdRef.current && nextUserId !== authUserIdRef.current) {
+        authGenerationRef.current += 1;
+        trackingGenerationRef.current += 1;
+        if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+        setTrackingTripId(null);
+        setSession(null); setFleet(null); setTasks([]); setTrips([]); setInspections([]);
+        setDrivers([]); setVehicles([]); setCurrentDriverId(null);
+        setForm(emptyForm); setShowForm(false); setBusy(false);
+        setPreTripTask(null); setPreTripChecks({}); setPreTripDefectDetails(""); setMessage("");
+        authUserIdRef.current = nextUserId;
+        if (typeof window !== "undefined") window.location.reload();
+        return;
+      }
+      if (nextUserId) authUserIdRef.current = nextUserId;
+      if (!nextSession) {
+        authUserIdRef.current = null;
+        authGenerationRef.current += 1;
+        trackingGenerationRef.current += 1;
+        if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+        setTrackingTripId(null);
+        setSession(null); setFleet(null); setTasks([]); setTrips([]); setInspections([]);
+        setDrivers([]); setVehicles([]); setCurrentDriverId(null);
+        setForm(emptyForm); setShowForm(false); setBusy(false);
+        setPreTripTask(null); setPreTripChecks({}); setPreTripDefectDetails(""); setMessage("");
+        router.replace("/");
+      }
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => { if (!next) router.replace("/"); });
-    return () => { alive = false; subscription.unsubscribe(); };
+    const initialAuthGeneration = authGenerationRef.current;
+    supabase.auth.getSession().then(async ({ data, error }) => {
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
+      if (error || !data.session) { router.replace("/"); return; }
+      authUserIdRef.current = data.session.user.id;
+      setSession(data.session);
+      await loadWorkspace(data.session.user, initialAuthGeneration);
+      if (alive && initialAuthGeneration === authGenerationRef.current) setLoading(false);
+    }).catch(error => {
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
+      setMessage("לא הצלחנו לטעון את המשימות: " + (error?.message || "שגיאה לא ידועה"));
+      setLoading(false);
+    });
+    return () => { alive = false; authGenerationRef.current += 1; subscription.unsubscribe(); };
   }, [router]);
 
-  async function loadWorkspace(user) {
+  async function loadWorkspace(user, authGeneration = authGenerationRef.current) {
     const { data, error } = await resolveFleetWorkspace(supabase, user.id);
+    if (authGeneration !== authGenerationRef.current) return;
     if (error) {
       if (error.code === "AUTH_REQUIRED" || error.code === "NO_FLEET") router.replace("/");
       else setMessage("לא הצלחנו לאמת את הצי: " + error.message);
@@ -62,11 +114,12 @@ export default function TasksPage() {
     setFleet(current);
     const [t, d, v, tr, currentDriver] = await Promise.all([
       supabase.from("tasks").select("id,reference_code,title,description,pickup_address,delivery_address,scheduled_at,assigned_driver_id,assigned_vehicle_id,status,created_at").eq("fleet_id", current.id).order("created_at", { ascending: false }),
-      supabase.from("drivers").select("id,full_name,status").eq("fleet_id", current.id).order("created_at", { ascending: false }),
-      supabase.from("vehicles").select("id,registration_number,make,vehicle_type,status").eq("fleet_id", current.id).order("created_at", { ascending: false }),
+      supabase.from("drivers").select("id,full_name,status,license_expires_at").eq("fleet_id", current.id).order("created_at", { ascending: false }),
+      supabase.from("vehicles").select("id,registration_number,make,vehicle_type,status,is_demo").eq("fleet_id", current.id).order("created_at", { ascending: false }),
       supabase.from("trips").select("id,task_id,driver_id,vehicle_id,status,origin_address,destination_address,started_at,ended_at").eq("fleet_id", current.id).order("created_at", { ascending: false }).limit(50),
       supabase.from("drivers").select("id").eq("fleet_id", current.id).eq("user_id", user.id).maybeSingle()
     ]);
+    if (authGeneration !== authGenerationRef.current) return;
     if (t.error) setMessage("שגיאה בטעינת המשימות: " + t.error.message); else setTasks(t.data || []);
     if (d.error) setMessage("שגיאה בטעינת הנהגים: " + d.error.message); else setDrivers(d.data || []);
     if (v.error) setMessage("שגיאה בטעינת כלי הרכב: " + v.error.message); else setVehicles(v.data || []);
@@ -74,59 +127,122 @@ export default function TasksPage() {
     setCurrentDriverId(currentDriver?.data?.id || null);
     if (currentDriver?.error) setMessage("לא הצלחנו לאמת את שיוך הנהג לחשבון. פעולות נסיעה יישארו חסומות עד לבדיקה.");
     const { data: inspectionRows, error: inspectionError } = await supabase.from("inspections").select("id,trip_id,vehicle_id,driver_id,inspection_type,checklist,defects,passed,inspected_at").eq("fleet_id", current.id).order("inspected_at", { ascending: false }).limit(30);
+    if (authGeneration !== authGenerationRef.current) return;
     if (inspectionError) setMessage("שגיאה בטעינת היסטוריית בדיקות הרכב: " + inspectionError.message); else setInspections(inspectionRows || []);
   }
 
   const canManageTasks = ["owner", "fleet_manager", "dispatcher"].includes(fleet?.role);
   const isAssignedDriver = driverId => Boolean(currentDriverId && currentDriverId === driverId);
   const canOperateTrip = trip => canManageTasks || isAssignedDriver(trip?.driver_id);
+  function vehicleAssignmentLabel(vehicle) {
+    const label = `${vehicle?.registration_number || "רכב ללא מספר"} · ${vehicle?.make || vehicle?.vehicle_type || "רכב"}`;
+    if (vehicle?.is_demo) return `${label} · חסום: רכב הדגמה`;
+    if (vehicle?.status === "on_trip") return `${label} · חסום: בנסיעה פעילה`;
+    if (vehicle?.status === "maintenance") return `${label} · חסום: בטיפול / תחזוקה`;
+    if (vehicle?.status === "inactive") return `${label} · חסום: מושבת`;
+    if (vehicle?.status === "available" || vehicle?.status === "assigned") return `${label} · זמין לשיבוץ`;
+    return `${label} · חסום: סטטוס לא מוכר`;
+  }
+
+  function getTaskAssignmentWarnings(task) {
+    const warnings = [];
+    const driver = drivers.find(item => item.id === task?.assigned_driver_id);
+    const vehicle = vehicles.find(item => item.id === task?.assigned_vehicle_id);
+    if (task?.assigned_driver_id && !driver) warnings.push("הנהג המשויך לא נמצא ברשימת הצי");
+    else if (driver && !isDriverEligibleForVehicleAssignment(driver)) warnings.push(driverAssignmentLabel(driver));
+    if (task?.assigned_vehicle_id && !vehicle) warnings.push("הרכב המשויך לא נמצא ברשימת הצי");
+    else if (vehicle && (vehicle.is_demo || (task?.status === "in_progress" ? vehicle.status !== "on_trip" : !["available", "assigned"].includes(vehicle.status)))) warnings.push(vehicleAssignmentLabel(vehicle));
+    if (task?.status === "assigned" && (!task.assigned_driver_id || !task.assigned_vehicle_id)) warnings.push("המשימה מסומנת כשובצה אך חסר נהג או רכב");
+    return warnings;
+  }
+
+  function driverAssignmentLabel(driver) {
+    if (isDriverEligibleForVehicleAssignment(driver)) return `${driver.full_name} · פעיל, תוקף רשום תקין`;
+    if (driver?.status !== "active") return `${driver?.full_name || "נהג ללא שם"} · לא זמין: הנהג אינו פעיל`;
+    const expiry = typeof driver?.license_expires_at === "string" ? driver.license_expires_at : "";
+    if (!expiry) return `${driver?.full_name || "נהג ללא שם"} · לא זמין: חסר תאריך תוקף לרישיון`;
+    if (expiry < getIsraelCalendarDate()) return `${driver?.full_name || "נהג ללא שם"} · לא זמין: תוקף הרישיון הרשום פג`;
+    return `${driver?.full_name || "נהג ללא שם"} · לא זמין: תאריך התוקף אינו תקין`;
+  }
 
   async function saveTask(e) {
     e.preventDefault();
+    const generation = authGenerationRef.current;
+    const requestingUserId = authUserIdRef.current;
+    if (!isCurrentAuthSession(generation, requestingUserId)) return;
     if (!fleet || !form.title.trim()) return;
     if (!canManageTasks) { setMessage("אין לך הרשאה לניהול משימות."); return; }
-    setBusy(true); setMessage("");
-    const payload = {
-      fleet_id: fleet.id,
-      title: form.title.trim(),
-      description: form.description.trim() || null,
-      pickup_address: form.pickup_address.trim() || null,
-      delivery_address: form.delivery_address.trim() || null,
-      scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
-      assigned_driver_id: form.assigned_driver_id || null,
-      assigned_vehicle_id: form.assigned_vehicle_id || null,
-      status: form.assigned_driver_id && form.assigned_vehicle_id ? "assigned" : "pending",
-      created_by: session.user.id
-    };
-    const { error } = await supabase.from("tasks").insert(payload);
-    if (error) setMessage("לא הצלחנו לשמור את המשימה: " + error.message);
-    else { setForm(emptyForm); setShowForm(false); await loadWorkspace(session.user); setMessage("המשימה נשמרה בהצלחה."); }
-    setBusy(false);
-  }
-
-  async function updateStatus(task, status) {
-    if (!fleet || !canManageTasks) { setMessage("אין לך הרשאה לעדכון סטטוס משימה."); return; }
-    if (!["pending", "assigned", "cancelled"].includes(status)) { setMessage("סטטוס זה אינו ניתן לעדכון ידני."); return; }
-    if (status === "cancelled") {
-      setBusy(true); setMessage("");
-      const { data: activeTrip, error: activeTripError } = await supabase
-        .from("trips").select("id").eq("task_id", task.id).eq("status", "active").limit(1).maybeSingle();
-      if (activeTripError) {
-        setMessage("לא ניתן לאמת אם קיימת נסיעה פעילה. נסה שוב לפני ביטול המשימה.");
-        setBusy(false);
+    if (form.assigned_driver_id) {
+      const selectedDriver = drivers.find(driver => driver.id === form.assigned_driver_id);
+      if (!isDriverEligibleForVehicleAssignment(selectedDriver)) {
+        setMessage("לא ניתן לשבץ נהג שאינו פעיל או שתוקף רישיונו חסר או פג. יש לעדכן את פרטי הנהג לפני השיבוץ.");
         return;
       }
-      if (activeTrip) {
-        setMessage("לא ניתן לבטל משימה בזמן שהנסיעה שלה פעילה. יש לסיים את הנסיעה תחילה.");
-        setBusy(false);
+    }
+    if (Boolean(form.assigned_driver_id) !== Boolean(form.assigned_vehicle_id)) {
+      setMessage("כדי לשבץ משימה יש לבחור גם נהג וגם רכב, או להשאיר את שניהם ללא שיבוץ.");
+      return;
+    }
+    if (form.assigned_vehicle_id) {
+      const selectedVehicle = vehicles.find(vehicle => vehicle.id === form.assigned_vehicle_id);
+      if (!selectedVehicle || selectedVehicle.is_demo || !["available", "assigned"].includes(selectedVehicle.status)) {
+        setMessage(selectedVehicle ? `לא ניתן לשבץ את הרכב: ${vehicleAssignmentLabel(selectedVehicle)}.` : "הרכב שנבחר אינו נמצא ברשימת הרכבים של הצי. יש לרענן ולבחור רכב זמין.");
         return;
       }
     }
     setBusy(true); setMessage("");
-    const { error } = await supabase.from("tasks").update({ status }).eq("id", task.id).eq("fleet_id", fleet.id);
-    if (error) setMessage("לא הצלחנו לעדכן סטטוס: " + error.message);
-    else { await loadWorkspace(session.user); setMessage("סטטוס המשימה עודכן."); }
-    setBusy(false);
+    try {
+      const payload = {
+        fleet_id: fleet.id,
+        title: form.title.trim(),
+        description: form.description.trim() || null,
+        pickup_address: form.pickup_address.trim() || null,
+        delivery_address: form.delivery_address.trim() || null,
+        scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
+        assigned_driver_id: form.assigned_driver_id || null,
+        assigned_vehicle_id: form.assigned_vehicle_id || null,
+        status: form.assigned_driver_id && form.assigned_vehicle_id ? "assigned" : "pending",
+        created_by: requestingUserId
+      };
+      const { error } = await supabase.from("tasks").insert(payload);
+      if (!isCurrentAuthSession(generation, requestingUserId)) return;
+      if (error) { setMessage("לא הצלחנו לשמור את המשימה: " + error.message); return; }
+      setForm(emptyForm); setShowForm(false);
+      await loadWorkspace(session.user, generation);
+      if (isCurrentAuthSession(generation, requestingUserId)) setMessage("המשימה נשמרה בהצלחה.");
+    } catch (error) {
+      if (isCurrentAuthSession(generation, requestingUserId)) setMessage("שמירת המשימה נכשלה: " + (error?.message || "שגיאה לא ידועה"));
+    } finally {
+      if (isCurrentAuthSession(generation, requestingUserId)) setBusy(false);
+    }
+  }
+
+  async function updateStatus(task, status) {
+    const generation = authGenerationRef.current;
+    const requestingUserId = authUserIdRef.current;
+    if (!isCurrentAuthSession(generation, requestingUserId)) return;
+    if (!fleet || !canManageTasks) { setMessage("אין לך הרשאה לעדכון סטטוס משימה."); return; }
+    if (!["pending", "assigned", "cancelled"].includes(status)) { setMessage("סטטוס זה אינו ניתן לעדכון ידני."); return; }
+    setBusy(true); setMessage("");
+    try {
+      if (status === "cancelled") {
+        const { data: activeTrip, error: activeTripError } = await supabase
+          .from("trips").select("id").eq("task_id", task.id).eq("status", "active").limit(1).maybeSingle();
+        if (!isCurrentAuthSession(generation, requestingUserId)) return;
+        if (activeTripError) { setMessage("לא ניתן לאמת אם קיימת נסיעה פעילה. נסה שוב לפני ביטול המשימה."); return; }
+        if (activeTrip) { setMessage("לא ניתן לבטל משימה בזמן שהנסיעה שלה פעילה. יש לסיים את הנסיעה תחילה."); return; }
+      }
+      if (!isCurrentAuthSession(generation, requestingUserId)) return;
+      const { error } = await supabase.from("tasks").update({ status }).eq("id", task.id).eq("fleet_id", fleet.id);
+      if (!isCurrentAuthSession(generation, requestingUserId)) return;
+      if (error) { setMessage("לא הצלחנו לעדכן סטטוס: " + error.message); return; }
+      await loadWorkspace(session.user, generation);
+      if (isCurrentAuthSession(generation, requestingUserId)) setMessage("סטטוס המשימה עודכן.");
+    } catch (error) {
+      if (isCurrentAuthSession(generation, requestingUserId)) setMessage("עדכון סטטוס המשימה נכשל: " + (error?.message || "שגיאה לא ידועה"));
+    } finally {
+      if (isCurrentAuthSession(generation, requestingUserId)) setBusy(false);
+    }
   }
 
   async function startTrip(task) {
@@ -136,13 +252,12 @@ export default function TasksPage() {
   }
 
   async function confirmPreTrip() {
+    const generation = authGenerationRef.current;
+    const requestingUserId = authUserIdRef.current;
     const task = preTripTask;
-    if (!task || !fleet || !session?.user) return;
+    if (!isCurrentAuthSession(generation, requestingUserId) || !task || !fleet || !session?.user) return;
     const result = buildPreTripChecklist(preTripItems, preTripChecks, preTripDefectDetails);
-    if (!result.valid) {
-      setMessage(result.message);
-      return;
-    }
+    if (!result.valid) { setMessage(result.message); return; }
     setBusy(true); setMessage("");
     try {
       const { data: startedTripId, error } = await supabase.rpc("start_trip_with_inspection", {
@@ -150,13 +265,12 @@ export default function TasksPage() {
         p_vehicle_id: task.assigned_vehicle_id, p_origin_address: task.pickup_address,
         p_destination_address: task.delivery_address, p_checklist: result.checklist
       });
-      if (error) {
-        setMessage("לא ניתן לפתוח נסיעה או לשמור בדיקת רכב: " + error.message);
-        return;
-      }
+      if (!isCurrentAuthSession(generation, requestingUserId)) return;
+      if (error) { setMessage("לא ניתן לפתוח נסיעה או לשמור בדיקת רכב: " + error.message); return; }
       setPreTripTask(null);
       setPreTripDefectDetails("");
-      await loadWorkspace(session.user);
+      await loadWorkspace(session.user, generation);
+      if (!isCurrentAuthSession(generation, requestingUserId)) return;
       if (!startedTripId) {
         setMessage(result.hasDefects
           ? "נמצאו ליקויים. הבדיקה נשמרה ונפתח אירוע בטיחות, אך הנסיעה לא נפתחה. יש לטפל בליקוי ולקבל אישור לפני יציאה."
@@ -165,13 +279,16 @@ export default function TasksPage() {
       }
       setMessage("בדיקת הרכב נשמרה והנסיעה נפתחה בהצלחה.");
     } catch (error) {
-      setMessage("אירעה שגיאה בפתיחת הנסיעה: " + (error?.message || "שגיאה לא ידועה"));
+      if (isCurrentAuthSession(generation, requestingUserId)) setMessage("אירעה שגיאה בפתיחת הנסיעה: " + (error?.message || "שגיאה לא ידועה"));
     } finally {
-      setBusy(false);
+      if (isCurrentAuthSession(generation, requestingUserId)) setBusy(false);
     }
   }
 
   async function endTrip(trip) {
+    const generation = authGenerationRef.current;
+    const requestingUserId = authUserIdRef.current;
+    if (!isCurrentAuthSession(generation, requestingUserId)) return;
     if (!canOperateTrip(trip)) { setMessage("רק מנהל מורשה או הנהג המשויך לנסיעה יכולים לסיים אותה."); return; }
     if (!fleet || !session?.user || !trip?.id) return;
     setBusy(true); setMessage("");
@@ -180,25 +297,25 @@ export default function TasksPage() {
         p_fleet_id: fleet.id,
         p_trip_id: trip.id
       });
-      if (error) {
-        setMessage("לא הצלחנו לסיים נסיעה: " + error.message);
-        return;
-      }
+      if (!isCurrentAuthSession(generation, requestingUserId)) return;
+      if (error) { setMessage("לא הצלחנו לסיים נסיעה: " + error.message); return; }
       if (trackingTripId === trip.id) {
+        trackingGenerationRef.current += 1;
         if (watchIdRef.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
         setTrackingTripId(null);
       }
-      await loadWorkspace(session.user);
-      setMessage("הנסיעה והמשימה הסתיימו וסטטוס הרכב עודכן.");
+      await loadWorkspace(session.user, generation);
+      if (isCurrentAuthSession(generation, requestingUserId)) setMessage("הנסיעה והמשימה הסתיימו וסטטוס הרכב עודכן.");
     } catch (error) {
-      setMessage("אירעה שגיאה בסיום הנסיעה: " + (error?.message || "שגיאה לא ידועה"));
+      if (isCurrentAuthSession(generation, requestingUserId)) setMessage("אירעה שגיאה בסיום הנסיעה: " + (error?.message || "שגיאה לא ידועה"));
     } finally {
-      setBusy(false);
+      if (isCurrentAuthSession(generation, requestingUserId)) setBusy(false);
     }
   }
 
   function stopTracking() {
+    trackingGenerationRef.current += 1;
     if (watchIdRef.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
     watchIdRef.current = null;
     setTrackingTripId(null);
@@ -208,33 +325,50 @@ export default function TasksPage() {
   function startTracking(trip) {
     if (!isAssignedDriver(trip?.driver_id)) { setMessage("מעקב GPS יכול להתחיל רק ממכשיר הנהג המשויך לנסיעה."); return; }
     if (!navigator.geolocation) { setMessage("המכשיר או הדפדפן אינם תומכים בשיתוף מיקום."); return; }
+    trackingGenerationRef.current += 1;
+    const generation = trackingGenerationRef.current;
     if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
     setMessage("מבקש הרשאת מיקום ומתחיל מעקב...");
     lastLocationWriteRef.current = 0;
     watchIdRef.current = navigator.geolocation.watchPosition(async position => {
+      if (generation !== trackingGenerationRef.current) return;
       const now = Date.now();
-      if (now - lastLocationWriteRef.current < 10000) return;
-      lastLocationWriteRef.current = now;
+      if (locationWriteInFlightRef.current || now - lastLocationWriteRef.current < 10000) return;
       const { latitude, longitude, speed, heading, accuracy } = position.coords;
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180 || !Number.isFinite(accuracy) || accuracy > 500) {
-        setMessage("נקודת GPS לא נשמרה: הנתונים אינם תקינים או שדיוק המיקום נמוך מדי.");
+      if (!isValidIsraelGpsCoordinates(latitude, longitude)
+        || !isFreshGpsTimestamp(position.timestamp, now)
+        || !Number.isFinite(accuracy) || accuracy < 0 || accuracy > 500) {
+        setMessage("נקודת GPS לא נשמרה: המיקום מחוץ לאזור הפעילות, הנתון ישן או שהדיוק אינו מספיק.");
         return;
       }
-      const { error } = await supabase.from("trip_locations").insert({
-        trip_id: trip.id, driver_id: trip.driver_id, latitude, longitude,
-        speed_kmh: speed == null || !Number.isFinite(speed) || speed < 0 ? null : Math.round(speed * 3.6 * 10) / 10,
-        heading_degrees: heading == null || !Number.isFinite(heading) || heading < 0 || heading > 360 ? null : heading
-      });
-      if (error) {
+      locationWriteInFlightRef.current = true;
+      lastLocationWriteRef.current = now;
+      try {
+        const { error } = await supabase.from("trip_locations").insert({
+          trip_id: trip.id, driver_id: trip.driver_id, latitude, longitude,
+          speed_kmh: speed == null || !Number.isFinite(speed) || speed < 0 ? null : Math.round(speed * 3.6 * 10) / 10,
+          heading_degrees: heading == null || !Number.isFinite(heading) || heading < 0 || heading > 360 ? null : heading
+        });
+        if (generation !== trackingGenerationRef.current) return;
+        if (error) {
+          lastLocationWriteRef.current = 0;
+          setMessage("המעקב פעיל אך שמירת נקודת מיקום נכשלה: " + error.message);
+        } else {
+          setMessage("מעקב GPS פעיל — נקודת מיקום נשמרה. דיוק משוער: " + Math.round(accuracy) + " מטר.");
+        }
+      } catch (error) {
+        if (generation !== trackingGenerationRef.current) return;
         lastLocationWriteRef.current = 0;
-        setMessage("המעקב פעיל אך שמירת נקודת מיקום נכשלה: " + error.message);
-      } else {
-        setMessage("מעקב GPS פעיל — נקודת מיקום נשמרה. דיוק משוער: " + Math.round(accuracy) + " מטר.");
+        setMessage("המעקב פעיל אך שמירת נקודת מיקום נכשלה: " + (error?.message || "שגיאה לא ידועה"));
+      } finally {
+        locationWriteInFlightRef.current = false;
       }
     }, error => {
+      if (generation !== trackingGenerationRef.current) return;
       setMessage(error.code === 1 ? "לא אושרה הרשאת מיקום. יש לאשר מיקום בדפדפן כדי להתחיל מעקב." : "שגיאה בקבלת מיקום GPS. בדוק שהמיקום מופעל במכשיר.");
       if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
+      trackingGenerationRef.current += 1;
       setTrackingTripId(null);
     }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
     setTrackingTripId(trip.id);
@@ -252,7 +386,7 @@ export default function TasksPage() {
     <section className="fleet-content">
       <div className="fleet-welcome"><div><small>תכנון ותפעול</small><h2>משימות ונסיעות</h2><p>{fleet?.name || "הצי שלך"} · {tasks.length} משימות</p></div><span className="role-pill"><ClipboardList size={14}/> ניהול משימות</span></div>
       {message && <div className="auth-message">{message}</div>}
-      {preTripTask && <section className="fleet-panel"><div className="fleet-panel-head"><div><h3>בדיקת רכב לפני יציאה</h3><p>{preTripTask.title} · יש לאשר כל סעיף לאחר בדיקה בפועל</p></div><span className="role-pill">בדיקת בטיחות</span></div><div className="task-list">{preTripItems.map((item, i) => <div className="task-assignees" key={item} style={{ padding: "10px 4px", alignItems: "center", justifyContent: "space-between", gap: 12 }}><span>{item}</span><select aria-label={item} value={preTripChecks[i] === true ? "ok" : preTripChecks[i] === false ? "defect" : ""} onChange={e => setPreTripChecks(old => ({ ...old, [i]: e.target.value === "ok" ? true : e.target.value === "defect" ? false : undefined }))}><option value="">בחר מצב</option><option value="ok">תקין</option><option value="defect">לא תקין</option></select></div>)}</div>{preTripItems.some((_, i) => preTripChecks[i] === false) && <label style={{ display: "grid", gap: 6, marginTop: 12 }}>פירוט הליקוי (חובה, לפחות 5 תווים)<textarea rows={3} maxLength={1000} value={preTripDefectDetails} onChange={e => setPreTripDefectDetails(e.target.value)} placeholder="תאר מה נמצא, באיזה רכיב ומה דורש טיפול" /></label>}<div className="task-actions"><button className="primary-btn" disabled={busy || !preTripItems.every((_, i) => typeof preTripChecks[i] === "boolean") || (preTripItems.some((_, i) => preTripChecks[i] === false) && preTripDefectDetails.trim().length < 5)} onClick={confirmPreTrip}>{preTripItems.some((_, i) => preTripChecks[i] === false) ? "שמירת בדיקה ודיווח תקלה" : "אישור בדיקה ופתיחת נסיעה"}</button><button className="secondary-btn" disabled={busy} onClick={() => { setPreTripTask(null); setPreTripDefectDetails(""); }}>ביטול</button></div></section>}
+      {preTripTask && <section className="fleet-panel"><div className="auth-message" role="note">בדיקה זו אינה מאמתת דרגת רישיון או התאמה חוקית בין הנהג, הרכב והנגרר. יש לוודא את הרישיון והמסמכים מול גורם מוסמך לפני פתיחת הנסיעה.</div><div className="fleet-panel-head"><div><h3>בדיקת רכב לפני יציאה</h3><p>{preTripTask.title} · יש לאשר כל סעיף לאחר בדיקה בפועל</p></div><span className="role-pill">בדיקת בטיחות</span></div><div className="task-list">{preTripItems.map((item, i) => <div className="task-assignees" key={item} style={{ padding: "10px 4px", alignItems: "center", justifyContent: "space-between", gap: 12 }}><span>{item}</span><select aria-label={item} value={preTripChecks[i] === true ? "ok" : preTripChecks[i] === false ? "defect" : ""} onChange={e => setPreTripChecks(old => ({ ...old, [i]: e.target.value === "ok" ? true : e.target.value === "defect" ? false : undefined }))}><option value="">בחר מצב</option><option value="ok">תקין</option><option value="defect">לא תקין</option></select></div>)}</div>{preTripItems.some((_, i) => preTripChecks[i] === false) && <label style={{ display: "grid", gap: 6, marginTop: 12 }}>פירוט הליקוי (חובה, לפחות 5 תווים)<textarea rows={3} maxLength={1000} value={preTripDefectDetails} onChange={e => setPreTripDefectDetails(e.target.value)} placeholder="תאר מה נמצא, באיזה רכיב ומה דורש טיפול" /></label>}<div className="task-actions"><button className="primary-btn" disabled={busy || !preTripItems.every((_, i) => typeof preTripChecks[i] === "boolean") || (preTripItems.some((_, i) => preTripChecks[i] === false) && preTripDefectDetails.trim().length < 5)} onClick={confirmPreTrip}>{preTripItems.some((_, i) => preTripChecks[i] === false) ? "שמירת בדיקה ודיווח תקלה" : "אישור בדיקה ופתיחת נסיעה"}</button><button className="secondary-btn" disabled={busy} onClick={() => { setPreTripTask(null); setPreTripDefectDetails(""); }}>ביטול</button></div></section>}
       <section className="fleet-panel">
         <div className="fleet-panel-head"><div><h3>נסיעות פעילות</h3><p>מעקב ועדכון נסיעות שהתחילו</p></div><span className="role-pill">{trips.filter(t=>t.status==="active").length} פעילות</span></div>
         {trips.filter(t=>t.status==="active").length === 0 ? <div className="fleet-empty">אין כרגע נסיעות פעילות.</div> :
@@ -276,13 +410,14 @@ export default function TasksPage() {
         <div className="fleet-panel-head"><div><h3>משימות הצי</h3><p>יצירת משימות, שיוך נהגים וכלי רכב ומעקב סטטוס</p></div>{canManageTasks&&<button className="primary-btn" onClick={() => { setShowForm(!showForm); setMessage(""); }}><Plus size={16}/> משימה חדשה</button>}</div>
         {showForm && canManageTasks && <form className="task-form" onSubmit={saveTask}>
           <div className="driver-form-title">פרטי המשימה</div>
+          <div className="auth-message" role="note">לפני שיבוץ: המערכת בודקת פעילות ותוקף תאריך בלבד. היא אינה מאשרת התאמה חוקית בין דרגת הרישיון, סיווג הרכב והנגרר. חובה לבצע אימות מסמכים ידני מול גורם מוסמך.</div>
           <div className="task-form-grid">
             <label>כותרת המשימה *<input required value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="לדוגמה: הובלת מטען ללקוח"/></label>
             <label>כתובת איסוף<input value={form.pickup_address} onChange={e=>setForm({...form,pickup_address:e.target.value})} placeholder="כתובת או נקודת איסוף"/></label>
             <label>כתובת יעד<input value={form.delivery_address} onChange={e=>setForm({...form,delivery_address:e.target.value})} placeholder="כתובת היעד"/></label>
             <label>מועד מתוכנן<input type="datetime-local" value={form.scheduled_at} onChange={e=>setForm({...form,scheduled_at:e.target.value})}/></label>
-            <label>שיוך נהג<select value={form.assigned_driver_id} onChange={e=>setForm({...form,assigned_driver_id:e.target.value})}><option value="">ללא נהג</option>{drivers.filter(d=>d.status==="active").map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label>
-            <label>שיוך רכב<select value={form.assigned_vehicle_id} onChange={e=>setForm({...form,assigned_vehicle_id:e.target.value})}><option value="">ללא רכב</option>{vehicles.filter(v=>v.status==="available" || v.status==="assigned").map(v=><option key={v.id} value={v.id}>{v.registration_number} · {v.make || v.vehicle_type}</option>)}</select></label>
+            <label>שיוך נהג<select value={form.assigned_driver_id} onChange={e=>setForm({...form,assigned_driver_id:e.target.value})}><option value="">ללא נהג</option>{drivers.map(d=><option key={d.id} value={d.id} disabled={!isDriverEligibleForVehicleAssignment(d)}>{driverAssignmentLabel(d)}</option>)}</select></label>
+            <label>שיוך רכב<select value={form.assigned_vehicle_id} onChange={e=>setForm({...form,assigned_vehicle_id:e.target.value})}><option value="">ללא רכב</option>{vehicles.map(v=><option key={v.id} value={v.id} disabled={v.is_demo || !["available","assigned"].includes(v.status)}>{vehicleAssignmentLabel(v)}</option>)}</select></label>
             <label className="task-wide">הערות / תיאור<textarea rows="3" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="פרטים נוספים לנהג או למנהל הצי"/></label>
           </div>
           <div className="driver-form-actions"><button className="primary-btn" disabled={busy}>{busy ? "שומר..." : "שמירת משימה"}</button><button type="button" className="secondary-btn" onClick={()=>{setShowForm(false);setForm(emptyForm);}}>ביטול</button></div>
@@ -292,6 +427,7 @@ export default function TasksPage() {
             <div className="task-card-top"><div><b>{task.title}</b><small>{task.reference_code || "משימה"} · {new Date(task.created_at).toLocaleDateString("he-IL")}</small></div><span className={"task-status task-"+task.status}>{labels[task.status] || task.status}</span></div>
             {(task.pickup_address || task.delivery_address) && <div className="task-route"><span><MapPin size={14}/> איסוף: {task.pickup_address || "לא צוין"}</span><span><MapPin size={14}/> יעד: {task.delivery_address || "לא צוין"}</span></div>}
             <div className="task-assignees"><span>נהג: {drivers.find(d=>d.id===task.assigned_driver_id)?.full_name || "לא שובץ"}</span><span>רכב: {vehicles.find(v=>v.id===task.assigned_vehicle_id)?.registration_number || "לא שובץ"}</span>{task.scheduled_at && <span><CalendarClock size={13}/> {new Date(task.scheduled_at).toLocaleString("he-IL")}</span>}</div>
+            {getTaskAssignmentWarnings(task).length > 0 && <div role="alert" className="task-description" style={{ marginTop: 8, padding: 10, borderRadius: 8, background: "#fff4e5", border: "1px solid #f2cf9b", color: "#8a4b12" }}><b>נדרשת בדיקת שיבוץ לפני פתיחת נסיעה:</b><ul style={{ margin: "6px 0 0", paddingRight: 20 }}>{getTaskAssignmentWarnings(task).map((warning, index) => <li key={index}>{warning}</li>)}</ul></div>}
             {task.description && <p className="task-description">{task.description}</p>}
             <div className="task-actions"><label>סטטוס<select disabled={busy||!canManageTasks} value={task.status} onChange={e=>updateStatus(task,e.target.value)}>{Object.entries(labels).filter(([value])=>["pending","assigned","cancelled"].includes(value)||value===task.status).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>{!["completed","cancelled"].includes(task.status) && (canManageTasks || isAssignedDriver(task.assigned_driver_id)) && <button className="primary-btn" disabled={busy} onClick={()=>startTrip(task)}><Play size={14}/> פתיחת נסיעה</button>}</div>
           </article>)}</div>}

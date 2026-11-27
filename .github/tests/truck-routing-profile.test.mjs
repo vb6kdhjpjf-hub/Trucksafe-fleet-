@@ -71,6 +71,12 @@ test("keeps registered axle limits separate from trip-specific measured axle loa
   assert.equal(getSavedTruckRoutingProfile({ ...validVehicle, weight_per_axle_kg: null }).registeredMaxWeightPerAxleKg, null);
 });
 
+test("fails closed for tractor-trailer combinations without separate combination evidence", () => {
+  for (const trailerCount of [1, 2, 3]) {
+    assert.equal(getSavedTruckRoutingProfile({ ...validVehicle, trailer_count: trailerCount }), null);
+  }
+});
+
 test("never allows demo vehicles to be used for truck routing", () => {
   assert.equal(getSavedTruckRoutingProfile({ ...validVehicle, is_demo: true }), null);
 });

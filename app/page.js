@@ -13,6 +13,8 @@ export default function Home() {
   const [workspaceChecked,setWorkspaceChecked]=useState(false);
   const [workspaceError,setWorkspaceError]=useState("");
   const fleetLoadRef=useRef(0);
+  const authGenerationRef=useRef(0);
+  const authUserIdRef=useRef(null);
   const [busy,setBusy]=useState(false);
   const [mode,setMode]=useState("login");
   const [email,setEmail]=useState("");
@@ -54,9 +56,10 @@ export default function Home() {
 
   async function loadFleet(user) {
     const requestId=++fleetLoadRef.current;
+    const authGeneration=authGenerationRef.current;
     setWorkspaceChecked(false);
     setWorkspaceError("");
-    const isCurrent=()=>requestId===fleetLoadRef.current;
+    const isCurrent=()=>requestId===fleetLoadRef.current&&authGeneration===authGenerationRef.current;
     const membershipResult=await supabase.from("fleet_members").select("fleet_id,role").eq("user_id",user.id).limit(2);
     if(!isCurrent())return;
     if(membershipResult.error){
@@ -128,12 +131,14 @@ export default function Home() {
       supabase.from("trips").select("id,driver_id,vehicle_id").eq("fleet_id",current.id).eq("status","active"),
       supabase.from("maintenance_records").select("id,vehicle_id,maintenance_type,scheduled_at,status,description").eq("fleet_id",current.id).neq("status","completed").order("scheduled_at",{ascending:true}).limit(30)
     ]);
+    if(!isCurrent())return;
     if(v.error)setMessage("שגיאה בטעינת כלי הרכב: "+v.error.message);
     else {
       const {data:verificationRows,error:verificationError}=await supabase
         .from("vehicles")
         .select("id,registration_verification_status,registration_document_path,registration_document_uploaded_at,registration_verified_at,registration_verification_note")
         .eq("fleet_id",current.id);
+      if(!isCurrent())return;
       const verificationById=new Map((verificationRows||[]).map(row=>[row.id,row]));
       setRegistrationSchemaReady(!verificationError);
       setVehicles((v.data||[]).map(vehicle=>({...vehicle,...(verificationById.get(vehicle.id)||{})})));
@@ -149,19 +154,23 @@ export default function Home() {
         const {data:loc,error:locError}=await supabase.from("trip_locations").select("latitude,longitude,speed_kmh,heading_degrees,recorded_at").eq("trip_id",trip.id).order("recorded_at",{ascending:false}).limit(1).maybeSingle();
         return locError||!loc?null:{...trip,...loc,driver: (d.data||[]).find(x=>x.id===trip.driver_id)?.full_name||"נהג לא ידוע",vehicle:(v.data||[]).find(x=>x.id===trip.vehicle_id)?.registration_number||"רכב לא ידוע"};
       }));
+      if(!isCurrent())return;
       setLiveLocations(points.filter(Boolean));
     } else setLiveLocations([]);
   }
 
   async function refreshLiveLocations() {
     if(!fleet?.id) return;
-    const {data:trips,error}=await supabase.from("trips").select("id,driver_id,vehicle_id").eq("fleet_id",fleet.id).eq("status","active");
-    if(error) return;
+    const authGeneration=authGenerationRef.current;
+    const currentFleetId=fleet.id;
+    const {data:trips,error}=await supabase.from("trips").select("id,driver_id,vehicle_id").eq("fleet_id",currentFleetId).eq("status","active");
+    if(error||authGeneration!==authGenerationRef.current||fleet?.id!==currentFleetId) return;
     const points=await Promise.all((trips||[]).map(async trip=>{
       const {data:loc,error:locError}=await supabase.from("trip_locations").select("id,latitude,longitude,speed_kmh,recorded_at").eq("trip_id",trip.id).order("recorded_at",{ascending:false}).limit(1).maybeSingle();
       if(locError||!loc) return null;
       return {...trip,...loc,driver:drivers.find(d=>d.id===trip.driver_id)?.full_name||"נהג לא ידוע",vehicle:vehicles.find(v=>v.id===trip.vehicle_id)?.registration_number||"רכב לא ידוע"};
     }));
+    if(authGeneration!==authGenerationRef.current||fleet?.id!==currentFleetId)return;
     setLiveLocations(points.filter(Boolean));
   }
 
@@ -181,18 +190,37 @@ export default function Home() {
     if(recoveryLink)setRecoveryMode(true);
 
     // Subscribe before reading the session so a PASSWORD_RECOVERY event is not missed.
+    const clearPrivateState=()=>{
+      authGenerationRef.current+=1;
+      fleetLoadRef.current+=1;
+      setFleet(null);setWorkspaceChecked(false);setWorkspaceError("");
+      setVehicles([]);setDrivers([]);setActiveTrips(0);setOpenIncidents(0);setIncidentAlerts([]);
+      setActiveTasks(0);setMaintenanceAlerts([]);setLiveLocations([]);
+      setRegistrationSchemaReady(false);setRegistrationUploadBusy("");setRegistrationViewBusy("");
+      setRegistrationReviewBusy("");setRegistrationReviewNotes({});
+      setShowVehicle(false);setRegistration("");setVehicleType("משאית");setBodyType("rigid_truck");
+      setVehicleMake("");setAssignedDriverId("");setRoutingVehicleType("StraightTruck");
+      setHeightCm("");setWidthCm("");setLengthCm("");setGrossWeightKg("");setEmptyWeightKg("");
+      setAxleCount("");setTrailerCount("0");setWeightPerAxleKg("");setEditingVehicleId("");
+      setPassword("");setNewPassword("");setRecoveryMode(false);setBusy(false);
+    };
+    const initialAuthGeneration=authGenerationRef.current;
     const {data:{subscription}}=supabase.auth.onAuthStateChange((event,next)=>{
       if(event==="PASSWORD_RECOVERY"){
         setRecoveryMode(true);
         setMessage("קישור האיפוס אומת. הזן סיסמה חדשה.");
       }
+      const nextUserId=next?.user?.id||null;
+      if(nextUserId&&authUserIdRef.current&&nextUserId!==authUserIdRef.current){
+        clearPrivateState();authUserIdRef.current=nextUserId;setSession(next);
+        if(typeof window!=="undefined")window.location.reload();
+        return;
+      }
+      if(nextUserId)authUserIdRef.current=nextUserId;
       setSession(next);
       if(!next){
-        setFleet(null);
-        setWorkspaceChecked(false);
-        setVehicles([]);
-        setDrivers([]);
-        setLiveLocations([]);
+        authUserIdRef.current=null;
+        clearPrivateState();
         if(event==="SIGNED_OUT")setLoading(false);
       }
     });
@@ -201,20 +229,24 @@ export default function Home() {
     // This prevents a deleted/expired account's cached browser session from opening
     // the "create organization" flow or being mistaken for a new user.
     supabase.auth.getUser().then(async ({data,error})=>{
-      if(!alive)return;
+      if(!alive||initialAuthGeneration!==authGenerationRef.current)return;
       if(error){
         setMessage("פג תוקף ההתחברות או שהחשבון אינו זמין. יש להתחבר מחדש עם החשבון הפעיל.");
         await supabase.auth.signOut();
-        if(alive){setSession(null);setFleet(null);setLoading(false);}
+        if(alive&&initialAuthGeneration===authGenerationRef.current){setSession(null);setFleet(null);setLoading(false);}
         return;
       }
       const {data:{session:currentSession}}=await supabase.auth.getSession();
-      if(!alive)return;
+      if(!alive||initialAuthGeneration!==authGenerationRef.current)return;
+      if(currentSession?.user?.id!==data.user?.id)return;
+      authUserIdRef.current=data.user?.id||null;
       setSession(currentSession);
       if(data.user&&!recoveryLink)await loadFleet(data.user);
-      if(alive)setLoading(false);
+      if(alive&&initialAuthGeneration===authGenerationRef.current)setLoading(false);
+    }).catch(error=>{
+      if(alive&&initialAuthGeneration===authGenerationRef.current){setMessage("לא ניתן לאמת את ההתחברות: "+(error?.message||"שגיאה לא ידועה"));setLoading(false);}
     });
-    return ()=>{alive=false;subscription.unsubscribe();};
+    return ()=>{alive=false;authGenerationRef.current+=1;fleetLoadRef.current+=1;subscription.unsubscribe();};
   },[]);
 
   async function authenticate(e){
@@ -623,7 +655,6 @@ export default function Home() {
         <label>מספר רישוי<input required value={registration} onChange={e=>setRegistration(e.target.value)} placeholder="12-345-67"/></label>
         <label>סוג רכב<select value={vehicleType} onChange={e=>setVehicleType(e.target.value)}><option>משאית</option><option>גורר</option><option>נגרר</option><option>מסחרית</option><option>רכב אחר</option></select></label>
         <label>סיווג מרכב<select value={bodyType} onChange={e=>setBodyType(e.target.value)}><option value="rigid_truck">משאית קשיחה</option><option value="tractor_unit">ראש גורר</option><option value="semi_trailer">סמי־טריילר</option><option value="full_trailer">משאית עם גרור</option><option value="articulated_crane">משאית מנוף זרוע מפרקית</option><option value="telescopic_crane">משאית מנוף טלסקופי</option><option value="loader_crane">משאית מנוף העמסה</option><option value="heavy_lift_crane">משאית מנוף כבד</option><option value="mobile_crane">עגורן נייד</option><option value="aerial_platform">משאית סל / במת הרמה</option><option value="recovery_crane">רכב חילוץ עם מנוף</option><option value="concrete_mixer">מערבל בטון</option><option value="concrete_pump">משאבת בטון</option><option value="tipper">משאית רכינה</option><option value="tanker">מכלית</option><option value="refrigerated">משאית קירור</option><option value="car_carrier">מובילית</option><option value="low_loader">מוביל חריג / low-loader</option><option value="other_special">רכב כבד מיוחד – אחר</option></select></label>
-        <label>סיווג מרכב<select value={bodyType} onChange={e=>setBodyType(e.target.value)}><option value="rigid_truck">משאית קשיחה</option><option value="tractor_unit">ראש גורר</option><option value="semi_trailer">סמי־טריילר</option><option value="full_trailer">משאית עם גרור</option><option value="articulated_crane">משאית מנוף זרוע מפרקית</option><option value="telescopic_crane">משאית מנוף טלסקופי</option><option value="loader_crane">משאית מנוף העמסה</option><option value="heavy_lift_crane">משאית מנוף כבד</option><option value="mobile_crane">עגורן נייד</option><option value="aerial_platform">משאית סל / במת הרמה</option><option value="recovery_crane">רכב חילוץ עם מנוף</option><option value="concrete_mixer">מערבל בטון</option><option value="concrete_pump">משאבת בטון</option><option value="tipper">משאית רכינה</option><option value="tanker">מכלית</option><option value="refrigerated">משאית קירור</option><option value="car_carrier">מובילית</option><option value="low_loader">מוביל חריג / low-loader</option><option value="other_special">רכב כבד מיוחד – אחר</option></select></label>
   <label>יצרן / דגם<input value={vehicleMake} onChange={e=>setVehicleMake(e.target.value)} placeholder="לדוגמה: Volvo FH"/></label>
         <label>נהג משויך<select value={assignedDriverId} onChange={e=>setAssignedDriverId(e.target.value)}><option value="">ללא נהג משויך</option>{drivers.filter(d=>isDriverEligibleForVehicleAssignment(d)).map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select><small>מוצגים רק נהגים פעילים עם תאריך תוקף רישיון תקין שלא פג. יש לוודא בנפרד שדרגת הרישיון מתאימה לרכב.</small></label>
         <div style={{gridColumn:"1 / -1",borderTop:"1px solid #e5eaf1",paddingTop:12,marginTop:4}}>
@@ -645,6 +676,7 @@ export default function Home() {
 {editingVehicleId===v.id&&<form className="vehicle-form" onSubmit={saveVehicleEdits}>
   <div style={{gridColumn:"1 / -1",fontWeight:700}}>עריכת פרטי רכב · {v.registration_number}</div>
   <label>סוג רכב<select value={vehicleType} onChange={e=>setVehicleType(e.target.value)}><option>משאית</option><option>גורר</option><option>נגרר</option><option>מסחרית</option><option>רכב אחר</option></select></label>
+  <label>סיווג מרכב<select value={bodyType} onChange={e=>setBodyType(e.target.value)}><option value="rigid_truck">משאית קשיחה</option><option value="tractor_unit">ראש גורר</option><option value="semi_trailer">סמי־טריילר</option><option value="full_trailer">משאית עם גרור</option><option value="articulated_crane">משאית מנוף זרוע מפרקית</option><option value="telescopic_crane">משאית מנוף טלסקופי</option><option value="loader_crane">משאית מנוף העמסה</option><option value="heavy_lift_crane">משאית מנוף כבד</option><option value="mobile_crane">עגורן נייד</option><option value="aerial_platform">משאית סל / במת הרמה</option><option value="recovery_crane">רכב חילוץ עם מנוף</option><option value="concrete_mixer">מערבל בטון</option><option value="concrete_pump">משאבת בטון</option><option value="tipper">משאית רכינה</option><option value="tanker">מכלית</option><option value="refrigerated">משאית קירור</option><option value="car_carrier">מובילית</option><option value="low_loader">מוביל חריג / low-loader</option><option value="other_special">רכב כבד מיוחד – אחר</option></select></label>
   <label>יצרן / דגם<input value={vehicleMake} onChange={e=>setVehicleMake(e.target.value)} placeholder="לדוגמה: Volvo FH"/></label>
   <label>נהג משויך<select value={assignedDriverId} onChange={e=>setAssignedDriverId(e.target.value)}><option value="">ללא נהג משויך</option>{drivers.filter(d=>isDriverEligibleForVehicleAssignment(d)).map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select><small>מוצגים רק נהגים פעילים עם תאריך תוקף רישיון תקין שלא פג. יש לוודא בנפרד שדרגת הרישיון מתאימה לרכב.</small></label>
   <div style={{gridColumn:"1 / -1",borderTop:"1px solid #e5eaf1",paddingTop:12,marginTop:4}}>

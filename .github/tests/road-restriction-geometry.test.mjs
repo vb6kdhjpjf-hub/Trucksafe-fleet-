@@ -113,6 +113,28 @@ test("detects a route passing near a linear restriction segment", () => {
   assert.equal(routePassesNearRestriction(sections, segment), true);
 });
 
+test("fails closed when point geometry is accompanied by a partial linear restriction", () => {
+  const partialSegment = verifiedRestriction({
+    latitude: 32.84,
+    longitude: 35.505,
+    start_latitude: 32.839,
+    start_longitude: 35.505,
+    end_latitude: null,
+    end_longitude: null
+  });
+  assert.equal(routePassesNearRestriction(sections, partialSegment), null);
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [partialSegment],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now
+  });
+  assert.equal(result.validated, false);
+  assert.equal(result.unresolved[0].reason, "missing_or_invalid_location_or_route_geometry");
+});
+
 test("rejects incomplete or out-of-Israel linear restriction geometry", () => {
   assert.equal(routePassesNearRestriction(sections, verifiedRestriction({
     latitude: null, longitude: null,
@@ -124,6 +146,30 @@ test("rejects incomplete or out-of-Israel linear restriction geometry", () => {
     start_latitude: 40, start_longitude: 35,
     end_latitude: 32.841, end_longitude: 35.505
   })), null);
+});
+
+test("fails closed for zero-length and implausibly long restriction segments", () => {
+  const zeroLength = verifiedRestriction({
+    latitude: null, longitude: null,
+    start_latitude: 32.84, start_longitude: 35.505,
+    end_latitude: 32.84, end_longitude: 35.505
+  });
+  const overlong = verifiedRestriction({
+    latitude: null, longitude: null,
+    start_latitude: 32.0, start_longitude: 35.5,
+    end_latitude: 33.2, end_longitude: 35.5
+  });
+  assert.equal(routePassesNearRestriction(sections, zeroLength), null);
+  assert.equal(routePassesNearRestriction(sections, overlong), null);
+});
+
+test("rejects invalid proximity radii rather than silently widening the search", () => {
+  for (const radius_m of [9, 1001, 0, -25, "not-a-number"]) {
+    assert.equal(routePassesNearRestriction(
+      sections,
+      verifiedRestriction({ radius_m })
+    ), null);
+  }
 });
 
 test("uses exact segment distance for parallel restrictions near the route", () => {
@@ -165,6 +211,44 @@ test("blocks a nearby verified height restriction that the truck exceeds", () =>
   assert.equal(result.conflicts[0].restrictionType, "height");
 });
 
+test("uses the lowest of legal, posted and physically measured height limits", () => {
+  for (const restriction of [
+    verifiedRestriction({ max_height_m: 4.5, measured_clearance_m: 4.0, posted_clearance_m: 4.4 }),
+    verifiedRestriction({ max_height_m: 4.5, measured_clearance_m: 4.62, posted_clearance_m: 4.1 })
+  ]) {
+    const result = evaluateFleetRestrictions({
+      sections,
+      restrictions: [restriction],
+      restrictionCatalogLoaded: true,
+      vehicle,
+      currentWeightKg: 10000,
+      now
+    });
+    assert.equal(result.validated, false);
+    assert.equal(result.conflicts.length, 1);
+    assert.equal(result.conflicts[0].restrictionType, "height");
+  }
+});
+
+test("fails closed when measured or posted physical clearance evidence is missing", () => {
+  for (const restriction of [
+    verifiedRestriction({ measured_clearance_m: null }),
+    verifiedRestriction({ posted_clearance_status: "posted", posted_clearance_m: null })
+  ]) {
+    const result = evaluateFleetRestrictions({
+      sections,
+      restrictions: [restriction],
+      restrictionCatalogLoaded: true,
+      vehicle,
+      currentWeightKg: 10000,
+      now
+    });
+    assert.equal(result.validated, false);
+    assert.equal(result.conflicts.length, 0);
+    assert.equal(result.unresolved[0].reason, "height_clearance_evidence_incomplete");
+  }
+});
+
 test("does not reject a route for a distant, verified restriction", () => {
   const distant = verifiedRestriction({ latitude: 32.85, longitude: 35.505 });
   const result = evaluateFleetRestrictions({
@@ -193,6 +277,35 @@ test("fails closed when provider route geometry leaves supported Israel operatin
   });
   assert.equal(result.validated, false);
   assert.equal(result.unresolved[0].reason, "route_geometry_outside_supported_israel_bounds");
+});
+
+test("enforces weight, width, and length restrictions against the saved truck profile", () => {
+  const cases = [
+    { type: "weight", field: "max_weight_t", limit: 9.5, atLimit: 10, expectedConflict: true },
+    { type: "weight", field: "max_weight_t", limit: 10, atLimit: 10, expectedConflict: false },
+    { type: "width", field: "max_width_m", limit: 2.4, atLimit: 2.5, expectedConflict: true },
+    { type: "width", field: "max_width_m", limit: 2.5, atLimit: 2.5, expectedConflict: false },
+    { type: "length", field: "max_length_m", limit: 8.5, atLimit: 9, expectedConflict: true },
+    { type: "length", field: "max_length_m", limit: 9, atLimit: 9, expectedConflict: false }
+  ];
+
+  for (const scenario of cases) {
+    const result = evaluateFleetRestrictions({
+      sections,
+      restrictions: [verifiedRestriction({
+        restriction_type: scenario.type,
+        [scenario.field]: scenario.limit
+      })],
+      restrictionCatalogLoaded: true,
+      vehicle,
+      currentWeightKg: scenario.type === "weight" ? scenario.atLimit * 1000 : 10000,
+      now
+    });
+
+    assert.equal(result.validated, !scenario.expectedConflict, scenario.type + " limit " + scenario.limit);
+    assert.equal(result.conflicts.length, scenario.expectedConflict ? 1 : 0, scenario.type + " conflict count");
+    assert.equal(result.unresolved.length, 0, scenario.type + " should be fully evaluated");
+  }
 });
 
 test("fails closed when the loaded restriction catalogue is empty", () => {
@@ -320,6 +433,42 @@ test("blocks a time-window restriction that begins during the journey", () => {
   assert.equal(result.validated, false);
   assert.equal(result.conflicts.length, 1);
   assert.equal(result.conflicts[0].restrictionType, "time_window");
+});
+
+test("blocks a sub-minute restriction window entirely between route minute samples", () => {
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [verifiedRestriction({
+      restriction_type: "time_window",
+      valid_from: "12:00:10",
+      valid_until: "12:00:20"
+    })],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now: new Date("2026-11-09T09:59:00.000Z")
+  });
+  assert.equal(result.validated, false);
+  assert.equal(result.conflicts.length, 1);
+  assert.equal(result.conflicts[0].restrictionType, "time_window");
+});
+
+test("does not block a sub-minute restriction window that starts after route arrival", () => {
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [verifiedRestriction({
+      restriction_type: "time_window",
+      valid_from: "12:03:10",
+      valid_until: "12:03:20"
+    })],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now: new Date("2026-11-09T09:59:00.000Z")
+  });
+  assert.equal(result.validated, true);
+  assert.deepEqual(result.conflicts, []);
+  assert.deepEqual(result.unresolved, []);
 });
 
 test("blocks a date-based road closure that starts after departure but before arrival", () => {
@@ -463,4 +612,22 @@ test("requires posted sign data to remain separate from physical measured cleara
   });
   assert.equal(result.validated, false);
   assert.equal(result.unresolved[0].reason, "height_clearance_evidence_incomplete");
+});
+
+
+test("validates bridge measurement dates using Israel local time near UTC midnight", () => {
+  const result = evaluateFleetRestrictions({
+    sections,
+    restrictions: [verifiedRestriction({
+      max_height_m: 4.5,
+      measurement_date: "2026-11-10"
+    })],
+    restrictionCatalogLoaded: true,
+    vehicle,
+    currentWeightKg: 10000,
+    now: new Date("2026-11-09T22:30:00.000Z")
+  });
+  assert.equal(result.validated, true);
+  assert.deepEqual(result.conflicts, []);
+  assert.deepEqual(result.unresolved, []);
 });

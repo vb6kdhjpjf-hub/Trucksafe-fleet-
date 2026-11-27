@@ -10,6 +10,8 @@ begin;
 \ir ../../supabase/migrations/20261115100000_protect_referenced_private_evidence.sql
 \ir ../../supabase/migrations/20261115113000_guard_vehicle_registration_insert_verification.sql
 \ir ../../supabase/migrations/20261115120000_use_israel_local_date_for_trip_compliance.sql
+\ir ../../supabase/migrations/20261117165300_harden_verified_bridge_country_and_verifier.sql
+\ir ../../supabase/migrations/20261118193000_require_verified_vehicle_registration_for_trip.sql
 
 create temporary table trucksafe_e2e_results (
   scenario text not null,
@@ -17,6 +19,183 @@ create temporary table trucksafe_e2e_results (
   detail text
 
 ) on commit drop;
+
+do $public_schema_security_baseline_test$
+declare
+  unprotected_objects text[];
+  anonymous_policies text[];
+  anonymous_definers text[];
+begin
+  select array_agg(format('%I (%s)', c.relname, c.relkind) order by c.relname)
+  into unprotected_objects
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relkind in ('r', 'p')
+    and not c.relrowsecurity;
+
+  if unprotected_objects is not null then
+    raise exception 'Public tables exposed through the Data API must have RLS enabled: %', unprotected_objects;
+  end if;
+
+  select array_agg(format('%I.%I [%s]', p.schemaname, p.tablename, p.policyname) order by p.tablename, p.policyname)
+  into anonymous_policies
+  from pg_policies p
+  where p.schemaname = 'public'
+    and p.roles && array['anon', 'public']::name[];
+
+  if anonymous_policies is not null then
+    raise exception 'Public schema must not define anonymous or PUBLIC row policies: %', anonymous_policies;
+  end if;
+
+  select array_agg(p.oid::regprocedure::text order by p.proname)
+  into anonymous_definers
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and p.prokind = 'f'
+    and p.prosecdef
+    and has_function_privilege('anon', p.oid, 'EXECUTE');
+
+  if anonymous_definers is not null then
+    raise exception 'SECURITY DEFINER functions in exposed public schema must not be executable by anon: %', anonymous_definers;
+  end if;
+
+  insert into pg_temp.trucksafe_e2e_results values
+    ('public Data API RLS and anonymous privilege baseline', 'PASS',
+     'All public tables have RLS; no anon/PUBLIC row policies or anon-executable public SECURITY DEFINER functions exist');
+end
+$public_schema_security_baseline_test$;
+
+do $road_restriction_evidence_schema_test$
+declare
+  required_columns text[] := array[
+    'structure_id', 'road_segment_id', 'lane_id', 'passage_length_m',
+    'posted_clearance_status', 'posted_clearance_m', 'surveyor',
+    'measurement_coverage'
+  ];
+  required_guard_fragments text[] := array[
+    'COUNTRY_CODE = ''IL''',
+    'COUNTRY_CODE IS NOT NULL',
+    'DIRECTION IS NOT NULL',
+    'PASSAGE_LENGTH_M IS NOT NULL',
+    'MAX_HEIGHT_M IS NOT NULL',
+    'MEASURED_CLEARANCE_M IS NOT NULL',
+    'MEASUREMENT_DATE IS NOT NULL',
+    'MEASUREMENT_ACCURACY_CM IS NOT NULL',
+    'MEASUREMENT_METHOD',
+    'MEASUREMENT_LOCATION_NOTE',
+    'MEASUREMENT_DOCUMENT_URL IS NOT NULL',
+    'VERIFIED_AT IS NOT NULL',
+    'VERIFIED_BY IS NOT NULL',
+    'SOURCE_NAME',
+    'SOURCE_URL IS NOT NULL',
+    'SOURCE_LAST_CHECKED_AT IS NOT NULL',
+    'VERIFICATION_NOTE',
+    'POSTED_CLEARANCE_STATUS IS NOT NULL',
+    'SURVEYOR',
+    'MEASUREMENT_COVERAGE IS NOT NULL'
+  ];
+  missing_columns text[];
+  missing_constraints text[];
+  guard_definition text;
+  required_fragment text;
+begin
+  select array_agg(required.column_name order by required.column_name)
+  into missing_columns
+  from unnest(required_columns) as required(column_name)
+  where not exists (
+    select 1 from information_schema.columns c
+    where c.table_schema = 'public'
+      and c.table_name = 'road_restrictions'
+      and c.column_name = required.column_name
+  );
+
+  if missing_columns is not null then
+    raise exception 'Road restriction evidence schema is missing columns: %', missing_columns;
+  end if;
+
+  select array_agg(required.constraint_name order by required.constraint_name)
+  into missing_constraints
+  from unnest(array[
+    'road_restrictions_passage_length_check',
+    'road_restrictions_posted_clearance_status_check',
+    'road_restrictions_posted_clearance_value_check',
+    'road_restrictions_measurement_coverage_shape_check',
+    'road_restrictions_verified_lane_level_height_evidence_check',
+    'road_restrictions_verified_height_measurement_check'
+  ]) as required(constraint_name)
+  where not exists (
+    select 1 from pg_constraint c
+    where c.conrelid = 'public.road_restrictions'::regclass
+      and c.conname = required.constraint_name
+      and c.convalidated
+  );
+
+  if missing_constraints is not null then
+    raise exception 'Road restriction evidence constraints are missing or unvalidated: %', missing_constraints;
+  end if;
+
+  -- The complete verification contract is intentionally split across
+  -- independent CHECK constraints: lane-level provenance and the existing
+  -- physical measurement/safety-margin guard. Inspect both together.
+  select string_agg(upper(pg_get_constraintdef(c.oid)), ' AND ')
+  into guard_definition
+  from pg_constraint c
+  where c.conrelid = 'public.road_restrictions'::regclass
+    and c.conname in (
+      'road_restrictions_verified_lane_level_height_evidence_check',
+      'road_restrictions_verified_height_measurement_check'
+    )
+    and c.convalidated;
+
+  if guard_definition is null then
+    raise exception 'Verified height evidence constraints are missing or unvalidated';
+  end if;
+
+  foreach required_fragment in array required_guard_fragments loop
+    if position(required_fragment in guard_definition) = 0 then
+      raise exception 'Verified bridge evidence guard is missing required rule: %', required_fragment;
+    end if;
+  end loop;
+
+  if exists (
+    select 1 from public.road_restrictions
+    where restriction_type = 'height'
+      and verification_status = 'verified'
+      and (
+        nullif(btrim(structure_id), '') is null
+        or nullif(btrim(road_segment_id), '') is null
+        or nullif(btrim(lane_id), '') is null
+        or direction is null
+        or direction not in ('forward', 'backward')
+        or passage_length_m is null
+        or max_height_m is null
+        or measured_clearance_m is null
+        or measurement_date is null
+        or measurement_accuracy_cm is null
+        or nullif(btrim(measurement_method), '') is null
+        or nullif(btrim(measurement_location_note), '') is null
+        or nullif(btrim(measurement_document_url), '') is null
+        or verified_at is null
+        or verified_by is null
+        or nullif(btrim(source_name), '') is null
+        or nullif(btrim(source_url), '') is null
+        or source_last_checked_at is null
+        or nullif(btrim(verification_note), '') is null
+        or posted_clearance_status is null
+        or nullif(btrim(surveyor), '') is null
+        or measurement_coverage is null
+      )
+  ) then
+    raise exception 'A verified height restriction lacks required physical survey or provenance evidence';
+  end if;
+
+  insert into pg_temp.trucksafe_e2e_results values
+    ('lane-level bridge clearance evidence schema', 'PASS',
+     'Required fields and complete verified-evidence constraints exist; no verified height row lacks evidence');
+end
+$road_restriction_evidence_schema_test$;
 
 do $israel_date_guard_test$
 declare
@@ -198,6 +377,185 @@ begin
 end
 $guard_test$;
 
+
+do $trip_location_security_test$
+declare
+  insert_policy text;
+  select_policy text;
+begin
+  if not exists (
+    select 1
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = 'trip_locations'
+      and c.relrowsecurity
+  ) then
+    raise exception 'Trip location rows must have RLS enabled';
+  end if;
+
+  select lower(with_check) into insert_policy
+  from pg_policies
+  where schemaname = 'public'
+    and tablename = 'trip_locations'
+    and policyname = 'trip_locations_insert_authorized'
+    and cmd = 'INSERT'
+    and roles @> array['authenticated']::name[];
+
+  if insert_policy is null
+     or position('t.status = ''active''' in insert_policy) = 0
+     or position('t.driver_id = trip_locations.driver_id' in insert_policy) = 0
+     or position('d.user_id' in insert_policy) = 0
+     or position('auth.uid()' in insert_policy) = 0
+     or position('d.status = ''active''' in insert_policy) = 0
+     or position('private.is_fleet_member' in insert_policy) = 0 then
+    raise exception 'Trip location INSERT policy must require the assigned active driver, active trip, and fleet membership';
+  end if;
+
+  select lower(qual) into select_policy
+  from pg_policies
+  where schemaname = 'public'
+    and tablename = 'trip_locations'
+    and policyname = 'trip_locations_select_member'
+    and cmd = 'SELECT'
+    and roles @> array['authenticated']::name[];
+
+  if select_policy is null
+     or position('private.has_fleet_role' in select_policy) = 0
+     or position('private.is_fleet_member' in select_policy) = 0
+     or position('auth.uid()' in select_policy) = 0 then
+    raise exception 'Trip location SELECT policy must restrict access to fleet managers and the assigned driver';
+  end if;
+
+  if exists (
+    select 1
+    from pg_policies p
+    cross join lateral unnest(p.roles) as role_name
+    where p.schemaname = 'public'
+      and p.tablename = 'trip_locations'
+      and role_name::text in ('anon', 'public')
+  ) then
+    raise exception 'Trip locations must not be exposed to anon or PUBLIC policies';
+  end if;
+
+  if has_function_privilege('anon', 'public.finish_trip(uuid,uuid)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.start_trip_with_inspection(uuid,uuid,uuid,uuid,text,text,jsonb)', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'public.finish_trip(uuid,uuid)', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'public.start_trip_with_inspection(uuid,uuid,uuid,uuid,text,text,jsonb)', 'EXECUTE') then
+    raise exception 'Trip lifecycle RPC grants must deny anon and permit authenticated callers';
+  end if;
+
+  insert into pg_temp.trucksafe_e2e_results values
+    ('trip GPS location row-level security', 'PASS',
+     'Only the assigned active driver can insert GPS points; only authorized fleet roles and that driver can read them');
+  insert into pg_temp.trucksafe_e2e_results values
+    ('trip lifecycle RPC grants', 'PASS',
+     'Anonymous execution is denied and authenticated execution is granted');
+end
+$trip_location_security_test$;
+
+do $private_storage_policy_test$
+declare
+  incident_upload text;
+  incident_read text;
+  incident_delete text;
+  registration_upload text;
+  registration_read text;
+  registration_delete text;
+begin
+  if not exists (
+    select 1 from storage.buckets
+    where id = 'incident-photos' and public = false
+      and file_size_limit = 5242880
+      and allowed_mime_types @> array['image/jpeg','image/png','image/webp']::text[]
+  ) then
+    raise exception 'Incident photo bucket must be private, limited to 5MB, and restricted to approved image MIME types';
+  end if;
+
+  if not exists (
+    select 1 from storage.buckets
+    where id = 'vehicle-registrations' and public = false
+      and file_size_limit = 8388608
+      and allowed_mime_types @> array['application/pdf','image/jpeg','image/png','image/webp']::text[]
+  ) then
+    raise exception 'Vehicle registration bucket must be private, limited to 8MB, and restricted to approved document MIME types';
+  end if;
+
+  select lower(with_check) into incident_upload
+  from pg_policies where schemaname = 'storage' and tablename = 'objects'
+    and policyname = 'incident_photos_member_upload' and cmd = 'INSERT';
+  select lower(qual) into incident_read
+  from pg_policies where schemaname = 'storage' and tablename = 'objects'
+    and policyname = 'incident_photos_member_read' and cmd = 'SELECT';
+  select lower(qual) into incident_delete
+  from pg_policies where schemaname = 'storage' and tablename = 'objects'
+    and policyname = 'incident_photos_member_delete_own' and cmd = 'DELETE';
+
+  if incident_upload is null
+     or position('incident-photos' in incident_upload) = 0
+     or position('private.is_fleet_member' in incident_upload) = 0 then
+    raise exception 'Incident photo uploads must be restricted to authenticated fleet members';
+  end if;
+  if incident_read is null
+     or position('incident-photos' in incident_read) = 0
+     or position('from incidents i' in incident_read) = 0
+     or position('photo_path = objects.name' in incident_read) = 0 then
+    raise exception 'Incident photo reads must be linked to an incident row protected by incident RLS';
+  end if;
+  if incident_delete is null
+     or position('auth.uid()' in incident_delete) = 0
+     or position('private.is_fleet_member' in incident_delete) = 0
+     or position('storage_object_is_referenced' in incident_delete) = 0 then
+    raise exception 'Incident photo deletion must require ownership, fleet membership, and no remaining evidence reference';
+  end if;
+
+  select lower(with_check) into registration_upload
+  from pg_policies where schemaname = 'storage' and tablename = 'objects'
+    and policyname = 'vehicle_registrations_manager_upload' and cmd = 'INSERT';
+  select lower(qual) into registration_read
+  from pg_policies where schemaname = 'storage' and tablename = 'objects'
+    and policyname = 'vehicle_registrations_manager_read' and cmd = 'SELECT';
+  select lower(qual) into registration_delete
+  from pg_policies where schemaname = 'storage' and tablename = 'objects'
+    and policyname = 'vehicle_registrations_manager_delete' and cmd = 'DELETE';
+
+  if registration_upload is null or registration_read is null or registration_delete is null
+     or position('vehicle-registrations' in registration_upload) = 0
+     or position('vehicle-registrations' in registration_read) = 0
+     or position('vehicle-registrations' in registration_delete) = 0
+     or position('private.has_fleet_role' in registration_upload) = 0
+     or position('private.has_fleet_role' in registration_read) = 0
+     or position('private.has_fleet_role' in registration_delete) = 0
+     or position('owner' in registration_upload) = 0
+     or position('fleet_manager' in registration_upload) = 0
+     or position('array_length' in registration_upload) = 0
+     or position('array_length' in registration_read) = 0
+     or position('storage_object_is_referenced' in registration_delete) = 0 then
+    raise exception 'Vehicle registration object access must be fleet-manager scoped, path-structured, and reference-protected on delete';
+  end if;
+
+  if exists (
+    select 1 from pg_policies p
+    cross join lateral unnest(p.roles) as role_name
+    where p.schemaname = 'storage' and p.tablename = 'objects'
+      and role_name::text in ('anon','public')
+  ) then
+    raise exception 'Private evidence storage must not have anon or PUBLIC policies';
+  end if;
+
+  if not exists (
+    select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'incidents' and c.relrowsecurity
+  ) then
+    raise exception 'Incident rows backing photo access must have RLS enabled';
+  end if;
+
+  insert into pg_temp.trucksafe_e2e_results values
+    ('private evidence storage access control', 'PASS',
+     'Both evidence buckets are private and bounded; uploads, reads and deletes are role/fleet scoped with referenced evidence protected');
+end
+$private_storage_policy_test$;
+
 do $test$
 declare
   -- Successful lifecycle fixture
@@ -210,6 +568,7 @@ declare
   t1 uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf11';
   t1b uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf16';
   t1c uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf17';
+  t1d uuid := 'a3d0f66b-52e6-4e7e-a641-5c0f2f8eaf18';
   v_trip_id uuid;
   affected_rows integer;
   driver_deactivation_blocked boolean := false;
@@ -251,12 +610,8 @@ declare
   );
   msg text;
 begin
-  insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data)
-  values
-    (u1, 'authenticated', 'authenticated', 'trucksafe-ci-lifecycle@example.invalid', 'test-only-no-login', now(),
-     '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb),
-    (u2, 'authenticated', 'authenticated', 'trucksafe-ci-safety@example.invalid', 'test-only-no-login', now(),
-     '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb);
+  -- @auth-fixture u1 trucksafe-ci-lifecycle@example.invalid
+-- @auth-fixture u2 trucksafe-ci-safety@example.invalid
 
   -- Test as authenticated fleet owners. Creating a fleet automatically creates its owner membership.
   perform set_config('request.jwt.claim.sub', u1::text, true);
@@ -271,12 +626,53 @@ begin
         current_date + 365, current_date + 365, current_date + 365, false),
       (v1b, f1, 'CI-TEST-002', 'Test', 'Truck', 'truck', 'available',
         current_date + 365, current_date + 365, current_date + 365, false);
+
+  -- Synthetic registration objects and review metadata exist only inside this rollback transaction.
+  perform set_config('request.jwt.claim.role', 'service_role', true);
+  insert into storage.objects (bucket_id, name, metadata) values
+    ('vehicle-registrations', f1::text || '/' || v1::text || '/ci-registration.pdf', '{"mimetype":"application/pdf","size":128}'::jsonb),
+    ('vehicle-registrations', f1::text || '/' || v1b::text || '/ci-registration.pdf', '{"mimetype":"application/pdf","size":128}'::jsonb);
+  -- Model the real two-stage flow: attach evidence first (which invalidates prior approval),
+  -- then record the independent review without changing the vehicle identity/evidence path.
+  update public.vehicles
+  set registration_document_path = fleet_id::text || '/' || id::text || '/ci-registration.pdf',
+      registration_document_uploaded_at = now()
+  where id in (v1, v1b) and fleet_id = f1;
+  update public.vehicles
+  set registration_verification_status = 'verified',
+      registration_verified_at = now(),
+      registration_verified_by = u1,
+      registration_verification_note = 'CI synthetic registration review'
+  where id in (v1, v1b) and fleet_id = f1;
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+
   insert into public.drivers (id, fleet_id, full_name, license_expires_at, status)
     values (d1b, f1, 'CI Second Driver', current_date + 365, 'active');
   insert into public.tasks (id, fleet_id, title, pickup_address, delivery_address,
     assigned_driver_id, assigned_vehicle_id, status, created_by)
-    values (t1, f1, 'CI end-to-end test task', 'Test origin', 'Test destination',
-      d1, v1, 'assigned', u1);
+    values
+      (t1, f1, 'CI end-to-end test task', 'Test origin', 'Test destination', d1, v1, 'assigned', u1),
+      (t1b, f1, 'CI unverified registration rejection', 'Test origin', 'Test destination', d1b, v1b, 'assigned', u1);
+
+  -- An otherwise eligible vehicle with a pending registration review must be blocked server-side.
+  update public.vehicles set registration_verification_status = 'pending'
+  where id = v1b and fleet_id = f1;
+  begin
+    perform public.start_trip_with_inspection(
+      f1, t1b, d1b, v1b, 'Test origin', 'Test destination', good_checklist
+    );
+    raise exception 'Unverified vehicle registration unexpectedly opened a trip';
+  exception when others then
+    if sqlerrm not like '%רישיון הרכב טרם אומת%' then
+      raise;
+    end if;
+  end;
+  if exists (select 1 from public.trips where task_id = t1b) then
+    raise exception 'Trip exists despite unverified vehicle registration';
+  end if;
+  insert into pg_temp.trucksafe_e2e_results values
+    ('unverified vehicle registration blocks trip start', 'PASS',
+     'The server RPC rejected the vehicle and created no trip');
 
   v_trip_id := public.start_trip_with_inspection(
     f1, t1, d1, v1, 'Test origin', 'Test destination', good_checklist
@@ -388,10 +784,10 @@ begin
   -- A driver may start another trip after the previous trip has completed.
   insert into public.tasks (id, fleet_id, title, pickup_address, delivery_address,
     assigned_driver_id, assigned_vehicle_id, status, created_by)
-    values (t1b, f1, 'CI second trip after completion', 'Test origin', 'Test destination',
+    values (t1d, f1, 'CI second trip after completion', 'Test origin', 'Test destination',
       d1, v1, 'assigned', u1);
   v_trip_id := public.start_trip_with_inspection(
-    f1, t1b, d1, v1, 'Test origin', 'Test destination', good_checklist
+    f1, t1d, d1, v1, 'Test origin', 'Test destination', good_checklist
   );
   if v_trip_id is null
      or (select status from public.vehicles where id = v1) <> 'on_trip' then
@@ -459,6 +855,24 @@ begin
     (v2a, f2, 'CI-SAFE-001', 'truck', 'available', current_date + 365, current_date + 365, current_date + 365, false),
     (v2b, f2, 'CI-SAFE-002', 'truck', 'available', current_date + 365, current_date + 365, current_date + 365, false),
     (v2c, f2, 'CI-SAFE-003', 'truck', 'available', current_date - 1, current_date + 365, current_date + 365, false);
+
+  perform set_config('request.jwt.claim.role', 'service_role', true);
+  insert into storage.objects (bucket_id, name, metadata) values
+    ('vehicle-registrations', f2::text || '/' || v2a::text || '/ci-registration.pdf', '{"mimetype":"application/pdf","size":128}'::jsonb),
+    ('vehicle-registrations', f2::text || '/' || v2b::text || '/ci-registration.pdf', '{"mimetype":"application/pdf","size":128}'::jsonb),
+    ('vehicle-registrations', f2::text || '/' || v2c::text || '/ci-registration.pdf', '{"mimetype":"application/pdf","size":128}'::jsonb);
+  update public.vehicles
+  set registration_document_path = fleet_id::text || '/' || id::text || '/ci-registration.pdf',
+      registration_document_uploaded_at = now()
+  where id in (v2a, v2b, v2c) and fleet_id = f2;
+  update public.vehicles
+  set registration_verification_status = 'verified',
+      registration_verified_at = now(),
+      registration_verified_by = u2,
+      registration_verification_note = 'CI synthetic registration review'
+  where id in (v2a, v2b, v2c) and fleet_id = f2;
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+
   insert into public.tasks (id, fleet_id, title, assigned_driver_id, assigned_vehicle_id, status, created_by) values
     (t2a, f2, 'CI failed inspection', d2a, v2a, 'assigned', u2),
     (t2b, f2, 'CI expired license', d2b, v2b, 'assigned', u2),
@@ -497,6 +911,90 @@ begin
       raise;
     end if;
   end;
+  -- Test the table CHECK constraints independently of the separate verification
+  -- authority trigger. Disable only that trigger inside this rollback-only test
+  -- transaction; it is re-enabled before the transaction ends.
+  alter table public.road_restrictions disable trigger road_restrictions_guard_verification;
+
+  begin
+    insert into public.road_restrictions (
+      fleet_id, road_name, restriction_type, direction, max_height_m,
+      is_active, country_code, verification_status, structure_id, road_segment_id,
+      lane_id, passage_length_m, measured_clearance_m, measurement_date,
+      measurement_accuracy_cm, measurement_method, measurement_location_note,
+      measurement_document_url, verified_at, verified_by, source_name, source_url,
+      source_last_checked_at, verification_note, posted_clearance_status,
+      posted_clearance_m, surveyor, measurement_coverage
+    ) values (
+      f1, 'CI bridge missing verifier', 'height', 'forward', 4.00,
+      true, 'IL', 'verified', 'CI-STRUCTURE-001', 'CI-SEGMENT-001',
+      'lane-1', 15.00, 4.25, current_date,
+      0.5, 'laser survey', 'CI synthetic bridge measurement location',
+      'https://example.invalid/measurement.pdf', now(), null, 'CI test authority',
+      'https://example.invalid/bridge', now(), 'CI synthetic evidence fixture',
+      'not_posted', null, 'CI surveyor',
+      '{"both_sides_measured":true,"lane_center_measured":true,"left_edge_measured":true,"right_edge_measured":true,"hanging_installations_checked":true,"passage_center_measured":false}'::jsonb
+    );
+    raise exception 'Verified bridge without verifier unexpectedly inserted';
+  exception when check_violation then
+    insert into pg_temp.trucksafe_e2e_results values
+      ('verified bridge requires verifier identity', 'PASS',
+       'Database CHECK rejected a verified height row with verified_by NULL');
+  end;
+
+  begin
+    insert into public.road_restrictions (
+      fleet_id, road_name, restriction_type, direction, max_height_m,
+      is_active, country_code, verification_status, structure_id, road_segment_id,
+      lane_id, passage_length_m, measured_clearance_m, measurement_date,
+      measurement_accuracy_cm, measurement_method, measurement_location_note,
+      measurement_document_url, verified_at, verified_by, source_name, source_url,
+      source_last_checked_at, verification_note, posted_clearance_status,
+      posted_clearance_m, surveyor, measurement_coverage
+    ) values (
+      f1, 'CI bridge future measurement', 'height', 'forward', 4.00,
+      true, 'IL', 'verified', 'CI-STRUCTURE-002', 'CI-SEGMENT-002',
+      'lane-1', 15.00, 4.25, current_date + 1,
+      0.5, 'laser survey', 'CI synthetic bridge measurement location',
+      'https://example.invalid/measurement.pdf', now(), u1, 'CI test authority',
+      'https://example.invalid/bridge', now(), 'CI synthetic evidence fixture',
+      'not_posted', null, 'CI surveyor',
+      '{"both_sides_measured":true,"lane_center_measured":true,"left_edge_measured":true,"right_edge_measured":true,"hanging_installations_checked":true,"passage_center_measured":false}'::jsonb
+    );
+    raise exception 'Verified bridge with future measurement date unexpectedly inserted';
+  exception when check_violation then
+    insert into pg_temp.trucksafe_e2e_results values
+      ('verified bridge rejects future measurement date', 'PASS',
+       'Database CHECK rejected a verified height row measured after the Israel-local current date');
+  end;
+
+  begin
+    insert into public.road_restrictions (
+      fleet_id, road_name, restriction_type, direction, max_height_m,
+      is_active, country_code, verification_status, structure_id, road_segment_id,
+      lane_id, passage_length_m, measured_clearance_m, measurement_date,
+      measurement_accuracy_cm, measurement_method, measurement_location_note,
+      measurement_document_url, verified_at, verified_by, source_name, source_url,
+      source_last_checked_at, verification_note, posted_clearance_status,
+      posted_clearance_m, surveyor, measurement_coverage
+    ) values (
+      f1, 'CI bridge missing coverage', 'height', 'forward', 4.00,
+      true, 'IL', 'verified', 'CI-STRUCTURE-003', 'CI-SEGMENT-003',
+      'lane-1', 15.00, 4.25, current_date,
+      0.5, 'laser survey', 'CI synthetic bridge measurement location',
+      'https://example.invalid/measurement.pdf', now(), u1, 'CI test authority',
+      'https://example.invalid/bridge', now(), 'CI synthetic evidence fixture',
+      'not_posted', null, 'CI surveyor', null
+    );
+    raise exception 'Verified bridge without measurement coverage unexpectedly inserted';
+  exception when check_violation then
+    insert into pg_temp.trucksafe_e2e_results values
+      ('verified bridge requires complete measurement coverage', 'PASS',
+       'Database CHECK rejected a verified height row without measurement_coverage');
+  end;
+
+  alter table public.road_restrictions enable trigger road_restrictions_guard_verification;
+
 end
 $test$;
 
@@ -539,13 +1037,7 @@ declare
   operating_manual_path text;
   incident_photo_path text;
 begin
-  insert into auth.users (
-    id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data
-  ) values (
-    evidence_user,'authenticated','authenticated',
-    'trucksafe-ci-evidence-guard@example.invalid','test-only-no-login',now(),
-    '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb
-  );
+  -- @auth-fixture evidence_user trucksafe-ci-evidence-guard@example.invalid
 
   perform set_config('request.jwt.claim.sub',evidence_user::text,true);
   perform set_config('request.jwt.claim.role','service_role',true);
@@ -647,6 +1139,73 @@ begin
      'The helper returns false for unreferenced files and both Storage DELETE policies use its negated predicate');
 end
 $referenced_evidence_delete_behavior$;
+
+
+do $trip_rpc_security_contract$
+declare
+  v_oid oid;
+  v_definition text;
+  v_public_execute boolean;
+begin
+  -- These two public RPCs intentionally remain SECURITY DEFINER because
+  -- their transactions update multiple RLS-protected fleet tables. The
+  -- exposed warning is accepted only while the exact caller gates below
+  -- remain true and anonymous/PUBLIC execution stays revoked.
+  foreach v_oid in array array[
+    'public.start_trip_with_inspection(uuid,uuid,uuid,uuid,text,text,jsonb)'::regprocedure::oid,
+    'public.finish_trip(uuid,uuid)'::regprocedure::oid
+  ] loop
+    select lower(pg_get_functiondef(v_oid)) into v_definition;
+
+    if not (select prosecdef from pg_proc where oid = v_oid) then
+      raise exception 'Trip RPC must remain SECURITY DEFINER under the reviewed authorization contract';
+    end if;
+
+    if not (select coalesce(proconfig, '{}'::text[]) @> array['search_path=""']::text[]
+            from pg_proc where oid = v_oid) then
+      raise exception 'Trip SECURITY DEFINER RPC must pin an empty search_path';
+    end if;
+
+    if has_function_privilege('anon', v_oid, 'EXECUTE')
+       or has_function_privilege('authenticated', v_oid, 'EXECUTE') is false
+       or has_function_privilege('service_role', v_oid, 'EXECUTE') is false then
+      raise exception 'Trip RPC execution must be limited to authenticated and service_role, never anon';
+    end if;
+
+    select exists (
+      select 1
+      from pg_proc p
+      cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+      where p.oid = v_oid
+        and a.grantee = 0
+        and a.privilege_type = 'EXECUTE'
+    ) into v_public_execute;
+
+    if v_public_execute then
+      raise exception 'Trip RPC must not grant EXECUTE to PUBLIC';
+    end if;
+
+    if position('auth.uid()' in v_definition) = 0
+       or position('private.is_fleet_member' in v_definition) = 0
+       or position('private.has_fleet_role' in v_definition) = 0 then
+      raise exception 'Trip RPC must authenticate the caller and validate active fleet membership and role';
+    end if;
+  end loop;
+
+  if position('v_driver.user_id is distinct from v_user_id' in lower(pg_get_functiondef(
+       'public.start_trip_with_inspection(uuid,uuid,uuid,uuid,text,text,jsonb)'::regprocedure
+     ))) = 0
+     or position('v_driver.user_id is distinct from auth.uid()' in lower(pg_get_functiondef(
+       'public.finish_trip(uuid,uuid)'::regprocedure
+     ))) = 0 then
+    raise exception 'Non-manager trip RPC access must remain bound to the assigned driver''s authenticated user';
+  end if;
+
+  insert into pg_temp.trucksafe_e2e_results values
+    ('trip RPC SECURITY DEFINER authorization contract', 'PASS',
+     'Reviewed RPCs pin an empty search_path, require authenticated fleet membership and role checks, bind driver actions to auth.uid(), and deny anon/PUBLIC execution');
+end
+$trip_rpc_security_contract$;
 
 select scenario, outcome, detail from pg_temp.trucksafe_e2e_results order by scenario;
 

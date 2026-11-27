@@ -2,10 +2,8 @@
 -- Runs only against the dedicated TruckSafe Fleet Test database.
 BEGIN;
 
-INSERT INTO auth.users (id, aud, role, email, created_at, updated_at)
-VALUES
-  ('ab000000-0000-4000-8000-000000000001', 'authenticated', 'authenticated', 'preflight-a@example.invalid', now(), now()),
-  ('ab000000-0000-4000-8000-000000000002', 'authenticated', 'authenticated', 'preflight-b@example.invalid', now(), now());
+-- @auth-fixture 'ab000000-0000-4000-8000-000000000001' preflight-a@example.invalid
+-- @auth-fixture 'ab000000-0000-4000-8000-000000000002' preflight-b@example.invalid
 
 INSERT INTO public.fleets (id, name, owner_user_id)
 VALUES

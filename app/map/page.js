@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "../../lib/supabase";
 import { resolveFleetWorkspace } from "../../lib/fleet-workspace.mjs";
-import { ArrowRight, MapPin, RefreshCw, Truck } from "lucide-react";
+import { ArrowRight, MapPin, RefreshCw, Truck, AlertTriangle } from "lucide-react";
+import { getDemoRoadEvents, getVisibleDemoRoadEvents, getNearestFreshVehicleLocation } from "../../lib/road-event-demo.mjs";
+import { isValidIsraelGpsPoint, pruneInactiveTripHistory } from "../../lib/map-location-safety.mjs";
 
 export default function FleetMapPage() {
   const router = useRouter();
@@ -12,26 +14,56 @@ export default function FleetMapPage() {
   const mapInstance = useRef(null);
   const markers = useRef([]);
   const routeLines = useRef([]);
+  const roadEventMarkers = useRef([]);
+  const demoEventsRef = useRef(null);
+  const [demoNow, setDemoNow] = useState(null);
+  const demoRoadEvents = useMemo(
+    () => demoNow == null ? [] : getVisibleDemoRoadEvents(demoEventsRef.current || [], demoNow),
+    [demoNow]
+  );
   const [session, setSession] = useState(null);
   const [fleetId, setFleetId] = useState(null);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [mapReady, setMapReady] = useState(false);
   const [error, setError] = useState("");
+  const eventProximity = demoRoadEvents.map(event => ({ event, nearest: getNearestFreshVehicleLocation(event, locations) }));
 
-  const loadingLocations = useRef(false);
+  useEffect(() => {
+    const startedAt = Date.now();
+    demoEventsRef.current = getDemoRoadEvents(startedAt);
+    setDemoNow(startedAt);
+    const timer = setInterval(() => setDemoNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const loadingLocations = useRef(new Map());
+  const authGenerationRef = useRef(0);
+  const authUserIdRef = useRef(null);
+  const locationRequestGenerationRef = useRef(0);
+  const activeFleetIdRef = useRef(null);
   const historyByTrip = useRef(new Map());
 
-  async function loadLocations(id) {
-    if (!id || loadingLocations.current) return;
-    loadingLocations.current = true;
+  async function loadLocations(id, authGeneration = authGenerationRef.current) {
+    if (!id) return;
+    if (activeFleetIdRef.current !== id) {
+      activeFleetIdRef.current = id;
+      locationRequestGenerationRef.current += 1;
+      historyByTrip.current.clear();
+    }
+    const requestGeneration = locationRequestGenerationRef.current;
+    if (loadingLocations.current.get(id) === requestGeneration) return;
+    loadingLocations.current.set(id, requestGeneration);
     try {
       const { data: trips, error: tripError } = await supabase.from("trips")
         .select("id,driver_id,vehicle_id,origin_address,destination_address,started_at")
         .eq("fleet_id", id).eq("status", "active");
       if (tripError) throw tripError;
+      const activeTripIds = new Set((trips || []).map(trip => trip.id));
+      const nextHistoryByTrip = new Map(historyByTrip.current);
+      pruneInactiveTripHistory(nextHistoryByTrip, activeTripIds);
       const points = await Promise.all((trips || []).map(async trip => {
-        const cachedHistory = historyByTrip.current.get(trip.id);
+        const cachedHistory = nextHistoryByTrip.get(trip.id);
         const historyQuery = cachedHistory
           ? Promise.resolve({ data: null, error: null })
           : supabase.from("trip_locations").select("latitude,longitude,recorded_at")
@@ -46,40 +78,87 @@ export default function FleetMapPage() {
         const childError = latest.error || historyResult.error || driverResult.error || vehicleResult.error;
         if (childError) throw childError;
         const loc = latest.data;
-        if (!loc) return null;
-        const history = cachedHistory || (historyResult.data || []).reverse();
+        if (!loc || !isValidIsraelGpsPoint(loc)) return null;
+        const history = (cachedHistory || (historyResult.data || []).reverse())
+          .filter(point => isValidIsraelGpsPoint(point));
         const lastPoint = history[history.length - 1];
         if (!lastPoint || lastPoint.recorded_at !== loc.recorded_at) {
           history.push({ latitude: loc.latitude, longitude: loc.longitude, recorded_at: loc.recorded_at });
           if (history.length > 3000) history.shift();
         }
-        historyByTrip.current.set(trip.id, history);
+        nextHistoryByTrip.set(trip.id, history);
         return { ...trip, ...loc, history, driver: driverResult.data?.full_name || "נהג", vehicle: vehicleResult.data?.registration_number || "רכב" };
       }));
+      if (authGeneration !== authGenerationRef.current || requestGeneration !== locationRequestGenerationRef.current || activeFleetIdRef.current !== id) return;
+      historyByTrip.current = nextHistoryByTrip;
       setLocations(points.filter(Boolean));
       setError("");
     } catch (error) {
+      if (authGeneration !== authGenerationRef.current || requestGeneration !== locationRequestGenerationRef.current || activeFleetIdRef.current !== id) return;
       setError("לא ניתן לרענן את מיקומי הנהגים: " + (error?.message || "שגיאה לא ידועה"));
     } finally {
-      loadingLocations.current = false;
+      if (loadingLocations.current.get(id) === requestGeneration) loadingLocations.current.delete(id);
     }
   }
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setLoading(false); return; }
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!data.session) { router.replace("/"); return; }
+    let alive = true;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user?.id || null;
+      if (nextUserId && authUserIdRef.current && nextUserId !== authUserIdRef.current) {
+        authGenerationRef.current += 1;
+        locationRequestGenerationRef.current += 1;
+        activeFleetIdRef.current = null;
+        historyByTrip.current.clear();
+        setSession(null);
+        setFleetId(null);
+        setLocations([]);
+        setError("");
+        authUserIdRef.current = nextUserId;
+        if (typeof window !== "undefined") window.location.reload();
+        return;
+      }
+      if (nextUserId) authUserIdRef.current = nextUserId;
+      if (!nextSession) {
+        authUserIdRef.current = null;
+        authGenerationRef.current += 1;
+        locationRequestGenerationRef.current += 1;
+        activeFleetIdRef.current = null;
+        historyByTrip.current.clear();
+        setSession(null);
+        setFleetId(null);
+        setLocations([]);
+        setError("");
+        router.replace("/");
+      }
+    });
+    const initialAuthGeneration = authGenerationRef.current;
+    supabase.auth.getSession().then(async ({ data, error: sessionError }) => {
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
+      if (sessionError || !data.session) { router.replace("/"); return; }
+      authUserIdRef.current = data.session.user.id;
       setSession(data.session);
       const { data: workspace, error: workspaceError } = await resolveFleetWorkspace(supabase, data.session.user.id);
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
       if (workspaceError) {
         if (workspaceError.code === "AUTH_REQUIRED" || workspaceError.code === "NO_FLEET") router.replace("/");
         else setError("לא הצלחנו לאמת את הצי: " + workspaceError.message);
         setLoading(false); return;
       }
       setFleetId(workspace.fleet.id);
-      await loadLocations(workspace.fleet.id);
+      await loadLocations(workspace.fleet.id, initialAuthGeneration);
+      if (alive && initialAuthGeneration === authGenerationRef.current) setLoading(false);
+    }).catch(error => {
+      if (!alive || initialAuthGeneration !== authGenerationRef.current) return;
+      setError("לא הצלחנו לטעון את סביבת העבודה: " + (error?.message || "שגיאה לא ידועה"));
       setLoading(false);
     });
+    return () => {
+      alive = false;
+      subscription.unsubscribe();
+      authGenerationRef.current += 1;
+    };
   }, [router]);
 
   useEffect(() => {
@@ -96,9 +175,13 @@ export default function FleetMapPage() {
       const css = document.createElement("link");
       css.rel = "stylesheet";
       css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      css.integrity = "sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=";
+      css.crossOrigin = "anonymous";
       document.head.appendChild(css);
       const script = document.createElement("script");
       script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      script.integrity = "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=";
+      script.crossOrigin = "anonymous";
       script.onload = () => resolve(window.L);
       script.onerror = reject;
       document.body.appendChild(script);
@@ -115,6 +198,8 @@ export default function FleetMapPage() {
       cancelled = true;
       markers.current.forEach(marker => marker.remove());
       routeLines.current.forEach(line => line.remove());
+      roadEventMarkers.current.forEach(marker => marker.remove());
+      roadEventMarkers.current = [];
       markers.current = [];
       routeLines.current = [];
       if (mapInstance.current) {
@@ -130,10 +215,7 @@ export default function FleetMapPage() {
     if (!mapReady || !map || !L) return;
     markers.current.forEach(marker => marker.remove());
     routeLines.current.forEach(line => line.remove());
-    const validLocations = locations.filter(loc => {
-      const lat = Number(loc.latitude), lng = Number(loc.longitude);
-      return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
-    });
+    const validLocations = locations.filter(loc => isValidIsraelGpsPoint(loc));
     markers.current = validLocations.map(loc => {
       const marker = L.marker([Number(loc.latitude), Number(loc.longitude)]).addTo(map);
       const updatedAt = new Date(loc.recorded_at);
@@ -146,13 +228,35 @@ export default function FleetMapPage() {
     const colors = ["#2563eb", "#16a34a", "#d97706", "#9333ea", "#dc2626"];
     routeLines.current = validLocations.map((loc, i) => {
       const path = (loc.history || [])
-        .map(p => [Number(p.latitude), Number(p.longitude)])
-        .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180);
+        .filter(point => isValidIsraelGpsPoint(point))
+        .map(point => [Number(point.latitude), Number(point.longitude)]);
       return path.length > 1 ? L.polyline(path, { color: colors[i % colors.length], weight: 5, opacity: 0.8 }).addTo(map) : null;
     }).filter(Boolean);
     const layers = [...markers.current, ...routeLines.current];
     if (layers.length) map.fitBounds(L.featureGroup(layers).getBounds().pad(0.2));
   }, [locations, mapReady]);
+
+  useEffect(() => {
+    const map = mapInstance.current;
+    const L = typeof window !== "undefined" ? window.L : null;
+    if (!mapReady || !map || !L) return;
+    roadEventMarkers.current.forEach(marker => marker.remove());
+    roadEventMarkers.current = demoRoadEvents.map(event => {
+      const color = event.severity === "high" ? "#dc2626" : event.severity === "medium" ? "#d97706" : "#2563eb";
+      const marker = L.circleMarker([event.latitude, event.longitude], {
+        radius: 9, color, weight: 2, fillColor: color, fillOpacity: 0.8
+      }).addTo(map);
+      marker.bindPopup(
+        "<b>" + escapeHtml(event.event_type === "road_hazard" ? "מפגע בדרך" : "חסימת נתיב") + "</b><br/>" +
+        escapeHtml(event.driver_message) + "<br/><b>" + escapeHtml(event.source_label) + "</b>"
+      );
+      return marker;
+    });
+    return () => {
+      roadEventMarkers.current.forEach(marker => marker.remove());
+      roadEventMarkers.current = [];
+    };
+  }, [mapReady, demoRoadEvents]);
 
   return <main dir="rtl" style={{ minHeight: "100vh", padding: 24, background: "#f5f7fb", color: "#172338" }}>
     <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
@@ -166,6 +270,14 @@ export default function FleetMapPage() {
     {loading ? <p>טוען נתונים...</p> : <>
       <section style={{ background: "white", borderRadius: 16, padding: 14, marginBottom: 14, boxShadow: "0 4px 20px #17233810" }}>
         <div ref={mapElement} style={{ height: "min(65vh, 620px)", minHeight: 340, borderRadius: 12, zIndex: 0 }} />
+      </section>
+      <section style={{ background: "white", borderRadius: 16, padding: 16, marginBottom: 14, border: "1px solid #f1d7a7" }}>
+        <h3 style={{ margin: "0 0 8px", display: "flex", alignItems: "center", gap: 8 }}><AlertTriangle size={18}/> התראות דרך — מצב הדגמה</h3>
+        <p style={{ margin: "0 0 12px", color: "#8a5a12", fontSize: 13 }}>האירועים במפה הם נתונים מדומים בלבד לצורך בדיקת הממשק. הם אינם דיווחי אמת, אינם הנחיות ניווט ואינם מעידים שהדרך פנויה.</p>
+        {eventProximity.map(({ event, nearest }) => <div key={event.event_id} style={{ borderTop: "1px solid #f1f1f1", padding: "9px 0", display: "flex", gap: 10, alignItems: "flex-start" }}>
+          <span style={{ width: 9, height: 9, borderRadius: "50%", background: event.severity === "high" ? "#dc2626" : "#d97706", marginTop: 6, flex: "0 0 auto" }}/>
+          <div><b>{event.event_type === "road_hazard" ? "מפגע בדרך" : "חסימת נתיב"} · {event.severity === "high" ? "חומרה גבוהה" : "חומרה בינונית"}</b><div style={{ fontSize: 13, color: "#64748b" }}>{event.driver_message}</div><div style={{ fontSize: 12, color: event.verification_state === "authoritative" ? "#15803d" : "#a16207" }}>{event.source_label} · פג תוקף: {new Date(event.expires_at).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}</div><div style={{ fontSize: 12, color: "#475569" }}>{nearest ? `מרחק מנקודת ה־GPS האחרונה של ${nearest.driver} (${nearest.vehicle}): ${nearest.distanceKm.toFixed(1)} ק״מ` : "אין כרגע מיקום GPS עדכני בקרבת האירוע"}</div></div>
+        </div>)}
       </section>
       <section style={{ background: "white", borderRadius: 16, padding: 18 }}>
         <h3 style={{ marginTop: 0 }}><Truck size={18} style={{ verticalAlign: "middle" }}/> נסיעות ומסלולים עם GPS ({locations.length})</h3>

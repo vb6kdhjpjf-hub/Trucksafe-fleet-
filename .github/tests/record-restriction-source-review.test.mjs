@@ -32,6 +32,10 @@ test("writes an append-only human review event with linked hashes and no routing
   assert.equal(result.event.assessment_report_sha256, hash(await readFile(f.assessmentReportFile)));
   assert.equal(result.event.event_sha256, hash(JSON.stringify(Object.fromEntries(Object.entries(result.event).filter(([key]) => key !== "event_sha256")))));
   assert.equal(Object.hasOwn(result.event, "approved_for_routing"), false);
+  assert.equal(result.event.reviewer_identity_status, "unverified_assertion");
+  assert.equal(result.event.reviewer_identity_verified, false);
+  assert.equal(result.event.reviewed_at_status, "caller_asserted");
+  assert.equal(result.event.reviewed_at_verified, false);
   assert.deepEqual(result.event.evidence_refs, ["https://evidence.invalid/a"]);
   await assert.rejects(createHumanReviewEvent(base(f)), { code: "EEXIST" });
   assert.equal(JSON.parse(await readFile(f.candidateFile, "utf8")).review.approved_for_routing, false);

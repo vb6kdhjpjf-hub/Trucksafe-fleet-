@@ -29,11 +29,9 @@ declare
   rejected boolean;
   event_count integer;
 begin
-  insert into auth.users(id,aud,role,email,created_at,updated_at)
-  values
-    (owner_id,'authenticated','authenticated','daily-owner@example.invalid',now(),now()),
-    (driver_user_id,'authenticated','authenticated','daily-driver@example.invalid',now(),now()),
-    (other_owner_id,'authenticated','authenticated','daily-other-owner@example.invalid',now(),now());
+  -- @auth-fixture owner_id daily-owner@example.invalid
+-- @auth-fixture driver_user_id daily-driver@example.invalid
+-- @auth-fixture other_owner_id daily-other-owner@example.invalid
 
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
   perform set_config('request.jwt.claim.role','authenticated',true);
