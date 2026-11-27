@@ -234,6 +234,31 @@ const client = new Client({
 
 try {
   await client.connect();
+
+  // Emit a sanitized fingerprint of the actual PostgreSQL endpoint used by CI.
+  // This distinguishes the writable Test primary from a stale/read-only replica
+  // without ever printing connection credentials or the database URI.
+  const target = await client.query(`
+    select
+      current_database() as database_name,
+      current_user as database_user,
+      inet_server_addr()::text as server_address,
+      inet_server_port() as server_port,
+      current_setting('application_name') as application_name,
+      pg_is_in_recovery() as is_replica,
+      exists (
+        select 1 from supabase_migrations.schema_migrations
+        where name = 'test_move_daily_plan_guard_into_driver_constraint_trigger_v4'
+      ) as has_daily_plan_guard_migration,
+      case
+        when to_regprocedure('private.check_driver_state_after_driver_change()') is null then false
+        else position('v_has_active_plan' in pg_get_functiondef(
+          'private.check_driver_state_after_driver_change()'::regprocedure
+        )) > 0
+      end as has_active_daily_plan_trigger_guard
+  `);
+  console.log("Sanitized Test DB connection fingerprint:", JSON.stringify(target.rows[0]));
+
   for (const file of files) {
     const createdUsers = [];
     let testError;
