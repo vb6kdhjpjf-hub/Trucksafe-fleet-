@@ -4,6 +4,7 @@ begin;
 -- Schema is provisioned by the dedicated Test-only migration rollout; this file is rollback-only behavior coverage.
 
 create temporary table daily_load_test_results(scenario text primary key,outcome text not null) on commit drop;
+create temporary table daily_driver_guard_fixture(fleet_id uuid,driver_id uuid,owner_id uuid,plan_id uuid) on commit drop;
 
 do $test$
 <<test_block>>
@@ -136,44 +137,6 @@ begin
     9000,26000,10000,21000,8500,
     now(),'weighbridge_ticket','WB-DAILY-001',owner_id
   );
-
-  -- A driver must not be deactivated while an assigned daily work plan is active.
-  if not exists (
-    select 1 from public.daily_work_plans p
-    where p.fleet_id=test_block.fleet_id
-      and p.driver_id=test_block.driver_id
-      and p.status='active'
-  ) then
-    raise exception 'Active daily work plan fixture was not created';
-  end if;
-
-  rejected := false;
-  begin
-    update public.drivers d set status='off_duty'
-    where d.id=test_block.driver_id and d.fleet_id=test_block.fleet_id;
-    get diagnostics affected = row_count;
-    select d.status into observed_status from public.drivers d
-      where d.id=test_block.driver_id and d.fleet_id=test_block.fleet_id;
-    select count(*) into active_plan_count from public.daily_work_plans p
-      where p.driver_id=test_block.driver_id and p.fleet_id=test_block.fleet_id and p.status='active';
-    if observed_status <> 'off_duty' or active_plan_count < 1 then
-      raise exception 'Guard fixture state mismatch: status=%, active_plans=%', observed_status, active_plan_count;
-    end if;
-    -- Exercise the same guard invoked by the deferred driver constraint trigger.
-    perform private.assert_driver_trip_status(test_block.fleet_id,test_block.driver_id);
-  exception when check_violation then
-    rejected := true;
-  end;
-  if not rejected and affected <> 1 then
-    raise exception 'Driver deactivation test fixture update affected % rows instead of one', affected;
-  end if;
-  if not rejected then
-    raise exception 'Driver deactivation was allowed while an active daily work plan existed';
-  end if;
-  if (select d.status from public.drivers d where d.id=test_block.driver_id and d.fleet_id=test_block.fleet_id) <> 'active' then
-    raise exception 'Driver status changed despite an active daily work plan';
-  end if;
-  insert into pg_temp.daily_load_test_results values('driver cannot be deactivated while an assigned daily work plan is active','PASS');
 
   insert into public.daily_work_stops(id,fleet_id,plan_id,sequence_no,operation_kind,address,planned_quantity_kg)
   values
@@ -317,17 +280,6 @@ begin
   end if;
   insert into pg_temp.daily_load_test_results values('driver completes first stop on a newly activated daily plan','PASS');
 
-  -- Once every assigned plan is completed, deactivation is allowed.
-  perform set_config('request.jwt.claim.sub',owner_id::text,true);
-  update public.daily_work_plans set status='completed' where id=created_plan_id;
-  update public.drivers d set status='off_duty' where d.id=test_block.driver_id and d.fleet_id=test_block.fleet_id;
-  perform private.assert_driver_trip_status(test_block.fleet_id,test_block.driver_id);
-
-  if (select d.status from public.drivers d where d.id=test_block.driver_id and d.fleet_id=test_block.fleet_id) <> 'off_duty' then
-    raise exception 'Driver could not be deactivated after all assigned daily work plans were completed';
-  end if;
-  insert into pg_temp.daily_load_test_results values('driver can be deactivated after all assigned daily work plans are completed','PASS');
-
   if has_table_privilege('authenticated','public.daily_work_plans','INSERT')
      or has_table_privilege('authenticated','public.daily_work_plans','UPDATE')
      or has_table_privilege('authenticated','public.daily_work_plans','DELETE')
@@ -353,8 +305,52 @@ begin
     raise exception 'Daily load ledger privileges are not safely scoped';
   end if;
   insert into pg_temp.daily_load_test_results values('load event ledger is read-only to clients and writable only through RPC','PASS');
+
+  insert into pg_temp.daily_driver_guard_fixture(fleet_id,driver_id,owner_id,plan_id)
+  values(fleet_id,driver_id,owner_id,created_plan_id);
 end
 $test$;
+
+-- Force the deferred constraint trigger to run during the following rollback-only test.
+SET CONSTRAINTS drivers_active_trip_state_consistency IMMEDIATE;
+
+do $driver_guard_test$
+declare
+  v_fleet_id uuid;
+  v_driver_id uuid;
+  v_owner_id uuid;
+  v_plan_id uuid;
+  rejected boolean := false;
+begin
+  select fleet_id,driver_id,owner_id,plan_id
+    into v_fleet_id,v_driver_id,v_owner_id,v_plan_id
+  from pg_temp.daily_driver_guard_fixture;
+
+  perform set_config('request.jwt.claim.sub',v_owner_id::text,true);
+  perform set_config('request.jwt.claim.role','authenticated',true);
+
+  begin
+    update public.drivers d set status='off_duty'
+    where d.id=v_driver_id and d.fleet_id=v_fleet_id;
+  exception when check_violation then
+    rejected := true;
+  end;
+  if not rejected then
+    raise exception 'Driver deactivation was allowed while an active daily work plan existed';
+  end if;
+  if (select d.status from public.drivers d where d.id=v_driver_id and d.fleet_id=v_fleet_id) <> 'active' then
+    raise exception 'Driver status changed despite an active daily work plan';
+  end if;
+  insert into pg_temp.daily_load_test_results values('driver cannot be deactivated while an assigned daily work plan is active','PASS');
+
+  update public.daily_work_plans set status='completed' where id=v_plan_id and fleet_id=v_fleet_id;
+  update public.drivers d set status='off_duty' where d.id=v_driver_id and d.fleet_id=v_fleet_id;
+  if (select d.status from public.drivers d where d.id=v_driver_id and d.fleet_id=v_fleet_id) <> 'off_duty' then
+    raise exception 'Driver could not be deactivated after the assigned daily work plan was completed';
+  end if;
+  insert into pg_temp.daily_load_test_results values('driver can be deactivated after all assigned daily work plans are completed','PASS');
+end
+$driver_guard_test$;
 
 select scenario,outcome from pg_temp.daily_load_test_results order by scenario;
 rollback;
