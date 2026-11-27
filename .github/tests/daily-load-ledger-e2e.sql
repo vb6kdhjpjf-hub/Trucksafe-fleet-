@@ -137,8 +137,8 @@ begin
   -- A driver must not be deactivated while an assigned daily work plan is active.
   rejected := false;
   begin
-    update public.drivers set status='off_duty'
-    where id=driver_id and fleet_id=fleet_id;
+    update public.drivers d set status='off_duty'
+    where d.id=driver_id and d.fleet_id=test_block.fleet_id;
     set constraints drivers_active_trip_state_consistency immediate;
   exception when check_violation then
     rejected := true;
@@ -146,7 +146,7 @@ begin
   if not rejected then
     raise exception 'Driver deactivation was allowed while an active daily work plan existed';
   end if;
-  if (select status from public.drivers where id=driver_id and fleet_id=fleet_id) <> 'active' then
+  if (select status from public.drivers where d.id=driver_id and d.fleet_id=test_block.fleet_id) <> 'active' then
     raise exception 'Driver status changed despite an active daily work plan';
   end if;
   insert into pg_temp.daily_load_test_results values('driver cannot be deactivated while an assigned daily work plan is active','PASS');
@@ -296,9 +296,9 @@ begin
   -- Once every assigned plan is completed, deactivation is allowed.
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
   update public.daily_work_plans set status='completed' where id=created_plan_id;
-  update public.drivers set status='off_duty' where id=driver_id and fleet_id=fleet_id;
+  update public.drivers d set status='off_duty' where d.id=driver_id and d.fleet_id=test_block.fleet_id;
   set constraints drivers_active_trip_state_consistency immediate;
-  if (select status from public.drivers where id=driver_id and fleet_id=fleet_id) <> 'off_duty' then
+  if (select status from public.drivers where d.id=driver_id and d.fleet_id=test_block.fleet_id) <> 'off_duty' then
     raise exception 'Driver could not be deactivated after all assigned daily work plans were completed';
   end if;
   insert into pg_temp.daily_load_test_results values('driver can be deactivated after all assigned daily work plans are completed','PASS');
