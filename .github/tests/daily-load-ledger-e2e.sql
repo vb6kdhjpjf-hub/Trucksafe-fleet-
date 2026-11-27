@@ -330,32 +330,18 @@ begin
 
   if not exists (
     select 1 from supabase_migrations.schema_migrations
-    where version='20261127102907'
-      and name='test_reapply_daily_plan_driver_status_guard'
+    where name='test_move_daily_plan_guard_into_driver_constraint_trigger_v4'
   ) then
-    raise exception 'CI database does not contain the latest Test-only driver guard migration; verify SUPABASE_TEST_DB_URL points to the same Test database';
+    raise exception 'CI Test database is missing the driver constraint-trigger guard migration v4';
   end if;
 
-  if not exists (
-    select 1 from supabase_migrations.schema_migrations
-    where version='20261127121418'
-      and name='test_persist_active_daily_plan_driver_guard_v2'
-  ) then
-    raise exception 'CI Test database is missing the persisted driver guard repair migration 20261127121418';
-  end if;
-
-  if not exists (
-    select 1 from supabase_migrations.schema_migrations
-    where version='20261127121850'
-      and name='test_restore_active_daily_plan_driver_guard_v3'
-  ) then
-    raise exception 'CI Test database is missing the restored driver guard repair migration 20261127121850';
-  end if;
-
-  if position('v_has_active_plan' in pg_get_functiondef(
-    'private.assert_driver_trip_status(uuid,uuid)'::regprocedure
-  )) = 0 then
-    raise exception 'Test database is missing the active daily-plan driver guard function definition';
+  if position('daily_work_plans' in pg_get_functiondef(
+    'private.check_driver_state_after_driver_change()'::regprocedure
+  )) = 0
+     or position('v_has_active_plan' in pg_get_functiondef(
+       'private.check_driver_state_after_driver_change()'::regprocedure
+     )) = 0 then
+    raise exception 'Driver constraint trigger is missing the active daily-plan guard';
   end if;
 
   perform set_config('request.jwt.claim.sub',v_owner_id::text,true);
@@ -368,6 +354,7 @@ begin
     raise exception 'Driver guard test fixture has no active daily work plan (driver %, fleet %)', v_driver_id, v_fleet_id;
   end if;
 
+  set constraints drivers_active_trip_state_consistency immediate;
   begin
     update public.drivers d set status='off_duty'
     where d.id=v_driver_id and d.fleet_id=v_fleet_id;
@@ -375,9 +362,6 @@ begin
     if v_affected <> 1 then
       raise exception 'Driver guard test update affected % rows instead of one', v_affected;
     end if;
-    -- Directly exercise the same guard as a diagnostic backstop if the deferred
-    -- trigger is not scheduled by the current test database transaction.
-    perform private.assert_driver_trip_status(v_fleet_id,v_driver_id);
   exception when check_violation then
     rejected := true;
   end;
@@ -391,7 +375,6 @@ begin
 
   update public.daily_work_plans set status='completed' where id=v_plan_id and fleet_id=v_fleet_id;
   update public.drivers d set status='off_duty' where d.id=v_driver_id and d.fleet_id=v_fleet_id;
-  perform private.assert_driver_trip_status(v_fleet_id,v_driver_id);
   if (select d.status from public.drivers d where d.id=v_driver_id and d.fleet_id=v_fleet_id) <> 'off_duty' then
     raise exception 'Driver could not be deactivated after the assigned daily work plan was completed';
   end if;
