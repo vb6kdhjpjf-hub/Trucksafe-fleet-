@@ -135,11 +135,19 @@ begin
   );
 
   -- A driver must not be deactivated while an assigned daily work plan is active.
+  if not exists (
+    select 1 from public.daily_work_plans p
+    where p.fleet_id=test_block.fleet_id
+      and p.driver_id=driver_id
+      and p.status='active'
+  ) then
+    raise exception 'Active daily work plan fixture was not created';
+  end if;
+  set constraints drivers_active_trip_state_consistency immediate;
   rejected := false;
   begin
     update public.drivers d set status='off_duty'
     where d.id=driver_id and d.fleet_id=test_block.fleet_id;
-    set constraints drivers_active_trip_state_consistency immediate;
   exception when check_violation then
     rejected := true;
   end;
