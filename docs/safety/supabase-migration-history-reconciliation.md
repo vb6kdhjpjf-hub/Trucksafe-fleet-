@@ -648,3 +648,68 @@ No hosted database, Auth, Storage, grants, or application data was changed durin
 - Do not remove the trip lifecycle SECURITY DEFINER grants: the app's atomic start/finish workflow depends on those RPCs and their bodies contain explicit authorization/state checks. Keep leaked-password protection as a dashboard-level security action requiring a dedicated Auth regression window.
 - Unused-index notices are not deletion recommendations for an almost-empty/new environment. Re-evaluate after meaningful workload and query-plan evidence.
 - No database changes, Auth changes, merge, or deployment were performed.
+
+
+## Current Test/Production checkpoint — 27 November 2026
+
+This section supersedes the older catalog counts above where they differ. It is a fresh read-only inspection of the hosted Test project `yxxrgblpqzhnnyojbwcr` and Production project `jqebxlhhffwiebijiug`, plus the completed GitHub Actions run `45998911623`. No hosted database, Auth, Storage, grant, migration, merge, or deployment changes were made during this checkpoint.
+
+### CI result
+
+All three jobs in run `45998911623` completed successfully:
+
+- `validate`: passed dependency installation/audit, application and safety tests, Next.js build, and isolated concurrent smoke tests.
+- `database-integration`: passed Test target validation, rollback-only SQL integration tests, and fixture cleanup.
+- `auth-integration`: passed the isolated local HTTP browser flow validating a signed Auth session and fail-closed membership behavior; disposable Auth fixtures were cleaned up.
+
+This is strong branch/Test validation, but it is not a Production schema migration test or a deployment approval.
+
+### Current hosted catalog comparison
+
+| Catalog item | Test | Production |
+|---|---:|---:|
+| Public tables | 25 | 12 |
+| Public tables with RLS | 25 | 12 |
+| Public RLS policies | 48 | 32 |
+| Policies targeting anon | 0 | 0 |
+| Public triggers | 42 | 21 |
+| Public constraints | 240 | 98 |
+| Public indexes | 144 | 49 |
+| Public functions | 24 | 14 |
+| Private Storage buckets | 3 | 2 |
+| Migration-history rows | 65 | 35 |
+
+The 13 public tables present in Test but absent from Production are:
+- `vehicle_special_equipment`
+- `daily_work_plans`, `daily_work_stops`, `daily_load_events`
+- `shipments`, `shipment_lines`, `shipment_stops`, `shipment_stop_lines`, `shipment_stop_events`
+- `delivery_note_settings`, `delivery_proofs`, `delivery_notes`, `delivery_note_adjustments`
+
+Test also has nine additional public columns absent from Production: `vehicles.body_type` and eight lane-level/posted-clearance evidence fields on `road_restrictions`. The current application queries `vehicles.body_type` and depends on the Test-only feature tables, so the current application branch must not be pointed at Production before a separately reviewed schema rollout or explicit feature-compatibility work.
+
+Test's three private buckets include the delivery-proof bucket in addition to the two core evidence buckets. Production retains the two core private buckets. Bucket objects and policies must be compared individually before any rollout; matching bucket counts alone are insufficient.
+
+### Migration ledger status
+
+The current histories contain 65 Test rows and 35 Production rows. The 22 additional Test rows since the earlier 43-row audit are explicitly Test-only repair/feature migrations (names prefixed with `test_`). Test and Production migration histories have no identical logical migration names in the current direct comparison; they are materially different historical lineages. Do not try to reconcile them by copying version rows, deleting duplicates, or replaying the entire tracked chain.
+
+The successful clean local replay of the 46 tracked files remains useful evidence for repository reproducibility. It does not make either hosted migration ledger equivalent to that chain.
+
+### Current security and performance advisor observations
+
+- Test Security Advisor: ten authenticated-callable `SECURITY DEFINER` RPC warnings plus leaked-password protection disabled. The ten RPC definitions were inspected: all pin `search_path = ''`, check `auth.uid()`, and use the private fleet-role helper. These are intentional privileged workflow boundaries pending per-RPC regression review; do not bulk-revoke authenticated execution.
+- Production Security Advisor: two authenticated-callable trip lifecycle `SECURITY DEFINER` RPC warnings plus leaked-password protection disabled. The two RPCs are required workflow entry points; do not bulk-revoke authenticated execution.
+- Both environments have zero public RLS policies targeting `anon`.
+- Test Performance Advisor reports unused-index notices; Production reports unused-index notices and two unindexed foreign keys. Do not drop indexes based on low/absent workload alone. The Production foreign-key indexes should be considered in a separately reviewed, low-risk migration after checking existing definitions and query plans.
+- Leaked-password protection is an Auth configuration item. It has not been changed; enable it only with an Auth/password-reset regression window.
+
+### Disposition
+
+1. Keep Production unchanged.
+2. Keep Test as the integration environment; its latest rollback-only DB and Auth E2E checks passed.
+3. Do not replay the 46-file migration chain or rewrite either hosted migration ledger.
+4. Prepare a per-object and per-migration rollout map from the current Test catalog to Production, including Storage bucket/policy definitions and all function/trigger dependencies.
+5. Keep truck routing fail-closed until an authoritative, maintained restriction-data source and provider coverage are approved.
+6. Before release, add/verify report-only CSP against the actual Supabase, mapping, and upload origins; run real-device GPS and end-to-end Storage evidence tests.
+
+No merge or deployment is authorized by this checkpoint.
